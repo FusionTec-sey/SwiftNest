@@ -26,6 +26,9 @@ import {
   Edit,
   Save,
   X,
+  Building2,
+  DollarSign,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,7 +64,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Tenant, Document } from "@shared/schema";
+import type { Tenant, Document, Lease, Property } from "@shared/schema";
 
 const kycFormSchema = z.object({
   passportNumber: z.string().optional(),
@@ -130,6 +133,12 @@ export default function TenantDetailPage() {
 
   const { data: documents, isLoading: docsLoading } = useQuery<Document[]>({
     queryKey: ["/api/documents", "TENANT", tenantId],
+    enabled: !isNaN(tenantId) && tenantId > 0,
+  });
+
+  type LeaseWithProperty = Lease & { property?: Property };
+  const { data: leases, isLoading: leasesLoading } = useQuery<LeaseWithProperty[]>({
+    queryKey: ["/api/tenants", tenantId, "leases"],
     enabled: !isNaN(tenantId) && tenantId > 0,
   });
 
@@ -376,6 +385,91 @@ export default function TenantDetailPage() {
         </Card>
 
         <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Building2 className="h-5 w-5" />
+                Active Leases
+              </CardTitle>
+              <CardDescription>
+                Properties and units rented by this tenant
+              </CardDescription>
+            </div>
+            <Link href="/leases">
+              <Button variant="ghost" size="sm" data-testid="button-view-all-leases">
+                View All
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {leasesLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+              </div>
+            ) : !leases || leases.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Building2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No active leases for this tenant</p>
+                <Link href="/leases">
+                  <Button variant="ghost" size="sm" className="mt-2" data-testid="button-create-lease">
+                    Create Lease
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {leases.map((lease) => (
+                  <div
+                    key={lease.id}
+                    className="flex items-center justify-between gap-4 p-3 rounded-md bg-muted/50"
+                    data-testid={`lease-row-${lease.id}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <Link href={`/properties/${lease.propertyId}`}>
+                          <p className="text-sm font-medium hover:text-primary cursor-pointer" data-testid={`link-property-${lease.id}`}>
+                            {lease.property?.name || `Property #${lease.propertyId}`}
+                          </p>
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                          <span>
+                            {formatDate(lease.startDate)} - {formatDate(lease.endDate)}
+                          </span>
+                          <Badge variant="secondary" className="text-xs">
+                            {lease.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <p className="text-sm font-medium flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          {lease.rentAmount ? parseFloat(String(lease.rentAmount)).toLocaleString() : "-"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {lease.rentFrequency || "Monthly"}
+                        </p>
+                      </div>
+                      <Link href={`/leases/${lease.id}`}>
+                        <Button size="icon" variant="ghost" data-testid={`button-view-lease-${lease.id}`}>
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-3">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-lg">

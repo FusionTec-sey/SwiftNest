@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Gauge, Plus, Trash2, Zap, Droplet, Flame, Search, Receipt, Clock, CheckCircle, AlertCircle, Send } from "lucide-react";
+import { Gauge, Plus, Trash2, Zap, Droplet, Flame, Search, Receipt, Clock, CheckCircle, AlertCircle, Send, ArrowRightLeft, User, Building, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +46,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { EmptyState } from "@/components/empty-state";
-import type { UtilityMeter, Property, Unit, UtilityBill, Tenant } from "@shared/schema";
+import type { UtilityMeter, Property, Unit, UtilityBill, Tenant, Owner, MeterAssignmentHistory } from "@shared/schema";
 
 const utilityMeterFormSchema = z.object({
   propertyId: z.number().min(1, "Property is required"),
@@ -81,8 +81,23 @@ const utilityBillFormSchema = z.object({
   notes: z.string().optional(),
 });
 
+const meterTransferFormSchema = z.object({
+  newAssigneeType: z.enum(["OWNER", "TENANT"]),
+  newOwnerId: z.number().optional(),
+  newTenantId: z.number().optional(),
+  finalMeterReading: z.string().optional(),
+  transferReason: z.string().optional(),
+  notes: z.string().optional(),
+});
+
 type UtilityMeterFormData = z.infer<typeof utilityMeterFormSchema>;
 type UtilityBillFormData = z.infer<typeof utilityBillFormSchema>;
+type MeterTransferFormData = z.infer<typeof meterTransferFormSchema>;
+
+type MeterWithAssignment = UtilityMeter & {
+  assignedOwner?: Owner | null;
+  assignedTenant?: Tenant | null;
+};
 
 const getUtilityIcon = (type: string) => {
   switch (type) {
@@ -123,6 +138,9 @@ export default function UtilitiesPage() {
   const [deletingMeter, setDeletingMeter] = useState<UtilityMeter | null>(null);
   const [deletingBill, setDeletingBill] = useState<UtilityBill | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+  const [transferringMeter, setTransferringMeter] = useState<MeterWithAssignment | null>(null);
+  const [viewingHistory, setViewingHistory] = useState<number | null>(null);
 
   const { data: meters, isLoading: metersLoading } = useQuery<UtilityMeter[]>({
     queryKey: ["/api/utility-meters"],
@@ -138,6 +156,30 @@ export default function UtilitiesPage() {
 
   const { data: tenants } = useQuery<Tenant[]>({
     queryKey: ["/api/tenants"],
+  });
+
+  const { data: owners } = useQuery<Owner[]>({
+    queryKey: ["/api/owners"],
+  });
+
+  const { data: assignmentHistory } = useQuery<MeterAssignmentHistory[]>({
+    queryKey: ["/api/meters", viewingHistory, "assignment-history"],
+    enabled: !!viewingHistory,
+  });
+
+  const { data: outstandingBills } = useQuery<UtilityBill[]>({
+    queryKey: ["/api/meters", transferringMeter?.id, "outstanding-bills"],
+    enabled: !!transferringMeter,
+  });
+
+  const transferForm = useForm<MeterTransferFormData>({
+    resolver: zodResolver(meterTransferFormSchema),
+    defaultValues: {
+      newAssigneeType: "OWNER",
+      finalMeterReading: "",
+      transferReason: "",
+      notes: "",
+    },
   });
 
   const meterForm = useForm<UtilityMeterFormData>({
@@ -293,6 +335,46 @@ export default function UtilitiesPage() {
       });
     },
   });
+
+  const transferMeterMutation = useMutation({
+    mutationFn: async (data: MeterTransferFormData & { meterId: number }) => {
+      return apiRequest("POST", `/api/meters/${data.meterId}/transfer`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/utility-meters"] });
+      setIsTransferDialogOpen(false);
+      setTransferringMeter(null);
+      transferForm.reset();
+      toast({
+        title: "Meter transferred",
+        description: "The meter has been assigned to the new party.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Transfer failed",
+        description: error.message || "Failed to transfer the meter. Outstanding bills may need to be settled first.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openTransferDialog = (meter: MeterWithAssignment) => {
+    setTransferringMeter(meter);
+    transferForm.reset({
+      newAssigneeType: meter.assignedToType === "OWNER" ? "TENANT" : "OWNER",
+      finalMeterReading: "",
+      transferReason: "",
+      notes: "",
+    });
+    setIsTransferDialogOpen(true);
+  };
+
+  const getOwnerName = (ownerId: number | null | undefined) => {
+    if (!ownerId || !owners) return "Unknown";
+    const owner = owners.find((o) => o.id === ownerId);
+    return owner?.legalName || "Unknown";
+  };
 
   const openNewMeterForm = () => {
     setEditingMeter(null);
@@ -564,6 +646,45 @@ export default function UtilitiesPage() {
                           <span>{meter.fixedCharge}</span>
                         </div>
                       )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Assigned To</span>
+                        <span className="flex items-center gap-1">
+                          {meter.assignedToType === "OWNER" ? (
+                            <>
+                              <Building className="h-3 w-3" />
+                              {getOwnerName(meter.assignedToOwnerId)}
+                            </>
+                          ) : meter.assignedToType === "TENANT" ? (
+                            <>
+                              <User className="h-3 w-3" />
+                              {getTenantName(meter.assignedToTenantId)}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">Not assigned</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => openTransferDialog(meter as MeterWithAssignment)}
+                        data-testid={`button-transfer-meter-${meter.id}`}
+                      >
+                        <ArrowRightLeft className="h-4 w-4 mr-2" />
+                        Transfer
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewingHistory(meter.id)}
+                        data-testid={`button-history-meter-${meter.id}`}
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1004,6 +1125,253 @@ export default function UtilitiesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Meter Transfer Dialog */}
+      <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Transfer Meter</DialogTitle>
+            <DialogDescription>
+              Transfer meter responsibility from current assignee to a new owner or tenant.
+            </DialogDescription>
+          </DialogHeader>
+
+          {outstandingBills && outstandingBills.length > 0 && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-md p-3 text-sm">
+              <p className="font-medium text-destructive">Outstanding Bills Warning</p>
+              <p className="text-muted-foreground mt-1">
+                This meter has {outstandingBills.length} unpaid bill(s) totaling SCR{" "}
+                {outstandingBills.reduce((sum, bill) => sum + parseFloat(bill.totalAmount || "0") - parseFloat(bill.amountPaid || "0"), 0).toLocaleString()}.
+                Settle all bills before transferring.
+              </p>
+            </div>
+          )}
+
+          <Form {...transferForm}>
+            <form
+              onSubmit={transferForm.handleSubmit((data) => {
+                if (transferringMeter) {
+                  transferMeterMutation.mutate({ ...data, meterId: transferringMeter.id });
+                }
+              })}
+              className="space-y-4"
+            >
+              <FormField
+                control={transferForm.control}
+                name="newAssigneeType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Transfer To</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-transfer-type">
+                          <SelectValue placeholder="Select assignee type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="OWNER">Property Owner</SelectItem>
+                        <SelectItem value="TENANT">Tenant</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {transferForm.watch("newAssigneeType") === "OWNER" && (
+                <FormField
+                  control={transferForm.control}
+                  name="newOwnerId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Select Owner</FormLabel>
+                      <Select
+                        onValueChange={(val) => field.onChange(parseInt(val))}
+                        value={field.value?.toString() || ""}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-transfer-owner">
+                            <SelectValue placeholder="Select owner" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {owners?.map((owner) => (
+                            <SelectItem key={owner.id} value={owner.id.toString()}>
+                              {owner.legalName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {transferForm.watch("newAssigneeType") === "TENANT" && (
+                <FormField
+                  control={transferForm.control}
+                  name="newTenantId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Select Tenant</FormLabel>
+                      <Select
+                        onValueChange={(val) => field.onChange(parseInt(val))}
+                        value={field.value?.toString() || ""}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-transfer-tenant">
+                            <SelectValue placeholder="Select tenant" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {tenants?.map((tenant) => (
+                            <SelectItem key={tenant.id} value={tenant.id.toString()}>
+                              {tenant.legalName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={transferForm.control}
+                name="finalMeterReading"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Final Meter Reading</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g., 12345.67" data-testid="input-final-reading" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={transferForm.control}
+                name="transferReason"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Transfer Reason</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g., Lease ended" data-testid="input-transfer-reason" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={transferForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} placeholder="Additional notes..." data-testid="input-transfer-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsTransferDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={transferMeterMutation.isPending || (outstandingBills && outstandingBills.length > 0)}
+                  data-testid="button-submit-transfer"
+                >
+                  {transferMeterMutation.isPending ? "Transferring..." : "Transfer Meter"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assignment History Dialog */}
+      <Dialog open={!!viewingHistory} onOpenChange={() => setViewingHistory(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Meter Assignment History</DialogTitle>
+            <DialogDescription>
+              View the history of all assignments for this meter.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {assignmentHistory && assignmentHistory.length > 0 ? (
+              assignmentHistory.map((record) => (
+                <Card key={record.id} data-testid={`card-history-${record.id}`}>
+                  <CardContent className="pt-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {format(new Date(record.transferDate), "dd MMM yyyy HH:mm")}
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        {record.previousAssigneeType || "None"} to {record.newAssigneeType}
+                      </Badge>
+                    </div>
+                    <div className="text-sm space-y-1">
+                      <div className="flex items-center gap-2">
+                        <ArrowRightLeft className="h-3 w-3 text-muted-foreground" />
+                        <span>
+                          {record.previousAssigneeType === "OWNER" ? (
+                            <>From Owner: {getOwnerName(record.previousOwnerId)}</>
+                          ) : record.previousAssigneeType === "TENANT" ? (
+                            <>From Tenant: {getTenantName(record.previousTenantId)}</>
+                          ) : (
+                            "From: Not assigned"
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pl-5">
+                        <span>
+                          {record.newAssigneeType === "OWNER" ? (
+                            <>To Owner: {getOwnerName(record.newOwnerId)}</>
+                          ) : record.newAssigneeType === "TENANT" ? (
+                            <>To Tenant: {getTenantName(record.newTenantId)}</>
+                          ) : (
+                            "To: Not assigned"
+                          )}
+                        </span>
+                      </div>
+                      {record.finalMeterReading && (
+                        <div className="text-xs text-muted-foreground">
+                          Final Reading: {record.finalMeterReading}
+                        </div>
+                      )}
+                      {record.transferReason && (
+                        <div className="text-xs text-muted-foreground">
+                          Reason: {record.transferReason}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No transfer history for this meter.
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-4">
+            <Button variant="outline" onClick={() => setViewingHistory(null)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

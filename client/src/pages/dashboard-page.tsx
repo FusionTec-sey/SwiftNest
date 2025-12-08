@@ -82,10 +82,10 @@ export default function DashboardPage() {
   const hasAlerts = summary && (summary.financials.overdueAmount > 0 || summary.leases.expiringSoon > 0);
 
   const quickActions = [
-    { label: "Add Property", href: "/properties/new", icon: Plus, color: "text-blue-600 dark:text-blue-400" },
-    { label: "Add Tenant", href: "/tenants/new", icon: UserPlus, color: "text-green-600 dark:text-green-400" },
-    { label: "Record Payment", href: "/rent-collection", icon: Receipt, color: "text-purple-600 dark:text-purple-400" },
+    { label: "Collect Rent", href: "/rent-collection", icon: Receipt, color: "text-green-600 dark:text-green-400" },
+    { label: "Add Tenant", href: "/tenants/new", icon: UserPlus, color: "text-blue-600 dark:text-blue-400" },
     { label: "View Reports", href: "/reports", icon: FileText, color: "text-orange-600 dark:text-orange-400" },
+    { label: "New Lease", href: "/leases/new", icon: Plus, color: "text-purple-600 dark:text-purple-400" },
   ];
 
   const formatCurrency = (amount: number) => {
@@ -112,18 +112,12 @@ export default function DashboardPage() {
           <div className="flex flex-wrap gap-2">
             {quickActions.slice(0, 2).map((action) => (
               <Link key={action.href} href={action.href}>
-                <Button variant="outline" className="gap-2" data-testid={`button-quick-${action.label.toLowerCase().replace(" ", "-")}`}>
+                <Button variant="outline" className="gap-2" data-testid={`button-quick-${action.label.toLowerCase().replace(/\s+/g, "-")}`}>
                   <action.icon className={`h-4 w-4 ${action.color}`} />
                   {action.label}
                 </Button>
               </Link>
             ))}
-            <Link href="/properties/new">
-              <Button className="gap-2" data-testid="button-add-property">
-                <Plus className="h-4 w-4" />
-                Add Property
-              </Button>
-            </Link>
           </div>
         </div>
 
@@ -289,7 +283,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {quickActions.map((action) => (
                     <Link key={action.href} href={action.href}>
-                      <div className="flex flex-col items-center gap-2 p-4 rounded-md border hover-elevate active-elevate-2 cursor-pointer" data-testid={`quick-action-${action.label.toLowerCase().replace(" ", "-")}`}>
+                      <div className="flex flex-col items-center gap-2 p-4 rounded-md border hover-elevate active-elevate-2 cursor-pointer" data-testid={`quick-action-${action.label.toLowerCase().replace(/\s+/g, "-")}`}>
                         <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
                           <action.icon className={`h-5 w-5 ${action.color}`} />
                         </div>

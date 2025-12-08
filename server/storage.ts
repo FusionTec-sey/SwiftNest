@@ -105,7 +105,11 @@ import {
   type DepreciationRun,
   type OwnerWithProperties,
   type Document,
-  type InsertDocument
+  type InsertDocument,
+  complianceDocuments,
+  type ComplianceDocument,
+  type InsertComplianceDocument,
+  type ComplianceDocumentWithStatus
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -535,6 +539,17 @@ export interface IStorage {
   updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined>;
   deleteDocument(id: number): Promise<void>;
   generateShareToken(documentId: number, expiresInHours?: number): Promise<string>;
+
+  // =====================================================
+  // COMPLIANCE DOCUMENTS MODULE
+  // =====================================================
+  getComplianceDocumentsByEntity(entityType: "OWNER" | "PROPERTY", entityId: number): Promise<ComplianceDocumentWithStatus[]>;
+  getComplianceDocumentsByUser(userId: number): Promise<ComplianceDocumentWithStatus[]>;
+  getComplianceDocumentById(id: number): Promise<ComplianceDocumentWithStatus | undefined>;
+  getExpiringComplianceDocuments(userId: number, withinDays?: number): Promise<ComplianceDocumentWithStatus[]>;
+  createComplianceDocument(doc: InsertComplianceDocument & { createdByUserId: number }): Promise<ComplianceDocument>;
+  updateComplianceDocument(id: number, updates: Partial<InsertComplianceDocument>): Promise<ComplianceDocument | undefined>;
+  deleteComplianceDocument(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3525,6 +3540,136 @@ export class DatabaseStorage implements IStorage {
       .set({ shareToken: token, shareExpiresAt: expiresAt })
       .where(eq(documents.id, documentId));
     return token;
+  }
+
+  // =====================================================
+  // COMPLIANCE DOCUMENTS MODULE
+  // =====================================================
+
+  private computeComplianceStatus(doc: ComplianceDocument): ComplianceDocumentWithStatus {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let computedStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE" = "NOT_APPLICABLE";
+    let daysUntilExpiry: number | null = null;
+    
+    if (doc.expiryDate) {
+      const expiryDate = new Date(doc.expiryDate);
+      expiryDate.setHours(0, 0, 0, 0);
+      const diffTime = expiryDate.getTime() - today.getTime();
+      daysUntilExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (daysUntilExpiry < 0) {
+        computedStatus = "EXPIRED";
+      } else if (daysUntilExpiry <= (doc.reminderDays || 30)) {
+        computedStatus = "EXPIRING_SOON";
+      } else {
+        computedStatus = "ACTIVE";
+      }
+    }
+    
+    return { ...doc, computedStatus, daysUntilExpiry };
+  }
+
+  async getComplianceDocumentsByEntity(entityType: "OWNER" | "PROPERTY", entityId: number): Promise<ComplianceDocumentWithStatus[]> {
+    const docs = await db
+      .select()
+      .from(complianceDocuments)
+      .where(and(
+        eq(complianceDocuments.entityType, entityType),
+        eq(complianceDocuments.entityId, entityId)
+      ))
+      .orderBy(desc(complianceDocuments.createdAt));
+    
+    return docs.map(doc => this.computeComplianceStatus(doc));
+  }
+
+  async getComplianceDocumentsByUser(userId: number): Promise<ComplianceDocumentWithStatus[]> {
+    const userOwners = await this.getOwnersByUserId(userId);
+    const ownerIds = userOwners.map(o => o.id);
+    
+    const accessiblePropertyIds = await this.getAccessiblePropertyIds(userId);
+    
+    if (ownerIds.length === 0 && accessiblePropertyIds.length === 0) {
+      return [];
+    }
+    
+    const conditions = [];
+    if (ownerIds.length > 0) {
+      conditions.push(and(
+        eq(complianceDocuments.entityType, "OWNER"),
+        inArray(complianceDocuments.entityId, ownerIds)
+      ));
+    }
+    if (accessiblePropertyIds.length > 0) {
+      conditions.push(and(
+        eq(complianceDocuments.entityType, "PROPERTY"),
+        inArray(complianceDocuments.entityId, accessiblePropertyIds)
+      ));
+    }
+    
+    const docs = await db
+      .select()
+      .from(complianceDocuments)
+      .where(or(...conditions))
+      .orderBy(desc(complianceDocuments.createdAt));
+    
+    const result: ComplianceDocumentWithStatus[] = [];
+    for (const doc of docs) {
+      const withStatus = this.computeComplianceStatus(doc);
+      if (doc.entityType === "OWNER") {
+        const owner = userOwners.find(o => o.id === doc.entityId);
+        withStatus.entityName = owner?.name || `Owner #${doc.entityId}`;
+      } else if (doc.entityType === "PROPERTY") {
+        const prop = await this.getPropertyById(doc.entityId);
+        withStatus.entityName = prop?.name || `Property #${doc.entityId}`;
+      }
+      result.push(withStatus);
+    }
+    
+    return result;
+  }
+
+  async getComplianceDocumentById(id: number): Promise<ComplianceDocumentWithStatus | undefined> {
+    const [doc] = await db.select().from(complianceDocuments).where(eq(complianceDocuments.id, id));
+    if (!doc) return undefined;
+    return this.computeComplianceStatus(doc);
+  }
+
+  async getExpiringComplianceDocuments(userId: number, withinDays: number = 30): Promise<ComplianceDocumentWithStatus[]> {
+    const allDocs = await this.getComplianceDocumentsByUser(userId);
+    
+    return allDocs.filter(doc => {
+      if (doc.computedStatus === "EXPIRED") return true;
+      if (doc.computedStatus === "EXPIRING_SOON") return true;
+      if (doc.daysUntilExpiry !== null && doc.daysUntilExpiry <= withinDays) return true;
+      return false;
+    }).sort((a, b) => {
+      if (a.daysUntilExpiry === null) return 1;
+      if (b.daysUntilExpiry === null) return -1;
+      return a.daysUntilExpiry - b.daysUntilExpiry;
+    });
+  }
+
+  async createComplianceDocument(doc: InsertComplianceDocument & { createdByUserId: number }): Promise<ComplianceDocument> {
+    const [newDoc] = await db.insert(complianceDocuments).values({
+      ...doc,
+      updatedAt: new Date(),
+    }).returning();
+    return newDoc;
+  }
+
+  async updateComplianceDocument(id: number, updates: Partial<InsertComplianceDocument>): Promise<ComplianceDocument | undefined> {
+    const [updated] = await db
+      .update(complianceDocuments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(complianceDocuments.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteComplianceDocument(id: number): Promise<void> {
+    await db.delete(complianceDocuments).where(eq(complianceDocuments.id, id));
   }
 }
 

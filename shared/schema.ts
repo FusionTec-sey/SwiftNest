@@ -1409,6 +1409,29 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
 
+// Compliance document schemas
+export const insertComplianceDocumentSchema = createInsertSchema(complianceDocuments).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  documentName: z.string().min(1, "Document name is required"),
+  issueDate: z.string().nullable().optional(),
+  expiryDate: z.string().nullable().optional(),
+  reminderDays: z.number().min(1).max(365).default(30),
+});
+
+export type InsertComplianceDocument = z.infer<typeof insertComplianceDocumentSchema>;
+export type ComplianceDocument = typeof complianceDocuments.$inferSelect;
+
+// Computed compliance status helper
+export type ComplianceDocumentWithStatus = ComplianceDocument & {
+  computedStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
+  daysUntilExpiry: number | null;
+  entityName?: string;
+};
+
 // Loan schemas
 export const insertLoanSchema = createInsertSchema(loans).omit({
   id: true,
@@ -1523,25 +1546,4 @@ export type AssetWithDepreciation = Asset & {
 
 export type LedgerEntryWithLines = LedgerEntry & {
   lines: (LedgerLine & { account: ChartOfAccount })[];
-};
-
-// Compliance document schemas
-export const insertComplianceDocumentSchema = createInsertSchema(complianceDocuments).omit({
-  id: true,
-  createdByUserId: true,
-  createdAt: true,
-  updatedAt: true,
-}).extend({
-  documentName: z.string().min(2, "Document name is required"),
-  entityId: z.number().min(1, "Entity is required"),
-});
-
-export type InsertComplianceDocument = z.infer<typeof insertComplianceDocumentSchema>;
-export type ComplianceDocument = typeof complianceDocuments.$inferSelect;
-
-export type ComplianceDocumentWithEntity = ComplianceDocument & {
-  ownerName?: string;
-  propertyName?: string;
-  status: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
-  daysUntilExpiry?: number;
 };

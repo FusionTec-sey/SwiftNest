@@ -502,3 +502,714 @@ export type TaskWithDetails = MaintenanceTask & {
   activities?: MaintenanceTaskActivity[];
   materials?: (MaintenanceTaskMaterial & { material: MaintenanceMaterial })[];
 };
+
+// =====================================================
+// ENTERPRISE ERP MODULE ENUMS
+// =====================================================
+
+// Owner type enum
+export const ownerTypeEnum = pgEnum("owner_type", ["INDIVIDUAL", "COMPANY"]);
+
+// Ownership role enum
+export const ownershipRoleEnum = pgEnum("ownership_role", ["PRIMARY", "SECONDARY", "INVESTOR"]);
+
+// Tenant type enum
+export const tenantTypeEnum = pgEnum("tenant_type", ["INDIVIDUAL", "COMPANY"]);
+
+// Lease status enum
+export const leaseStatusEnum = pgEnum("lease_status", ["DRAFT", "ACTIVE", "EXPIRED", "TERMINATED"]);
+
+// Rent frequency enum
+export const rentFrequencyEnum = pgEnum("rent_frequency", ["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]);
+
+// Invoice status enum
+export const invoiceStatusEnum = pgEnum("invoice_status", ["DRAFT", "ISSUED", "PAID", "PARTIALLY_PAID", "OVERDUE", "CANCELLED"]);
+
+// Payment method enum
+export const paymentMethodEnum = pgEnum("payment_method", ["CASH", "BANK_TRANSFER", "CHECK", "CARD", "MOBILE_MONEY", "OTHER"]);
+
+// Payer type enum
+export const payerTypeEnum = pgEnum("payer_type", ["TENANT", "OWNER"]);
+
+// Applied to type enum
+export const appliedToTypeEnum = pgEnum("applied_to_type", ["RENT_INVOICE", "LOAN", "UTILITY", "OTHER"]);
+
+// Account type enum (for Chart of Accounts)
+export const coaAccountTypeEnum = pgEnum("coa_account_type", ["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"]);
+
+// Ledger module enum
+export const ledgerModuleEnum = pgEnum("ledger_module", ["RENT", "UTILITY", "MAINTENANCE", "LOAN", "DEPRECIATION", "MANUAL", "OTHER"]);
+
+// Utility type enum
+export const utilityTypeEnum = pgEnum("utility_type", ["ELECTRICITY", "WATER", "GAS", "INTERNET", "OTHER"]);
+
+// Loan compounding enum
+export const loanCompoundingEnum = pgEnum("loan_compounding", ["SIMPLE", "COMPOUND_MONTHLY", "COMPOUND_ANNUALLY"]);
+
+// Payment frequency enum
+export const paymentFrequencyEnum = pgEnum("payment_frequency", ["MONTHLY", "QUARTERLY", "SEMI_ANNUALLY", "ANNUALLY"]);
+
+// Amortization method enum
+export const amortizationMethodEnum = pgEnum("amortization_method", ["STRAIGHT_LINE", "REDUCING_BALANCE", "INTEREST_ONLY"]);
+
+// Asset category enum
+export const assetCategoryEnum = pgEnum("asset_category", [
+  "LAND", "BUILDING", "FURNITURE_FIXTURES", "APPLIANCES", "AC_UNITS", 
+  "VEHICLES", "EQUIPMENT", "COMPUTERS", "OTHER"
+]);
+
+// Asset status enum
+export const assetStatusEnum = pgEnum("asset_status", ["ACTIVE", "DISPOSED", "FULLY_DEPRECIATED"]);
+
+// Depreciation method enum
+export const depreciationMethodEnum = pgEnum("depreciation_method", ["STRAIGHT_LINE", "REDUCING_BALANCE", "UNITS_OF_PRODUCTION"]);
+
+// Depreciation run type enum
+export const depreciationRunTypeEnum = pgEnum("depreciation_run_type", ["BOOK", "TAX"]);
+
+// =====================================================
+// OWNERS TABLE
+// =====================================================
+
+export const owners = pgTable("owners", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerType: ownerTypeEnum("owner_type").notNull().default("INDIVIDUAL"),
+  legalName: text("legal_name").notNull(),
+  registrationNumber: text("registration_number"),
+  taxId: text("tax_id"),
+  email: text("email"),
+  phone: text("phone"),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  state: text("state"),
+  country: text("country"),
+  postalCode: text("postal_code"),
+  isResident: integer("is_resident").default(1),
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("owners_created_by_idx").on(table.createdByUserId),
+  index("owners_type_idx").on(table.ownerType),
+]);
+
+// =====================================================
+// PROPERTY OWNERS (LINK TABLE)
+// =====================================================
+
+export const propertyOwners = pgTable("property_owners", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  ownerId: integer("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  ownershipPercent: decimal("ownership_percent", { precision: 5, scale: 2 }).notNull().default("100"),
+  ownershipRole: ownershipRoleEnum("ownership_role").notNull().default("PRIMARY"),
+  startDate: timestamp("start_date").defaultNow(),
+  endDate: timestamp("end_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("property_owners_property_idx").on(table.propertyId),
+  index("property_owners_owner_idx").on(table.ownerId),
+]);
+
+// =====================================================
+// TENANTS TABLE
+// =====================================================
+
+export const tenants = pgTable("tenants", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  tenantType: tenantTypeEnum("tenant_type").notNull().default("INDIVIDUAL"),
+  legalName: text("legal_name").notNull(),
+  registrationNumber: text("registration_number"),
+  idNumber: text("id_number"),
+  email: text("email"),
+  phone: text("phone").notNull(),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  country: text("country"),
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("tenants_created_by_idx").on(table.createdByUserId),
+  index("tenants_email_idx").on(table.email),
+]);
+
+// =====================================================
+// LEASES TABLE
+// =====================================================
+
+export const leases = pgTable("leases", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  status: leaseStatusEnum("status").notNull().default("DRAFT"),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  rentAmount: decimal("rent_amount", { precision: 12, scale: 2 }).notNull(),
+  rentFrequency: rentFrequencyEnum("rent_frequency").notNull().default("MONTHLY"),
+  depositAmount: decimal("deposit_amount", { precision: 12, scale: 2 }).default("0"),
+  escalationPercent: decimal("escalation_percent", { precision: 5, scale: 2 }),
+  escalationFrequencyMonths: integer("escalation_frequency_months"),
+  paymentDueDay: integer("payment_due_day").default(1),
+  lateFeePercent: decimal("late_fee_percent", { precision: 5, scale: 2 }),
+  lateFeeGraceDays: integer("late_fee_grace_days").default(5),
+  terms: text("terms"),
+  documents: text("documents").array().default([]),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("leases_property_idx").on(table.propertyId),
+  index("leases_tenant_idx").on(table.tenantId),
+  index("leases_status_idx").on(table.status),
+]);
+
+// =====================================================
+// RENT INVOICES TABLE
+// =====================================================
+
+export const rentInvoices = pgTable("rent_invoices", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  leaseId: integer("lease_id").notNull().references(() => leases.id, { onDelete: "cascade" }),
+  invoiceNumber: text("invoice_number").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  rentAmount: decimal("rent_amount", { precision: 12, scale: 2 }).notNull(),
+  utilityCharges: decimal("utility_charges", { precision: 12, scale: 2 }).default("0"),
+  maintenanceCharges: decimal("maintenance_charges", { precision: 12, scale: 2 }).default("0"),
+  lateFees: decimal("late_fees", { precision: 12, scale: 2 }).default("0"),
+  otherCharges: decimal("other_charges", { precision: 12, scale: 2 }).default("0"),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  status: invoiceStatusEnum("status").notNull().default("DRAFT"),
+  dueDate: timestamp("due_date").notNull(),
+  issuedAt: timestamp("issued_at"),
+  paidAt: timestamp("paid_at"),
+  ledgerEntryId: integer("ledger_entry_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("rent_invoices_lease_idx").on(table.leaseId),
+  index("rent_invoices_status_idx").on(table.status),
+  index("rent_invoices_due_date_idx").on(table.dueDate),
+]);
+
+// =====================================================
+// PAYMENTS TABLE
+// =====================================================
+
+export const payments = pgTable("payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  payerType: payerTypeEnum("payer_type").notNull(),
+  payerId: integer("payer_id").notNull(),
+  paymentDate: timestamp("payment_date").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentMethod: paymentMethodEnum("payment_method").notNull().default("BANK_TRANSFER"),
+  reference: text("reference"),
+  appliedToType: appliedToTypeEnum("applied_to_type").notNull(),
+  appliedToId: integer("applied_to_id").notNull(),
+  bankAccountId: integer("bank_account_id"),
+  ledgerEntryId: integer("ledger_entry_id"),
+  notes: text("notes"),
+  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("payments_payer_idx").on(table.payerType, table.payerId),
+  index("payments_applied_idx").on(table.appliedToType, table.appliedToId),
+  index("payments_date_idx").on(table.paymentDate),
+]);
+
+// =====================================================
+// CHART OF ACCOUNTS TABLE
+// =====================================================
+
+export const chartOfAccounts = pgTable("chart_of_accounts", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  accountType: coaAccountTypeEnum("account_type").notNull(),
+  parentCode: text("parent_code"),
+  description: text("description"),
+  isActive: integer("is_active").default(1).notNull(),
+  isSystem: integer("is_system").default(0).notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("coa_code_idx").on(table.code),
+  index("coa_type_idx").on(table.accountType),
+]);
+
+// =====================================================
+// LEDGER ENTRIES TABLE (Journal Entries)
+// =====================================================
+
+export const ledgerEntries = pgTable("ledger_entries", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  entryNumber: text("entry_number").notNull(),
+  entryDate: timestamp("entry_date").notNull(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+  ownerId: integer("owner_id").references(() => owners.id, { onDelete: "set null" }),
+  module: ledgerModuleEnum("module").notNull(),
+  referenceId: integer("reference_id"),
+  memo: text("memo"),
+  isReversed: integer("is_reversed").default(0).notNull(),
+  reversedByEntryId: integer("reversed_by_entry_id"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("ledger_entries_date_idx").on(table.entryDate),
+  index("ledger_entries_property_idx").on(table.propertyId),
+  index("ledger_entries_owner_idx").on(table.ownerId),
+  index("ledger_entries_module_idx").on(table.module),
+]);
+
+// =====================================================
+// LEDGER LINES TABLE (Journal Lines)
+// =====================================================
+
+export const ledgerLines = pgTable("ledger_lines", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  entryId: integer("entry_id").notNull().references(() => ledgerEntries.id, { onDelete: "cascade" }),
+  accountId: integer("account_id").notNull().references(() => chartOfAccounts.id),
+  debit: decimal("debit", { precision: 14, scale: 2 }).default("0"),
+  credit: decimal("credit", { precision: 14, scale: 2 }).default("0"),
+  relatedType: text("related_type"),
+  relatedId: integer("related_id"),
+  memo: text("memo"),
+}, (table) => [
+  index("ledger_lines_entry_idx").on(table.entryId),
+  index("ledger_lines_account_idx").on(table.accountId),
+]);
+
+// =====================================================
+// UTILITY METERS TABLE
+// =====================================================
+
+export const utilityMeters = pgTable("utility_meters", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  utilityType: utilityTypeEnum("utility_type").notNull(),
+  meterNumber: text("meter_number").notNull(),
+  provider: text("provider"),
+  ratePerUnit: decimal("rate_per_unit", { precision: 10, scale: 4 }),
+  fixedCharge: decimal("fixed_charge", { precision: 10, scale: 2 }).default("0"),
+  isActive: integer("is_active").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("utility_meters_property_idx").on(table.propertyId),
+  index("utility_meters_unit_idx").on(table.unitId),
+  index("utility_meters_type_idx").on(table.utilityType),
+]);
+
+// =====================================================
+// METER READINGS TABLE
+// =====================================================
+
+export const meterReadings = pgTable("meter_readings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  meterId: integer("meter_id").notNull().references(() => utilityMeters.id, { onDelete: "cascade" }),
+  readingDate: timestamp("reading_date").notNull(),
+  previousReading: decimal("previous_reading", { precision: 12, scale: 2 }),
+  currentReading: decimal("current_reading", { precision: 12, scale: 2 }).notNull(),
+  consumption: decimal("consumption", { precision: 12, scale: 2 }),
+  billingPeriodStart: timestamp("billing_period_start"),
+  billingPeriodEnd: timestamp("billing_period_end"),
+  billAmount: decimal("bill_amount", { precision: 12, scale: 2 }),
+  rebillableAmount: decimal("rebillable_amount", { precision: 12, scale: 2 }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  isRebilled: integer("is_rebilled").default(0),
+  ledgerEntryId: integer("ledger_entry_id"),
+  notes: text("notes"),
+  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("meter_readings_meter_idx").on(table.meterId),
+  index("meter_readings_date_idx").on(table.readingDate),
+]);
+
+// =====================================================
+// LOANS TABLE
+// =====================================================
+
+export const loans = pgTable("loans", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerId: integer("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+  lenderName: text("lender_name").notNull(),
+  loanReference: text("loan_reference"),
+  currency: text("currency").default("SCR").notNull(),
+  principal: decimal("principal", { precision: 14, scale: 2 }).notNull(),
+  interestRate: decimal("interest_rate", { precision: 6, scale: 4 }).notNull(),
+  compounding: loanCompoundingEnum("compounding").notNull().default("SIMPLE"),
+  termMonths: integer("term_months").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  paymentFrequency: paymentFrequencyEnum("payment_frequency").notNull().default("MONTHLY"),
+  amortizationMethod: amortizationMethodEnum("amortization_method").notNull().default("REDUCING_BALANCE"),
+  outstandingBalance: decimal("outstanding_balance", { precision: 14, scale: 2 }),
+  totalInterestPaid: decimal("total_interest_paid", { precision: 14, scale: 2 }).default("0"),
+  totalPrincipalPaid: decimal("total_principal_paid", { precision: 14, scale: 2 }).default("0"),
+  isActive: integer("is_active").default(1).notNull(),
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("loans_owner_idx").on(table.ownerId),
+  index("loans_property_idx").on(table.propertyId),
+]);
+
+// =====================================================
+// LOAN SCHEDULE TABLE
+// =====================================================
+
+export const loanSchedule = pgTable("loan_schedule", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  loanId: integer("loan_id").notNull().references(() => loans.id, { onDelete: "cascade" }),
+  periodNumber: integer("period_number").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  openingBalance: decimal("opening_balance", { precision: 14, scale: 2 }).notNull(),
+  principalDue: decimal("principal_due", { precision: 14, scale: 2 }).notNull(),
+  interestDue: decimal("interest_due", { precision: 14, scale: 2 }).notNull(),
+  totalDue: decimal("total_due", { precision: 14, scale: 2 }).notNull(),
+  closingBalance: decimal("closing_balance", { precision: 14, scale: 2 }).notNull(),
+  isPaid: integer("is_paid").default(0).notNull(),
+  paidDate: timestamp("paid_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("loan_schedule_loan_idx").on(table.loanId),
+  index("loan_schedule_due_idx").on(table.dueDate),
+]);
+
+// =====================================================
+// LOAN PAYMENTS TABLE
+// =====================================================
+
+export const loanPayments = pgTable("loan_payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  loanId: integer("loan_id").notNull().references(() => loans.id, { onDelete: "cascade" }),
+  scheduleId: integer("schedule_id").references(() => loanSchedule.id, { onDelete: "set null" }),
+  paymentDate: timestamp("payment_date").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  principalComponent: decimal("principal_component", { precision: 14, scale: 2 }).notNull(),
+  interestComponent: decimal("interest_component", { precision: 14, scale: 2 }).notNull(),
+  bankAccountId: integer("bank_account_id"),
+  ledgerEntryId: integer("ledger_entry_id"),
+  reference: text("reference"),
+  notes: text("notes"),
+  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("loan_payments_loan_idx").on(table.loanId),
+  index("loan_payments_schedule_idx").on(table.scheduleId),
+  index("loan_payments_date_idx").on(table.paymentDate),
+]);
+
+// =====================================================
+// ASSETS TABLE
+// =====================================================
+
+export const assets = pgTable("assets", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerId: integer("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+  assetCategory: assetCategoryEnum("asset_category").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  serialNumber: text("serial_number"),
+  acquisitionDate: timestamp("acquisition_date").notNull(),
+  cost: decimal("cost", { precision: 14, scale: 2 }).notNull(),
+  salvageValue: decimal("salvage_value", { precision: 14, scale: 2 }).default("0"),
+  usefulLifeMonths: integer("useful_life_months").notNull(),
+  bookMethod: depreciationMethodEnum("book_method").notNull().default("STRAIGHT_LINE"),
+  taxMethod: depreciationMethodEnum("tax_method").notNull().default("STRAIGHT_LINE"),
+  taxRateCode: text("tax_rate_code"),
+  businessUsePercent: decimal("business_use_percent", { precision: 5, scale: 2 }).default("100"),
+  status: assetStatusEnum("status").notNull().default("ACTIVE"),
+  bookAccumulatedDepreciation: decimal("book_accumulated_depreciation", { precision: 14, scale: 2 }).default("0"),
+  taxAccumulatedDepreciation: decimal("tax_accumulated_depreciation", { precision: 14, scale: 2 }).default("0"),
+  disposalDate: timestamp("disposal_date"),
+  disposalAmount: decimal("disposal_amount", { precision: 14, scale: 2 }),
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("assets_owner_idx").on(table.ownerId),
+  index("assets_property_idx").on(table.propertyId),
+  index("assets_category_idx").on(table.assetCategory),
+  index("assets_status_idx").on(table.status),
+]);
+
+// =====================================================
+// DEPRECIATION RULES TABLE
+// =====================================================
+
+export const depreciationRules = pgTable("depreciation_rules", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  assetCategory: assetCategoryEnum("asset_category").notNull(),
+  jurisdiction: text("jurisdiction").default("SC").notNull(),
+  lawReference: text("law_reference"),
+  ratePercentPerYear: decimal("rate_percent_per_year", { precision: 6, scale: 2 }).notNull(),
+  method: depreciationMethodEnum("method").notNull().default("STRAIGHT_LINE"),
+  isFirstYearFull: integer("is_first_year_full").default(0).notNull(),
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("depreciation_rules_category_idx").on(table.assetCategory),
+  index("depreciation_rules_jurisdiction_idx").on(table.jurisdiction),
+]);
+
+// =====================================================
+// DEPRECIATION RUNS TABLE
+// =====================================================
+
+export const depreciationRuns = pgTable("depreciation_runs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  assetId: integer("asset_id").notNull().references(() => assets.id, { onDelete: "cascade" }),
+  runType: depreciationRunTypeEnum("run_type").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  depreciationAmount: decimal("depreciation_amount", { precision: 14, scale: 2 }).notNull(),
+  openingNetBookValue: decimal("opening_net_book_value", { precision: 14, scale: 2 }).notNull(),
+  closingNetBookValue: decimal("closing_net_book_value", { precision: 14, scale: 2 }).notNull(),
+  ledgerEntryId: integer("ledger_entry_id"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("depreciation_runs_asset_idx").on(table.assetId),
+  index("depreciation_runs_period_idx").on(table.periodStart, table.periodEnd),
+]);
+
+// =====================================================
+// INSERT SCHEMAS FOR ENTERPRISE MODULES
+// =====================================================
+
+// Owner schemas
+export const insertOwnerSchema = createInsertSchema(owners).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  legalName: z.string().min(2, "Legal name must be at least 2 characters"),
+});
+
+// Property owner schemas
+export const insertPropertyOwnerSchema = createInsertSchema(propertyOwners).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Tenant schemas
+export const insertTenantSchema = createInsertSchema(tenants).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  legalName: z.string().min(2, "Legal name must be at least 2 characters"),
+  phone: z.string().min(7, "Phone number is required"),
+});
+
+// Lease schemas
+export const insertLeaseSchema = createInsertSchema(leases).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  rentAmount: z.string().or(z.number()).transform(val => String(val)),
+});
+
+// Rent invoice schemas
+export const insertRentInvoiceSchema = createInsertSchema(rentInvoices).omit({
+  id: true,
+  invoiceNumber: true,
+  amountPaid: true,
+  status: true,
+  issuedAt: true,
+  paidAt: true,
+  ledgerEntryId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Payment schemas
+export const insertPaymentSchema = createInsertSchema(payments).omit({
+  id: true,
+  ledgerEntryId: true,
+  recordedByUserId: true,
+  createdAt: true,
+});
+
+// Chart of accounts schemas
+export const insertChartOfAccountSchema = createInsertSchema(chartOfAccounts).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  code: z.string().min(3, "Account code must be at least 3 characters"),
+  name: z.string().min(2, "Account name is required"),
+});
+
+// Ledger entry schemas
+export const insertLedgerEntrySchema = createInsertSchema(ledgerEntries).omit({
+  id: true,
+  entryNumber: true,
+  isReversed: true,
+  reversedByEntryId: true,
+  createdByUserId: true,
+  createdAt: true,
+});
+
+// Ledger line schemas
+export const insertLedgerLineSchema = createInsertSchema(ledgerLines).omit({
+  id: true,
+});
+
+// Utility meter schemas
+export const insertUtilityMeterSchema = createInsertSchema(utilityMeters).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  meterNumber: z.string().min(1, "Meter number is required"),
+});
+
+// Meter reading schemas
+export const insertMeterReadingSchema = createInsertSchema(meterReadings).omit({
+  id: true,
+  consumption: true,
+  isRebilled: true,
+  ledgerEntryId: true,
+  recordedByUserId: true,
+  createdAt: true,
+});
+
+// Loan schemas
+export const insertLoanSchema = createInsertSchema(loans).omit({
+  id: true,
+  endDate: true,
+  outstandingBalance: true,
+  totalInterestPaid: true,
+  totalPrincipalPaid: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  lenderName: z.string().min(2, "Lender name is required"),
+  principal: z.string().or(z.number()).transform(val => String(val)),
+  interestRate: z.string().or(z.number()).transform(val => String(val)),
+});
+
+// Loan payment schemas
+export const insertLoanPaymentSchema = createInsertSchema(loanPayments).omit({
+  id: true,
+  ledgerEntryId: true,
+  recordedByUserId: true,
+  createdAt: true,
+});
+
+// Asset schemas
+export const insertAssetSchema = createInsertSchema(assets).omit({
+  id: true,
+  status: true,
+  bookAccumulatedDepreciation: true,
+  taxAccumulatedDepreciation: true,
+  disposalDate: true,
+  disposalAmount: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(2, "Asset name is required"),
+  cost: z.string().or(z.number()).transform(val => String(val)),
+});
+
+// Depreciation rule schemas
+export const insertDepreciationRuleSchema = createInsertSchema(depreciationRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// =====================================================
+// ENTERPRISE MODULE TYPES
+// =====================================================
+
+export type Owner = typeof owners.$inferSelect;
+export type InsertOwner = z.infer<typeof insertOwnerSchema>;
+export type PropertyOwner = typeof propertyOwners.$inferSelect;
+export type InsertPropertyOwner = z.infer<typeof insertPropertyOwnerSchema>;
+export type Tenant = typeof tenants.$inferSelect;
+export type InsertTenant = z.infer<typeof insertTenantSchema>;
+export type Lease = typeof leases.$inferSelect;
+export type InsertLease = z.infer<typeof insertLeaseSchema>;
+export type RentInvoice = typeof rentInvoices.$inferSelect;
+export type InsertRentInvoice = z.infer<typeof insertRentInvoiceSchema>;
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+export type ChartOfAccount = typeof chartOfAccounts.$inferSelect;
+export type InsertChartOfAccount = z.infer<typeof insertChartOfAccountSchema>;
+export type LedgerEntry = typeof ledgerEntries.$inferSelect;
+export type InsertLedgerEntry = z.infer<typeof insertLedgerEntrySchema>;
+export type LedgerLine = typeof ledgerLines.$inferSelect;
+export type InsertLedgerLine = z.infer<typeof insertLedgerLineSchema>;
+export type UtilityMeter = typeof utilityMeters.$inferSelect;
+export type InsertUtilityMeter = z.infer<typeof insertUtilityMeterSchema>;
+export type MeterReading = typeof meterReadings.$inferSelect;
+export type InsertMeterReading = z.infer<typeof insertMeterReadingSchema>;
+export type Loan = typeof loans.$inferSelect;
+export type InsertLoan = z.infer<typeof insertLoanSchema>;
+export type LoanScheduleEntry = typeof loanSchedule.$inferSelect;
+export type LoanPayment = typeof loanPayments.$inferSelect;
+export type InsertLoanPayment = z.infer<typeof insertLoanPaymentSchema>;
+export type Asset = typeof assets.$inferSelect;
+export type InsertAsset = z.infer<typeof insertAssetSchema>;
+export type DepreciationRule = typeof depreciationRules.$inferSelect;
+export type InsertDepreciationRule = z.infer<typeof insertDepreciationRuleSchema>;
+export type DepreciationRun = typeof depreciationRuns.$inferSelect;
+
+// Extended types with relations
+export type OwnerWithProperties = Owner & {
+  propertyOwnerships: (PropertyOwner & { property: Property })[];
+};
+
+export type LeaseWithDetails = Lease & {
+  property: Property;
+  unit?: Unit | null;
+  tenant: Tenant;
+};
+
+export type LoanWithSchedule = Loan & {
+  owner: Owner;
+  property?: Property | null;
+  schedule: LoanScheduleEntry[];
+  payments: LoanPayment[];
+};
+
+export type AssetWithDepreciation = Asset & {
+  owner: Owner;
+  property?: Property | null;
+  depreciationRuns: DepreciationRun[];
+};
+
+export type LedgerEntryWithLines = LedgerEntry & {
+  lines: (LedgerLine & { account: ChartOfAccount })[];
+};

@@ -22,6 +22,9 @@ export const users = pgTable("users", {
   organizationName: text("organization_name"),
   organizationType: text("organization_type"),
   gstId: text("gst_id"),
+  isSuperAdmin: integer("is_super_admin").default(0).notNull(), // First user or designated super admins
+  isActive: integer("is_active").default(1).notNull(), // Admin can deactivate users
+  createdByUserId: integer("created_by_user_id"), // NULL for self-registered, set for admin-created
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -46,11 +49,14 @@ export const properties = pgTable("properties", {
   longitude: decimal("longitude", { precision: 11, scale: 8 }),
   images: text("images").array().default([]),
   isDeleted: integer("is_deleted").default(0).notNull(),
+  portfolioTag: text("portfolio_tag"), // Optional: for organizing properties (e.g., "Personal", "ABC Holdings")
+  coOwnershipNotes: text("co_ownership_notes"), // Optional: legal notes about co-ownership (e.g., "50% John, 50% Jane")
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("properties_owner_idx").on(table.ownerUserId),
   index("properties_city_idx").on(table.city),
+  index("properties_portfolio_idx").on(table.portfolioTag),
 ]);
 
 // Units table
@@ -1249,6 +1255,80 @@ export const depreciationRuns = pgTable("depreciation_runs", {
 ]);
 
 // =====================================================
+// ROLE-BASED ACCESS CONTROL (RBAC) SYSTEM
+// =====================================================
+
+// System role enum - predefined roles with bundled permissions
+export const systemRoleEnum = pgEnum("system_role", [
+  "SUPER_ADMIN",        // Full system access, can manage all users and settings
+  "PROPERTY_MANAGER",   // Manage properties, units, tenants, leases
+  "ACCOUNTANT",         // View/manage invoices, payments, financial reports
+  "MAINTENANCE_SUPERVISOR", // Manage maintenance tasks, teams, materials
+  "COMPLIANCE_OFFICER", // Manage documents, licenses, permits, reminders
+  "VIEWER"              // Read-only access
+]);
+
+// Permission scope enum - whether permission applies globally or per-property
+export const permissionScopeEnum = pgEnum("permission_scope", ["GLOBAL", "PROPERTY"]);
+
+// Roles table - predefined and custom roles
+export const roles = pgTable("roles", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  isSystem: integer("is_system").default(1).notNull(), // System roles cannot be deleted
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("roles_name_idx").on(table.name),
+]);
+
+// Permissions table - granular permissions for each module
+export const permissions = pgTable("permissions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  key: text("key").notNull().unique(), // e.g., "property.view", "tenant.create"
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  module: text("module").notNull(), // e.g., "property", "tenant", "lease", "finance"
+  scope: permissionScopeEnum("scope").notNull().default("PROPERTY"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("permissions_key_idx").on(table.key),
+  index("permissions_module_idx").on(table.module),
+]);
+
+// Role-Permission mapping table
+export const rolePermissions = pgTable("role_permissions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  roleId: integer("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  permissionId: integer("permission_id").notNull().references(() => permissions.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("role_permissions_role_idx").on(table.roleId),
+  index("role_permissions_permission_idx").on(table.permissionId),
+]);
+
+// User Role Assignments - assigns roles to users (globally or per-property)
+export const userRoleAssignments = pgTable("user_role_assignments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roleId: integer("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }), // NULL = global assignment
+  assignedByUserId: integer("assigned_by_user_id").notNull().references(() => users.id),
+  isActive: integer("is_active").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("user_role_user_idx").on(table.userId),
+  index("user_role_role_idx").on(table.roleId),
+  index("user_role_property_idx").on(table.propertyId),
+]);
+
+// Add isSuperAdmin to users for the first admin bootstrap
+// This is handled via a separate field rather than modifying the users table
+
+// =====================================================
 // INSERT SCHEMAS FOR ENTERPRISE MODULES
 // =====================================================
 
@@ -1496,6 +1576,65 @@ export const insertDepreciationRuleSchema = createInsertSchema(depreciationRules
 });
 
 // =====================================================
+// RBAC INSERT SCHEMAS
+// =====================================================
+
+// Role schemas
+export const insertRoleSchema = createInsertSchema(roles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(2, "Role name is required"),
+  displayName: z.string().min(2, "Display name is required"),
+});
+
+// Permission schemas
+export const insertPermissionSchema = createInsertSchema(permissions).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  key: z.string().min(3, "Permission key is required"),
+  displayName: z.string().min(2, "Display name is required"),
+  module: z.string().min(2, "Module is required"),
+});
+
+// Role-Permission schemas
+export const insertRolePermissionSchema = createInsertSchema(rolePermissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+// User role assignment schemas
+export const insertUserRoleAssignmentSchema = createInsertSchema(userRoleAssignments).omit({
+  id: true,
+  assignedByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  userId: z.number().min(1, "User ID is required"),
+  roleId: z.number().min(1, "Role ID is required"),
+  propertyId: z.number().optional().nullable(), // NULL for global assignment
+});
+
+// Admin user creation schema (for super admin creating new users)
+export const adminCreateUserSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Valid email required"),
+  phone: z.string().min(7, "Phone number is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  accountType: z.enum(["INDIVIDUAL", "ORGANIZATION"]).optional().default("INDIVIDUAL"),
+  organizationName: z.string().optional(),
+  organizationType: z.string().optional(),
+  roleAssignments: z.array(z.object({
+    roleId: z.number(),
+    propertyId: z.number().optional().nullable(),
+  })).optional().default([]),
+});
+
+export type AdminCreateUser = z.infer<typeof adminCreateUserSchema>;
+
+// =====================================================
 // ENTERPRISE MODULE TYPES
 // =====================================================
 
@@ -1562,4 +1701,40 @@ export type AssetWithDepreciation = Asset & {
 
 export type LedgerEntryWithLines = LedgerEntry & {
   lines: (LedgerLine & { account: ChartOfAccount })[];
+};
+
+// =====================================================
+// RBAC TYPES
+// =====================================================
+
+export type Role = typeof roles.$inferSelect;
+export type InsertRole = z.infer<typeof insertRoleSchema>;
+export type Permission = typeof permissions.$inferSelect;
+export type InsertPermission = z.infer<typeof insertPermissionSchema>;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type InsertRolePermission = z.infer<typeof insertRolePermissionSchema>;
+export type UserRoleAssignment = typeof userRoleAssignments.$inferSelect;
+export type InsertUserRoleAssignment = z.infer<typeof insertUserRoleAssignmentSchema>;
+
+// Extended RBAC types
+export type RoleWithPermissions = Role & {
+  permissions: Permission[];
+};
+
+export type UserWithRoles = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  isSuperAdmin: number;
+  isActive: number;
+  roles: (UserRoleAssignment & { 
+    role: Role;
+    property?: Property | null;
+  })[];
+};
+
+export type UserPermissions = {
+  global: string[]; // Permission keys for global access
+  byProperty: Record<number, string[]>; // Permission keys per property ID
 };

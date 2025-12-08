@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star, Users } from "lucide-react";
+import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star, Users, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,14 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Owner } from "@shared/schema";
+import { Link } from "wouter";
+import type { Owner, ComplianceDocument } from "@shared/schema";
+
+interface ComplianceDocumentWithStatus extends ComplianceDocument {
+  computedStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
+  daysUntilExpiry: number | null;
+  entityName?: string;
+}
 
 const ownerFormSchema = z.object({
   ownerType: z.enum(["INDIVIDUAL", "COMPANY", "TRUST"]),
@@ -80,6 +87,19 @@ export default function OwnersPage() {
   const { data: owners, isLoading } = useQuery<Owner[]>({
     queryKey: ["/api/owners"],
   });
+
+  const { data: allComplianceDocuments } = useQuery<ComplianceDocumentWithStatus[]>({
+    queryKey: ["/api/compliance-documents"],
+  });
+
+  const getOwnerComplianceStatus = (ownerId: number) => {
+    const ownerDocs = allComplianceDocuments?.filter(
+      (doc) => doc.entityType === "OWNER" && doc.entityId === ownerId
+    ) || [];
+    const expired = ownerDocs.filter((d) => d.computedStatus === "EXPIRED").length;
+    const expiring = ownerDocs.filter((d) => d.computedStatus === "EXPIRING_SOON").length;
+    return { total: ownerDocs.length, expired, expiring };
+  };
 
   const form = useForm<OwnerFormData>({
     resolver: zodResolver(ownerFormSchema),
@@ -271,6 +291,23 @@ export default function OwnersPage() {
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      {(() => {
+                        const status = getOwnerComplianceStatus(owner.id);
+                        const hasIssues = status.expired > 0 || status.expiring > 0;
+                        return (
+                          <Link href={`/compliance?owner=${owner.id}`}>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={hasIssues ? "text-amber-600 dark:text-amber-400" : ""}
+                              data-testid={`button-compliance-${owner.id}`}
+                              title={status.total > 0 ? `${status.total} compliance docs${hasIssues ? ` (${status.expired} expired, ${status.expiring} expiring)` : ""}` : "Manage compliance documents"}
+                            >
+                              <FileCheck className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        );
+                      })()}
                       <Button
                         size="icon"
                         variant="ghost"

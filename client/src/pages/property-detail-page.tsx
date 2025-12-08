@@ -31,6 +31,7 @@ import {
   CheckCircle,
   AlertCircle,
   Send,
+  FileCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -69,9 +70,15 @@ import { ShareDialog } from "@/components/share-dialog";
 import { PropertyTree } from "@/components/property-tree";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit, InsertUnit, LeaseWithDetails, UtilityBill } from "@shared/schema";
+import type { Property, Unit, InsertUnit, LeaseWithDetails, UtilityBill, ComplianceDocument } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[]; userRole?: string; isOwner?: boolean };
+
+interface ComplianceDocumentWithStatus extends ComplianceDocument {
+  computedStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
+  daysUntilExpiry: number | null;
+  entityName?: string;
+}
 
 const propertyTypeIcons: Record<string, typeof Building> = {
   APARTMENT: Building,
@@ -151,6 +158,11 @@ export default function PropertyDetailPage() {
 
   const { data: utilityBills } = useQuery<UtilityBill[]>({
     queryKey: ["/api/properties", propertyId, "utility-bills"],
+  });
+
+  const { data: complianceDocuments } = useQuery<ComplianceDocumentWithStatus[]>({
+    queryKey: ["/api/compliance-documents/entity", "PROPERTY", propertyId],
+    enabled: !isNaN(propertyId),
   });
 
   const getLeaseForUnit = (unitId: number): LeaseWithDetails | undefined => {
@@ -761,6 +773,67 @@ export default function PropertyDetailPage() {
                   <p className="text-sm text-muted-foreground">Country</p>
                   <p className="font-medium">{property.country}</p>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileCheck className="h-5 w-5" />
+                  Compliance
+                </CardTitle>
+                <Link href={`/compliance?property=${propertyId}`}>
+                  <Button variant="ghost" size="sm" data-testid="button-view-compliance">
+                    View All
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {complianceDocuments && complianceDocuments.length > 0 ? (
+                  <div className="space-y-3">
+                    {complianceDocuments.slice(0, 3).map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between gap-2" data-testid={`compliance-doc-${doc.id}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.documentName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {doc.expiryDate ? format(new Date(doc.expiryDate), "dd MMM yyyy") : "No expiry"}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            doc.computedStatus === "EXPIRED"
+                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+                              : doc.computedStatus === "EXPIRING_SOON"
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300"
+                              : doc.computedStatus === "ACTIVE"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                              : ""
+                          }
+                        >
+                          {doc.computedStatus === "EXPIRED" ? "Expired" :
+                           doc.computedStatus === "EXPIRING_SOON" ? "Expiring" :
+                           doc.computedStatus === "ACTIVE" ? "Active" : "N/A"}
+                        </Badge>
+                      </div>
+                    ))}
+                    {complianceDocuments.length > 3 && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        +{complianceDocuments.length - 3} more
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <FileCheck className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No compliance documents</p>
+                    <Link href={`/compliance?property=${propertyId}`}>
+                      <Button variant="ghost" size="sm" className="mt-2" data-testid="button-add-compliance">
+                        Add Document
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

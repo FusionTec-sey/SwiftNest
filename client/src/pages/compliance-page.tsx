@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useSearch } from "wouter";
 import { 
   FileCheck, 
   Plus, 
@@ -140,11 +141,35 @@ const getStatusIcon = (status: string) => {
 
 export default function CompliancePage() {
   const { toast } = useToast();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const filterOwnerId = urlParams.get("owner");
+  const filterPropertyId = urlParams.get("property");
+  
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<ComplianceDocumentWithStatus | null>(null);
   const [deletingDoc, setDeletingDoc] = useState<ComplianceDocumentWithStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  
+  // Validate ID parameters first - before using them in any logic
+  const validOwnerId = filterOwnerId && !isNaN(parseInt(filterOwnerId)) ? parseInt(filterOwnerId) : null;
+  const validPropertyId = filterPropertyId && !isNaN(parseInt(filterPropertyId)) ? parseInt(filterPropertyId) : null;
+  
+  // Set appropriate default tab based on validated IDs
+  const defaultTab = validOwnerId !== null ? "owners" : validPropertyId !== null ? "properties" : "all";
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  
+  // Update active tab when URL parameters change - including reset to "all" when cleared
+  useEffect(() => {
+    if (validOwnerId !== null) {
+      setActiveTab("owners");
+    } else if (validPropertyId !== null) {
+      setActiveTab("properties");
+    } else {
+      // Reset to "all" when navigating back without filters
+      setActiveTab("all");
+    }
+  }, [validOwnerId, validPropertyId]);
 
   const { data: documents, isLoading } = useQuery<ComplianceDocumentWithStatus[]>({
     queryKey: ["/api/compliance-documents"],
@@ -161,6 +186,12 @@ export default function CompliancePage() {
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
+
+  const filterEntityName = validOwnerId !== null
+    ? owners?.find(o => o.id === validOwnerId)?.tradingName || owners?.find(o => o.id === validOwnerId)?.legalName
+    : validPropertyId !== null
+    ? properties?.find(p => p.id === validPropertyId)?.name
+    : null;
 
   const form = useForm<ComplianceFormData>({
     resolver: zodResolver(complianceFormSchema),
@@ -268,6 +299,14 @@ export default function CompliancePage() {
   };
 
   const filteredDocuments = (documents || []).filter((doc) => {
+    // Apply URL parameter filter first (owner or property ID) using validated IDs
+    if (validOwnerId !== null) {
+      if (doc.entityType !== "OWNER" || doc.entityId !== validOwnerId) return false;
+    }
+    if (validPropertyId !== null) {
+      if (doc.entityType !== "PROPERTY" || doc.entityId !== validPropertyId) return false;
+    }
+    
     const matchesSearch =
       doc.documentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (doc.documentNumber?.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -292,9 +331,14 @@ export default function CompliancePage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" data-testid="text-page-title">Compliance Center</h1>
+          <h1 className="text-2xl font-semibold" data-testid="text-page-title">
+            {filterEntityName ? `Compliance: ${filterEntityName}` : "Compliance Center"}
+          </h1>
           <p className="text-muted-foreground">
-            Track licenses, permits, insurance, and other compliance documents
+            {filterEntityName 
+              ? `Viewing compliance documents for ${validOwnerId !== null ? "owner" : "property"}: ${filterEntityName}`
+              : "Track licenses, permits, insurance, and other compliance documents"
+            }
           </p>
         </div>
         <Button onClick={handleNewDocument} data-testid="button-add-compliance-doc">

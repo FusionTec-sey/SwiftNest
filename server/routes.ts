@@ -37,7 +37,8 @@ import {
   insertLoanPaymentSchema,
   insertAssetSchema,
   insertDepreciationRuleSchema,
-  insertComplianceDocumentSchema
+  insertComplianceDocumentSchema,
+  insertExpenseSchema
 } from "@shared/schema";
 import { generateInvoicePDF, generateReceiptPDF, getInvoicePDFPath, getReceiptPDFPath } from "./pdf-service";
 
@@ -4387,6 +4388,362 @@ export async function registerRoutes(
       const { getUserPermissions } = await import("./rbac");
       const permissions = await getUserPermissions(req.user!.id);
       res.json(permissions);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // EXPENSES API
+  // =====================================================
+
+  // Get all expenses for current user
+  app.get("/api/expenses", requireAuth, async (req, res, next) => {
+    try {
+      const expenses = await storage.getExpensesByUser(req.user!.id);
+      res.json(expenses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expenses by owner
+  app.get("/api/expenses/owner/:ownerId", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+
+      const access = await storage.canUserAccessOwner(ownerId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const expenses = await storage.getExpensesByOwnerId(ownerId);
+      res.json(expenses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expenses by property
+  app.get("/api/expenses/property/:propertyId", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const expenses = await storage.getExpensesByPropertyId(propertyId);
+      res.json(expenses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expense summary by owner
+  app.get("/api/expenses/summary/owner/:ownerId", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+
+      const access = await storage.canUserAccessOwner(ownerId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      
+      const summary = await storage.getExpenseSummaryByOwner(ownerId, startDate, endDate);
+      res.json(summary);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expense summary by property
+  app.get("/api/expenses/summary/property/:propertyId", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      
+      const summary = await storage.getExpenseSummaryByProperty(propertyId, startDate, endDate);
+      res.json(summary);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get single expense by ID
+  app.get("/api/expenses/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const access = await storage.canUserAccessOwner(expense.ownerId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(expense);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expenses linked to a maintenance issue
+  app.get("/api/expenses/maintenance-issue/:issueId", requireAuth, async (req, res, next) => {
+    try {
+      const issueId = parseInt(req.params.issueId);
+      if (isNaN(issueId)) {
+        return res.status(400).json({ message: "Invalid issue ID" });
+      }
+
+      const issue = await storage.getIssueById(issueId);
+      if (!issue) {
+        return res.status(404).json({ message: "Maintenance issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(issue.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const expenses = await storage.getExpensesByMaintenanceIssue(issueId);
+      res.json(expenses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expenses linked to a maintenance task
+  app.get("/api/expenses/maintenance-task/:taskId", requireAuth, async (req, res, next) => {
+    try {
+      const taskId = parseInt(req.params.taskId);
+      if (isNaN(taskId)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const task = await storage.getTaskById(taskId);
+      if (!task) {
+        return res.status(404).json({ message: "Maintenance task not found" });
+      }
+
+      const issue = await storage.getIssueById(task.issueId);
+      if (!issue) {
+        return res.status(404).json({ message: "Related maintenance issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(issue.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const expenses = await storage.getExpensesByMaintenanceTask(taskId);
+      res.json(expenses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expenses linked to a compliance document
+  app.get("/api/expenses/compliance-document/:docId", requireAuth, async (req, res, next) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      if (isNaN(docId)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const doc = await storage.getComplianceDocumentById(docId);
+      if (!doc) {
+        return res.status(404).json({ message: "Compliance document not found" });
+      }
+
+      if (doc.entityType === "OWNER") {
+        const access = await storage.canUserAccessOwner(doc.entityId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        const access = await storage.canUserAccessProperty(doc.entityId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const expenses = await storage.getExpensesByComplianceDocument(docId);
+      res.json(expenses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create a new expense
+  app.post("/api/expenses", requireAuth, async (req, res, next) => {
+    try {
+      const body = { ...req.body };
+      if (body.expenseDate) body.expenseDate = new Date(body.expenseDate);
+      if (body.dueDate === "") body.dueDate = null;
+      if (body.dueDate) body.dueDate = new Date(body.dueDate);
+      if (body.paymentDate === "") body.paymentDate = null;
+      if (body.paymentDate) body.paymentDate = new Date(body.paymentDate);
+
+      const parseResult = insertExpenseSchema.safeParse(body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const data = parseResult.data;
+
+      const access = await storage.canUserAccessOwner(data.ownerId, req.user!.id);
+      if (!access.canAccess || access.role === "VIEWER") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      if (data.propertyId) {
+        const propAccess = await storage.canUserAccessProperty(data.propertyId, req.user!.id);
+        if (!propAccess.canAccess) {
+          return res.status(403).json({ message: "Access denied to the specified property" });
+        }
+      }
+
+      const expense = await storage.createExpense({
+        ...data,
+        createdByUserId: req.user!.id,
+      });
+      res.status(201).json(expense);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update an expense
+  app.patch("/api/expenses/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const existingExpense = await storage.getExpenseById(id);
+      if (!existingExpense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const access = await storage.canUserAccessOwner(existingExpense.ownerId, req.user!.id);
+      if (!access.canAccess || access.role === "VIEWER") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const body = { ...req.body };
+      if (body.expenseDate) body.expenseDate = new Date(body.expenseDate);
+      if (body.dueDate === "") body.dueDate = null;
+      if (body.dueDate) body.dueDate = new Date(body.dueDate);
+      if (body.paymentDate === "") body.paymentDate = null;
+      if (body.paymentDate) body.paymentDate = new Date(body.paymentDate);
+
+      const partialSchema = insertExpenseSchema.partial();
+      const parseResult = partialSchema.safeParse(body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const updated = await storage.updateExpense(id, parseResult.data);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update expense payment status
+  app.post("/api/expenses/:id/payment", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const existingExpense = await storage.getExpenseById(id);
+      if (!existingExpense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const access = await storage.canUserAccessOwner(existingExpense.ownerId, req.user!.id);
+      if (!access.canAccess || access.role === "VIEWER") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const { paymentStatus, paymentMethod, paymentDate, paymentReference } = req.body;
+      
+      if (!paymentStatus) {
+        return res.status(400).json({ message: "paymentStatus is required" });
+      }
+
+      const updated = await storage.updateExpensePayment(
+        id, 
+        paymentStatus, 
+        paymentMethod, 
+        paymentDate ? new Date(paymentDate) : undefined, 
+        paymentReference
+      );
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete an expense
+  app.delete("/api/expenses/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const existingExpense = await storage.getExpenseById(id);
+      if (!existingExpense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const access = await storage.canUserAccessOwner(existingExpense.ownerId, req.user!.id);
+      if (!access.canAccess || access.role === "VIEWER") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.deleteExpense(id);
+      res.json({ message: "Expense deleted successfully" });
     } catch (error) {
       next(error);
     }

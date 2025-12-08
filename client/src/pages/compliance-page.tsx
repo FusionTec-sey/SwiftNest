@@ -16,7 +16,9 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Edit
+  Edit,
+  Wallet,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -150,6 +152,10 @@ export default function CompliancePage() {
   const [editingDoc, setEditingDoc] = useState<ComplianceDocumentWithStatus | null>(null);
   const [deletingDoc, setDeletingDoc] = useState<ComplianceDocumentWithStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [expenseEnabled, setExpenseEnabled] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseVendor, setExpenseVendor] = useState("");
+  const [expenseOwnerId, setExpenseOwnerId] = useState<string>("");
   
   // Validate ID parameters first - before using them in any logic
   const validOwnerId = filterOwnerId && !isNaN(parseInt(filterOwnerId)) ? parseInt(filterOwnerId) : null;
@@ -214,21 +220,17 @@ export default function CompliancePage() {
   const createMutation = useMutation({
     mutationFn: async (data: ComplianceFormData) => {
       if (editingDoc) {
-        return apiRequest("PATCH", `/api/compliance-documents/${editingDoc.id}`, data);
+        const res = await apiRequest("PATCH", `/api/compliance-documents/${editingDoc.id}`, data);
+        if (res.status === 204) {
+          return { id: editingDoc.id };
+        }
+        return res.json();
       }
-      return apiRequest("POST", "/api/compliance-documents", data);
+      const res = await apiRequest("POST", "/api/compliance-documents", data);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compliance-documents"] });
-      setIsFormOpen(false);
-      setEditingDoc(null);
-      form.reset();
-      toast({
-        title: editingDoc ? "Document updated" : "Document added",
-        description: editingDoc
-          ? "The compliance document has been updated successfully."
-          : "A new compliance document has been added.",
-      });
     },
     onError: () => {
       toast({
@@ -260,6 +262,25 @@ export default function CompliancePage() {
     },
   });
 
+  const createExpenseMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", "/api/expenses", data);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      if (variables.propertyId && typeof variables.propertyId === 'number' && variables.propertyId > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses/property", variables.propertyId] });
+      }
+      if (variables.ownerId && typeof variables.ownerId === 'number' && variables.ownerId > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses/owner", variables.ownerId] });
+      }
+      toast({ title: "Expense recorded successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to record expense", variant: "destructive" });
+    },
+  });
+
   const handleEdit = (doc: ComplianceDocumentWithStatus) => {
     setEditingDoc(doc);
     form.reset({
@@ -274,6 +295,10 @@ export default function CompliancePage() {
       reminderDays: doc.reminderDays || 30,
       notes: doc.notes || "",
     });
+    setExpenseEnabled(false);
+    setExpenseAmount("");
+    setExpenseVendor("");
+    setExpenseOwnerId("");
     setIsFormOpen(true);
   };
 
@@ -291,11 +316,59 @@ export default function CompliancePage() {
       reminderDays: 30,
       notes: "",
     });
+    setExpenseEnabled(false);
+    setExpenseAmount("");
+    setExpenseVendor("");
+    setExpenseOwnerId("");
     setIsFormOpen(true);
   };
 
-  const onSubmit = (data: ComplianceFormData) => {
-    createMutation.mutate(data);
+  const onSubmit = async (data: ComplianceFormData) => {
+    try {
+      const isEditing = !!editingDoc;
+      const result: any = await createMutation.mutateAsync(data);
+      
+      if (expenseEnabled && expenseAmount && parseFloat(expenseAmount) > 0 && expenseOwnerId) {
+        const ownerId = parseInt(expenseOwnerId);
+        const expenseData: any = {
+          ownerId,
+          category: data.documentType === "INSURANCE" ? "INSURANCE" : "DOCUMENT_FEES",
+          expenseDate: data.issueDate || new Date().toISOString().split("T")[0],
+          description: `${data.documentType}: ${data.documentName}`,
+          amount: expenseAmount,
+          taxAmount: "0",
+          vendorName: expenseVendor || data.issuingAuthority || undefined,
+          paymentStatus: "UNPAID",
+        };
+        
+        if (data.entityType === "PROPERTY" && data.entityId && data.entityId > 0) {
+          expenseData.propertyId = data.entityId;
+        }
+        
+        if (result?.id) {
+          expenseData.complianceDocumentId = result.id;
+        }
+        
+        await createExpenseMutation.mutateAsync(expenseData);
+      }
+      
+      toast({
+        title: isEditing ? "Document updated" : "Document added",
+        description: isEditing
+          ? "The compliance document has been updated successfully."
+          : "A new compliance document has been added.",
+      });
+      
+      setIsFormOpen(false);
+      setEditingDoc(null);
+      form.reset();
+      setExpenseEnabled(false);
+      setExpenseAmount("");
+      setExpenseVendor("");
+      setExpenseOwnerId("");
+    } catch (error) {
+      console.error("Error submitting compliance document:", error);
+    }
   };
 
   const filteredDocuments = (documents || []).filter((doc) => {
@@ -767,6 +840,70 @@ export default function CompliancePage() {
                 )}
               />
 
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wallet className="h-4 w-4" aria-hidden="true" />
+                  <span className="font-medium">Record Expense (Optional)</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Record any fees associated with this document (registration fees, renewal costs, etc.)
+                </p>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="expense-owner" className="text-sm font-medium mb-1 block">
+                      Owner for Expense
+                    </label>
+                    <Select value={expenseOwnerId} onValueChange={setExpenseOwnerId}>
+                      <SelectTrigger id="expense-owner" data-testid="select-expense-owner">
+                        <SelectValue placeholder="Select owner (optional)..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {owners?.map((owner) => (
+                          <SelectItem key={owner.id} value={String(owner.id)}>
+                            {owner.legalName} ({owner.ownerType})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="expense-amount" className="text-sm font-medium mb-1 block">
+                        Amount
+                      </label>
+                      <Input
+                        id="expense-amount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={expenseAmount}
+                        onChange={(e) => {
+                          setExpenseAmount(e.target.value);
+                          setExpenseEnabled(!!e.target.value && parseFloat(e.target.value) > 0);
+                        }}
+                        data-testid="input-expense-amount"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="expense-vendor" className="text-sm font-medium mb-1 block">
+                        Vendor (Optional)
+                      </label>
+                      <Input
+                        id="expense-vendor"
+                        value={expenseVendor}
+                        onChange={(e) => setExpenseVendor(e.target.value)}
+                        placeholder="Payment recipient"
+                        data-testid="input-expense-vendor"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4">
                 <Button
                   type="button"
@@ -776,8 +913,19 @@ export default function CompliancePage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-form">
-                  {createMutation.isPending ? "Saving..." : editingDoc ? "Update" : "Add Document"}
+                <Button 
+                  type="submit" 
+                  disabled={createMutation.isPending || createExpenseMutation.isPending} 
+                  data-testid="button-submit-form"
+                >
+                  {(createMutation.isPending || createExpenseMutation.isPending) && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  )}
+                  {createMutation.isPending || createExpenseMutation.isPending 
+                    ? "Saving..." 
+                    : editingDoc 
+                    ? "Update" 
+                    : "Add Document"}
                 </Button>
               </div>
             </form>

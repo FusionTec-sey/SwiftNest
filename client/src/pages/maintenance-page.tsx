@@ -12,8 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, AlertCircle, CheckCircle, Clock, Package, Users, Wrench, Calendar, Plus, AlertTriangle, Loader2 } from "lucide-react";
-import type { Property, IssueWithDetails, TaskWithDetails, MaintenanceSchedule, MaintenanceMaterial, TeamMemberWithSkills } from "@shared/schema";
+import { ArrowLeft, AlertCircle, CheckCircle, Clock, Package, Users, Wrench, Calendar, Plus, AlertTriangle, Loader2, Wallet } from "lucide-react";
+import type { Property, IssueWithDetails, TaskWithDetails, MaintenanceSchedule, MaintenanceMaterial, TeamMemberWithSkills, Owner } from "@shared/schema";
 
 export default function MaintenancePage() {
   const params = useParams<{ id: string }>();
@@ -22,6 +22,12 @@ export default function MaintenancePage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<TaskWithDetails | null>(null);
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseDescription, setExpenseDescription] = useState("");
+  const [expenseVendor, setExpenseVendor] = useState("");
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
 
   const { data: property, isLoading: propertyLoading } = useQuery<Property & { units: any[]; userRole: string; isOwner: boolean }>({
     queryKey: ["/api/properties", propertyId],
@@ -63,6 +69,81 @@ export default function MaintenancePage() {
     queryKey: [`/api/properties/${propertyId}/maintenance/team`],
     enabled: propertyId > 0,
   });
+
+  const { data: owners = [] } = useQuery<Owner[]>({
+    queryKey: ["/api/owners"],
+  });
+
+  const createExpenseMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", "/api/expenses", data);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      if (propertyId && !isNaN(propertyId) && propertyId > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses/property", propertyId] });
+      }
+      if (variables.ownerId && typeof variables.ownerId === 'number' && variables.ownerId > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses/owner", variables.ownerId] });
+      }
+      toast({ title: "Expense recorded successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to record expense", variant: "destructive" });
+    },
+  });
+
+  const handleTaskStatusChange = (task: TaskWithDetails, status: string) => {
+    if (status === "COMPLETED") {
+      setTaskToComplete(task);
+      setExpenseDescription(`Maintenance: ${task.title}`);
+      setExpenseAmount(task.totalCost ? String(parseFloat(task.totalCost)) : "");
+      setExpenseVendor("");
+      setSelectedOwnerId("");
+      setCompletionDialogOpen(true);
+    } else {
+      updateTaskStatusMutation.mutate({ taskId: task.id, status });
+    }
+  };
+
+  const completeTaskWithExpense = async () => {
+    if (!taskToComplete) return;
+
+    if (expenseAmount && parseFloat(expenseAmount) > 0 && selectedOwnerId) {
+      await createExpenseMutation.mutateAsync({
+        ownerId: parseInt(selectedOwnerId),
+        propertyId: propertyId,
+        maintenanceTaskId: taskToComplete.id,
+        category: "MAINTENANCE",
+        expenseDate: new Date().toISOString().split("T")[0],
+        description: expenseDescription || `Maintenance: ${taskToComplete.title}`,
+        amount: expenseAmount,
+        taxAmount: "0",
+        vendorName: expenseVendor || undefined,
+        paymentStatus: "UNPAID",
+      });
+    }
+
+    await updateTaskStatusMutation.mutateAsync({ taskId: taskToComplete.id, status: "COMPLETED" });
+    
+    setCompletionDialogOpen(false);
+    setTaskToComplete(null);
+    setExpenseAmount("");
+    setExpenseDescription("");
+    setExpenseVendor("");
+    setSelectedOwnerId("");
+  };
+
+  const skipExpenseAndComplete = async () => {
+    if (!taskToComplete) return;
+    await updateTaskStatusMutation.mutateAsync({ taskId: taskToComplete.id, status: "COMPLETED" });
+    setCompletionDialogOpen(false);
+    setTaskToComplete(null);
+    setExpenseAmount("");
+    setExpenseDescription("");
+    setExpenseVendor("");
+    setSelectedOwnerId("");
+  };
 
   const createIssueMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -685,7 +766,7 @@ export default function MaintenancePage() {
                             {canEdit && task.status !== "COMPLETED" && task.status !== "CLOSED" ? (
                               <Select
                                 value={task.status || "TODO"}
-                                onValueChange={(status) => updateTaskStatusMutation.mutate({ taskId: task.id, status })}
+                                onValueChange={(status) => handleTaskStatusChange(task, status)}
                               >
                                 <SelectTrigger className="w-[130px]" data-testid={`select-task-status-${task.id}`}>
                                   <SelectValue />
@@ -845,6 +926,98 @@ export default function MaintenancePage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" aria-hidden="true" />
+              Complete Task
+            </DialogTitle>
+            <DialogDescription>
+              {taskToComplete?.title}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Would you like to record an expense for this maintenance task?
+            </p>
+            
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="completion-owner">Owner (required for expense)</Label>
+                <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
+                  <SelectTrigger id="completion-owner" data-testid="select-completion-owner">
+                    <SelectValue placeholder="Select owner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {owners.map((owner) => (
+                      <SelectItem key={owner.id} value={String(owner.id)}>
+                        {owner.legalName} ({owner.ownerType})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="completion-amount">Amount</Label>
+                <Input
+                  id="completion-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  data-testid="input-completion-amount"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="completion-description">Description</Label>
+                <Input
+                  id="completion-description"
+                  value={expenseDescription}
+                  onChange={(e) => setExpenseDescription(e.target.value)}
+                  data-testid="input-completion-description"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="completion-vendor">Vendor (optional)</Label>
+                <Input
+                  id="completion-vendor"
+                  value={expenseVendor}
+                  onChange={(e) => setExpenseVendor(e.target.value)}
+                  placeholder="Vendor name"
+                  data-testid="input-completion-vendor"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={skipExpenseAndComplete}
+              disabled={updateTaskStatusMutation.isPending}
+              data-testid="button-skip-expense"
+            >
+              Skip and Complete
+            </Button>
+            <Button 
+              onClick={completeTaskWithExpense}
+              disabled={!selectedOwnerId || !expenseAmount || parseFloat(expenseAmount) <= 0 || createExpenseMutation.isPending || updateTaskStatusMutation.isPending}
+              data-testid="button-complete-with-expense"
+            >
+              {(createExpenseMutation.isPending || updateTaskStatusMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Record Expense and Complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

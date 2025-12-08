@@ -296,6 +296,16 @@ export default function ExpensesPage() {
     return { total, unpaid, paid, totalAmount, unpaidAmount };
   }, [filteredExpenses]);
 
+  const invalidateExpenseQueries = (ownerId?: number | null, propertyId?: number | null) => {
+    queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+    if (propertyId && typeof propertyId === 'number' && propertyId > 0) {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/property", propertyId] });
+    }
+    if (ownerId && typeof ownerId === 'number' && ownerId > 0) {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/owner", ownerId] });
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: ExpenseFormData) => {
       const totalAmount = parseFloat(data.amount) + parseFloat(data.taxAmount || "0");
@@ -310,8 +320,8 @@ export default function ExpensesPage() {
       };
       return apiRequest("POST", "/api/expenses", payload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+    onSuccess: (_data, variables) => {
+      invalidateExpenseQueries(variables.ownerId, variables.propertyId);
       setIsFormOpen(false);
       form.reset();
       toast({ title: "Expense created successfully" });
@@ -336,8 +346,8 @@ export default function ExpensesPage() {
       };
       return apiRequest("PATCH", `/api/expenses/${id}`, payload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+    onSuccess: (_data, variables) => {
+      invalidateExpenseQueries(variables.ownerId, variables.propertyId);
       setIsFormOpen(false);
       setEditingExpense(null);
       form.reset();
@@ -353,7 +363,7 @@ export default function ExpensesPage() {
       return apiRequest("DELETE", `/api/expenses/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      invalidateExpenseQueries(validOwnerId, validPropertyId);
       setDeletingExpense(null);
       toast({ title: "Expense deleted successfully" });
     },

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star, Users, FileCheck } from "lucide-react";
+import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star, Users, FileCheck, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,7 +47,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link } from "wouter";
-import type { Owner, ComplianceDocument } from "@shared/schema";
+import type { Owner, ComplianceDocument, Expense } from "@shared/schema";
 
 interface ComplianceDocumentWithStatus extends ComplianceDocument {
   computedStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
@@ -99,6 +99,18 @@ export default function OwnersPage() {
     const expired = ownerDocs.filter((d) => d.computedStatus === "EXPIRED").length;
     const expiring = ownerDocs.filter((d) => d.computedStatus === "EXPIRING_SOON").length;
     return { total: ownerDocs.length, expired, expiring };
+  };
+
+  const { data: allExpenses } = useQuery<Expense[]>({
+    queryKey: ["/api/expenses"],
+  });
+
+  const getOwnerExpenseStats = (ownerId: number) => {
+    const ownerExpenses = allExpenses?.filter((e) => e.ownerId === ownerId) || [];
+    const total = ownerExpenses.length;
+    const totalAmount = ownerExpenses.reduce((sum, e) => sum + parseFloat(e.amount) + parseFloat(e.taxAmount || "0"), 0);
+    const unpaid = ownerExpenses.filter((e) => e.paymentStatus !== "PAID").length;
+    return { total, totalAmount, unpaid };
   };
 
   const form = useForm<OwnerFormData>({
@@ -314,6 +326,23 @@ export default function OwnersPage() {
                               title={status.total > 0 ? `${status.total} compliance docs${hasIssues ? ` (${status.expired} expired, ${status.expiring} expiring)` : ""}` : "Manage compliance documents"}
                             >
                               <FileCheck className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        );
+                      })()}
+                      {(() => {
+                        const expenseStats = getOwnerExpenseStats(owner.id);
+                        const hasUnpaid = expenseStats.unpaid > 0;
+                        return (
+                          <Link href={`/expenses?owner=${owner.id}`}>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={hasUnpaid ? "text-amber-600 dark:text-amber-400" : ""}
+                              data-testid={`button-expenses-${owner.id}`}
+                              title={expenseStats.total > 0 ? `${expenseStats.total} expenses (SCR ${expenseStats.totalAmount.toLocaleString()})${hasUnpaid ? ` - ${expenseStats.unpaid} unpaid` : ""}` : "Manage expenses"}
+                            >
+                              <Wallet className="h-4 w-4" />
                             </Button>
                           </Link>
                         );

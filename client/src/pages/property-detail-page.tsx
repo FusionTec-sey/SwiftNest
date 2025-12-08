@@ -32,6 +32,7 @@ import {
   AlertCircle,
   Send,
   FileCheck,
+  Wallet,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,7 @@ import { ShareDialog } from "@/components/share-dialog";
 import { PropertyTree } from "@/components/property-tree";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit, InsertUnit, LeaseWithDetails, UtilityBill, ComplianceDocument } from "@shared/schema";
+import type { Property, Unit, InsertUnit, LeaseWithDetails, UtilityBill, ComplianceDocument, Expense } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[]; userRole?: string; isOwner?: boolean };
 
@@ -164,6 +165,18 @@ export default function PropertyDetailPage() {
     queryKey: ["/api/compliance-documents/entity", "PROPERTY", propertyId],
     enabled: !isNaN(propertyId),
   });
+
+  const { data: expenses } = useQuery<Expense[]>({
+    queryKey: ["/api/expenses/property", propertyId],
+    enabled: !isNaN(propertyId),
+  });
+
+  const expenseStats = {
+    total: expenses?.length || 0,
+    totalAmount: expenses?.reduce((sum, e) => sum + parseFloat(e.amount), 0) || 0,
+    unpaidAmount: expenses?.filter(e => e.paymentStatus !== "PAID").reduce((sum, e) => sum + parseFloat(e.amount) + parseFloat(e.taxAmount || "0"), 0) || 0,
+    paidAmount: expenses?.filter(e => e.paymentStatus === "PAID").reduce((sum, e) => sum + parseFloat(e.amount) + parseFloat(e.taxAmount || "0"), 0) || 0,
+  };
 
   const getLeaseForUnit = (unitId: number): LeaseWithDetails | undefined => {
     return leases?.find(
@@ -847,6 +860,57 @@ export default function PropertyDetailPage() {
                     </Link>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Wallet className="h-5 w-5" />
+                  Expenses
+                </CardTitle>
+                <Link href={`/expenses?property=${propertyId}`}>
+                  <Button variant="ghost" size="sm" data-testid="button-view-expenses">
+                    View All
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Total Expenses</span>
+                  <span className="font-semibold" data-testid="stat-total-expenses">
+                    {expenseStats.total}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Total Amount</span>
+                  <span className="font-semibold" data-testid="stat-total-expense-amount">
+                    SCR {expenseStats.totalAmount.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Paid</span>
+                  <Badge
+                    variant="secondary"
+                    className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                    data-testid="stat-paid-expenses"
+                  >
+                    SCR {expenseStats.paidAmount.toLocaleString()}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Unpaid</span>
+                  <Badge
+                    variant="secondary"
+                    className={expenseStats.unpaidAmount > 0 
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300"
+                      : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+                    }
+                    data-testid="stat-unpaid-expenses"
+                  >
+                    SCR {expenseStats.unpaidAmount.toLocaleString()}
+                  </Badge>
+                </div>
               </CardContent>
             </Card>
           </div>

@@ -190,11 +190,12 @@ export const sharePropertySchema = z.object({
   role: z.enum(["VIEWER", "EDITOR"]),
 });
 
-// Property node schema
+// Property node schema - propertyId and nodeType are required
 export const insertPropertyNodeSchema = createInsertSchema(propertyNodes).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  sortOrder: true,
 }).extend({
   label: z.string().min(1, "Label is required"),
   parentId: z.number().nullable().optional(),

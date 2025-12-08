@@ -3491,6 +3491,62 @@ export async function registerRoutes(
     }
   });
 
+  // Dashboard Pending Tasks - aggregates actionable items across properties
+  app.get("/api/dashboard/pending-tasks", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const propertyIds = await storage.getAccessiblePropertyIds(userId);
+      
+      const maintenanceIssues: any[] = [];
+      const maintenanceTasks: any[] = [];
+      
+      for (const propertyId of propertyIds) {
+        const issues = await storage.getIssuesByPropertyId(propertyId);
+        const openIssues = issues.filter((i: any) => 
+          i.status === "OPEN" || i.status === "IN_PROGRESS"
+        );
+        maintenanceIssues.push(...openIssues);
+        
+        const tasks = await storage.getTasksByPropertyId(propertyId);
+        const pendingTasks = tasks.filter((t: any) => 
+          t.status === "TODO" || t.status === "IN_PROGRESS"
+        );
+        maintenanceTasks.push(...pendingTasks);
+      }
+      
+      const overdueInvoices: any[] = [];
+      for (const propertyId of propertyIds) {
+        const leases = await storage.getLeasesByPropertyId(propertyId);
+        for (const lease of leases) {
+          const invoices = await storage.getInvoicesByLeaseId(lease.id);
+          const overdue = invoices.filter((inv: any) => inv.status === "OVERDUE");
+          overdueInvoices.push(...overdue.map((inv: any) => ({
+            ...inv,
+            tenantName: lease.tenant?.legalName,
+            propertyName: lease.property?.name,
+          })));
+        }
+      }
+      
+      const complianceAlerts = await storage.getExpiringComplianceDocuments(userId, 30);
+      
+      res.json({
+        maintenanceIssues: maintenanceIssues.slice(0, 10),
+        maintenanceTasks: maintenanceTasks.slice(0, 10),
+        overdueInvoices: overdueInvoices.slice(0, 10),
+        complianceAlerts: complianceAlerts.slice(0, 10),
+        counts: {
+          openIssues: maintenanceIssues.length,
+          pendingTasks: maintenanceTasks.length,
+          overdueInvoices: overdueInvoices.length,
+          complianceAlerts: complianceAlerts.length,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // =====================================================
   // DOCUMENTS API
   // =====================================================

@@ -1,18 +1,20 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Home, Plus, Users, TrendingUp, Store, MapPin, Building, AlertTriangle, Calendar, DollarSign, FileText, Wrench, CreditCard, ArrowRight, Clock, CheckCircle, UserPlus, Receipt, PiggyBank, FileCheck } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { 
+  Building2, Home, Plus, Users, TrendingUp, Store, MapPin, Building, 
+  AlertTriangle, Calendar, DollarSign, FileText, Wrench, CreditCard, 
+  ArrowRight, Clock, CheckCircle, UserPlus, Receipt, PiggyBank, FileCheck,
+  AlertCircle, ClipboardList, Timer
+} from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { PropertyCard } from "@/components/property-card";
 import { StatsCard } from "@/components/stats-card";
 import { EmptyState } from "@/components/empty-state";
 import { useAuth } from "@/hooks/use-auth";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit, ComplianceDocument } from "@shared/schema";
+import type { Property, Unit, ComplianceDocument, MaintenanceIssue, RentInvoice } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[] };
 
@@ -31,9 +33,29 @@ interface DashboardSummary {
   assets: { total: number; totalValue: number };
 }
 
+interface PendingTasks {
+  maintenanceIssues: (MaintenanceIssue & { property?: Property })[];
+  maintenanceTasks: any[];
+  overdueInvoices: (RentInvoice & { tenantName?: string; propertyName?: string })[];
+  complianceAlerts: ComplianceDocumentWithStatus[];
+  counts: {
+    openIssues: number;
+    pendingTasks: number;
+    overdueInvoices: number;
+    complianceAlerts: number;
+  };
+}
+
+const propertyTypeIcons: Record<string, typeof Building2> = {
+  APARTMENT: Building,
+  VILLA: Home,
+  PLOT: MapPin,
+  OFFICE: Building2,
+  SHOP: Store,
+};
+
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
 
   const { data: properties, isLoading } = useQuery<PropertyWithUnits[]>({
     queryKey: ["/api/properties"],
@@ -43,28 +65,8 @@ export default function DashboardPage() {
     queryKey: ["/api/reports/dashboard-summary"],
   });
 
-  const { data: complianceDocuments } = useQuery<ComplianceDocumentWithStatus[]>({
-    queryKey: ["/api/compliance-documents"],
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/properties/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      toast({
-        title: "Property deleted",
-        description: "The property has been deleted successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+  const { data: pendingTasks } = useQuery<PendingTasks>({
+    queryKey: ["/api/dashboard/pending-tasks"],
   });
 
   const totalProperties = properties?.length || 0;
@@ -76,34 +78,11 @@ export default function DashboardPage() {
   const occupiedUnits = totalUnits - vacantUnits;
   const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
 
-  const propertyTypeBreakdown = properties?.reduce((acc, p) => {
-    acc[p.propertyType] = (acc[p.propertyType] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>) || {};
-
-  const propertyTypeLabels: Record<string, { label: string; icon: typeof Building2 }> = {
-    APARTMENT: { label: "Apartments", icon: Building },
-    VILLA: { label: "Villas", icon: Home },
-    PLOT: { label: "Plots", icon: MapPin },
-    OFFICE: { label: "Offices", icon: Building2 },
-    SHOP: { label: "Shops", icon: Store },
-  };
-
-  const expiringComplianceDocs = complianceDocuments?.filter(
-    (doc) => doc.computedStatus === "EXPIRING_SOON"
-  ) || [];
-  const expiredComplianceDocs = complianceDocuments?.filter(
-    (doc) => doc.computedStatus === "EXPIRED"
-  ) || [];
-  const complianceAlertCount = expiringComplianceDocs.length + expiredComplianceDocs.length;
-
-  const hasAlerts = summary && (summary.financials.overdueAmount > 0 || summary.leases.expiringSoon > 0 || complianceAlertCount > 0);
-
   const quickActions = [
     { label: "Collect Rent", href: "/rent-collection", icon: Receipt, color: "text-green-600 dark:text-green-400" },
-    { label: "Add Tenant", href: "/tenants/new", icon: UserPlus, color: "text-blue-600 dark:text-blue-400" },
+    { label: "Add Tenant", href: "/tenants", icon: UserPlus, color: "text-blue-600 dark:text-blue-400" },
     { label: "View Reports", href: "/reports", icon: FileText, color: "text-orange-600 dark:text-orange-400" },
-    { label: "New Lease", href: "/leases/new", icon: Plus, color: "text-purple-600 dark:text-purple-400" },
+    { label: "New Lease", href: "/leases", icon: Plus, color: "text-purple-600 dark:text-purple-400" },
   ];
 
   const formatCurrency = (amount: number) => {
@@ -115,6 +94,17 @@ export default function DashboardPage() {
     }).format(amount);
   };
 
+  const formatDate = (date: Date | string | null) => {
+    if (!date) return "N/A";
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+    });
+  };
+
+  const totalPendingItems = pendingTasks ? 
+    pendingTasks.counts.openIssues + pendingTasks.counts.overdueInvoices + pendingTasks.counts.complianceAlerts : 0;
+
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -124,7 +114,10 @@ export default function DashboardPage() {
               Welcome back, {user?.name?.split(" ")[0]}
             </h1>
             <p className="text-muted-foreground mt-1">
-              Here's an overview of your property portfolio
+              {totalPendingItems > 0 
+                ? `You have ${totalPendingItems} item${totalPendingItems > 1 ? 's' : ''} requiring attention`
+                : "Here's an overview of your property portfolio"
+              }
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -146,94 +139,10 @@ export default function DashboardPage() {
                 <Skeleton key={i} className="h-28" />
               ))}
             </div>
-            <Skeleton className="h-32" />
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-72" />
-              ))}
-            </div>
+            <Skeleton className="h-64" />
           </div>
         ) : (
           <>
-            {hasAlerts && (
-              <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    Attention Required
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {summary!.financials.overdueAmount > 0 && (
-                      <Link href="/rent-collection">
-                        <div className="flex items-center gap-4 p-3 rounded-md bg-white dark:bg-background border hover-elevate active-elevate-2 cursor-pointer" data-testid="alert-overdue-rent">
-                          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                            <DollarSign className="h-5 w-5 text-red-600 dark:text-red-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">Overdue Rent</p>
-                            <p className="text-sm text-muted-foreground">
-                              {formatCurrency(summary!.financials.overdueAmount)} unpaid
-                            </p>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        </div>
-                      </Link>
-                    )}
-                    {summary!.leases.expiringSoon > 0 && (
-                      <Link href="/leases">
-                        <div className="flex items-center gap-4 p-3 rounded-md bg-white dark:bg-background border hover-elevate active-elevate-2 cursor-pointer" data-testid="alert-expiring-leases">
-                          <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
-                            <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">Expiring Leases</p>
-                            <p className="text-sm text-muted-foreground">
-                              {summary!.leases.expiringSoon} {summary!.leases.expiringSoon === 1 ? "lease expires" : "leases expire"} within 30 days
-                            </p>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        </div>
-                      </Link>
-                    )}
-                    {expiredComplianceDocs.length > 0 && (
-                      <Link href="/compliance">
-                        <div className="flex items-center gap-4 p-3 rounded-md bg-white dark:bg-background border hover-elevate active-elevate-2 cursor-pointer" data-testid="alert-expired-compliance">
-                          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                            <FileCheck className="h-5 w-5 text-red-600 dark:text-red-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">Expired Documents</p>
-                            <p className="text-sm text-muted-foreground">
-                              {expiredComplianceDocs.length} {expiredComplianceDocs.length === 1 ? "document has" : "documents have"} expired
-                            </p>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        </div>
-                      </Link>
-                    )}
-                    {expiringComplianceDocs.length > 0 && (
-                      <Link href="/compliance">
-                        <div className="flex items-center gap-4 p-3 rounded-md bg-white dark:bg-background border hover-elevate active-elevate-2 cursor-pointer" data-testid="alert-expiring-compliance">
-                          <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
-                            <FileCheck className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">Expiring Soon</p>
-                            <p className="text-sm text-muted-foreground">
-                              {expiringComplianceDocs.length} compliance {expiringComplianceDocs.length === 1 ? "document" : "documents"} expiring soon
-                            </p>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        </div>
-                      </Link>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatsCard
                 title="Total Properties"
@@ -241,274 +150,386 @@ export default function DashboardPage() {
                 icon={Building2}
               />
               <StatsCard
-                title="Total Units"
-                value={totalUnits}
-                icon={Home}
+                title="Occupancy Rate"
+                value={`${occupancyRate}%`}
+                icon={TrendingUp}
+                className={occupancyRate >= 80 ? "bg-green-50 dark:bg-green-950/20" : occupancyRate >= 50 ? "bg-amber-50 dark:bg-amber-950/20" : ""}
               />
               <StatsCard
-                title="Vacant Units"
-                value={vacantUnits}
-                icon={Users}
-                className="bg-amber-50 dark:bg-amber-950/20"
+                title="Open Issues"
+                value={pendingTasks?.counts.openIssues || 0}
+                icon={Wrench}
+                className={pendingTasks?.counts.openIssues ? "bg-amber-50 dark:bg-amber-950/20" : ""}
               />
               <StatsCard
-                title="Occupied Units"
-                value={occupiedUnits}
-                icon={CheckCircle}
-                className="bg-green-50 dark:bg-green-950/20"
+                title="Overdue Rent"
+                value={summary ? formatCurrency(summary.financials.overdueAmount) : formatCurrency(0)}
+                icon={DollarSign}
+                className={summary?.financials.overdueAmount ? "bg-red-50 dark:bg-red-950/20" : "bg-green-50 dark:bg-green-950/20"}
               />
             </div>
 
-            {summary && (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
-                      Monthly Rent Due
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold" data-testid="stat-monthly-rent-due">
-                      {formatCurrency(summary.financials.monthlyRentDue)}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <DollarSign className="h-4 w-4" />
-                      Received This Month
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="stat-received-this-month">
-                      {formatCurrency(summary.financials.receivedThisMonth)}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" />
-                      Outstanding Loans
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold" data-testid="stat-outstanding-loans">
-                      {formatCurrency(summary.loans.totalOutstanding)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {summary.loans.total} active {summary.loans.total === 1 ? "loan" : "loans"}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <PiggyBank className="h-4 w-4" />
-                      Asset Value
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold" data-testid="stat-asset-value">
-                      {formatCurrency(summary.assets.totalValue)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {summary.assets.total} {summary.assets.total === 1 ? "asset" : "assets"} tracked
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            <Card className="md:hidden">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3">
-                  {quickActions.map((action) => (
-                    <Link key={action.href} href={action.href}>
-                      <div className="flex flex-col items-center gap-2 p-4 rounded-md border hover-elevate active-elevate-2 cursor-pointer" data-testid={`quick-action-${action.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                          <action.icon className={`h-5 w-5 ${action.color}`} />
-                        </div>
-                        <span className="text-sm font-medium text-center">{action.label}</span>
+            <div className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                {(pendingTasks?.maintenanceIssues.length || 0) > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Wrench className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                          Open Maintenance Issues
+                          <Badge variant="secondary" className="ml-1">
+                            {pendingTasks?.counts.openIssues || 0}
+                          </Badge>
+                        </CardTitle>
+                        <Link href="/properties">
+                          <Button variant="ghost" size="sm" data-testid="link-view-all-issues">
+                            View All
+                          </Button>
+                        </Link>
                       </div>
-                    </Link>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {totalUnits > 0 && (
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-primary" />
-                      Occupancy Rate
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-end justify-between gap-2 flex-wrap">
-                        <span className="text-4xl font-bold" data-testid="stat-occupancy-rate">{occupancyRate}%</span>
-                        <span className="text-sm text-muted-foreground">
-                          {occupiedUnits} of {totalUnits} units occupied
-                        </span>
-                      </div>
-                      <Progress value={occupancyRate} className="h-3" />
-                      <div className="flex justify-between text-xs text-muted-foreground flex-wrap gap-2">
-                        <span className="flex items-center gap-1">
-                          <span className="h-2 w-2 rounded-full bg-amber-500" />
-                          {vacantUnits} Vacant
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="h-2 w-2 rounded-full bg-green-500" />
-                          {occupiedUnits} Occupied
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Building2 className="h-5 w-5 text-primary" />
-                      Properties by Type
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {Object.entries(propertyTypeBreakdown).length > 0 ? (
-                        Object.entries(propertyTypeBreakdown).map(([type, count]) => {
-                          const typeInfo = propertyTypeLabels[type];
-                          const TypeIcon = typeInfo?.icon || Building2;
-                          const percentage = Math.round((count / totalProperties) * 100);
-                          return (
-                            <div key={type} className="flex items-center gap-3" data-testid={`breakdown-${type.toLowerCase()}`}>
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                                <TypeIcon className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {pendingTasks?.maintenanceIssues.slice(0, 5).map((issue) => (
+                          <Link key={issue.id} href={`/properties/${issue.propertyId}/maintenance`}>
+                            <div 
+                              className="flex items-center gap-4 p-3 rounded-md border hover-elevate active-elevate-2 cursor-pointer"
+                              data-testid={`issue-item-${issue.id}`}
+                            >
+                              <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                                issue.severity === "URGENT" ? "bg-red-100 dark:bg-red-900/30" :
+                                issue.severity === "HIGH" ? "bg-orange-100 dark:bg-orange-900/30" :
+                                "bg-amber-100 dark:bg-amber-900/30"
+                              }`}>
+                                <AlertCircle className={`h-5 w-5 ${
+                                  issue.severity === "URGENT" ? "text-red-600 dark:text-red-400" :
+                                  issue.severity === "HIGH" ? "text-orange-600 dark:text-orange-400" :
+                                  "text-amber-600 dark:text-amber-400"
+                                }`} />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-sm font-medium truncate">{typeInfo?.label || type}</span>
-                                  <span className="text-sm text-muted-foreground shrink-0">{count}</span>
+                                <p className="font-medium truncate">{issue.title}</p>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                                  <span>{issue.category}</span>
+                                  {issue.dueAt && (
+                                    <>
+                                      <span>-</span>
+                                      <span className="flex items-center gap-1">
+                                        <Timer className="h-3 w-3" />
+                                        Due {formatDate(issue.dueAt)}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
-                                <Progress value={percentage} className="h-1.5 mt-1" />
                               </div>
+                              <Badge variant={issue.severity === "URGENT" ? "destructive" : "secondary"} className="shrink-0">
+                                {issue.severity}
+                              </Badge>
                             </div>
-                          );
-                        })
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No properties to display</p>
-                      )}
+                          </Link>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {(pendingTasks?.overdueInvoices.length || 0) > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <DollarSign className="h-5 w-5 text-red-600 dark:text-red-400" />
+                          Overdue Invoices
+                          <Badge variant="destructive" className="ml-1">
+                            {pendingTasks?.counts.overdueInvoices || 0}
+                          </Badge>
+                        </CardTitle>
+                        <Link href="/rent-collection">
+                          <Button variant="ghost" size="sm" data-testid="link-view-all-invoices">
+                            View All
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {pendingTasks?.overdueInvoices.slice(0, 5).map((invoice) => (
+                          <Link key={invoice.id} href="/rent-collection">
+                            <div 
+                              className="flex items-center gap-4 p-3 rounded-md border hover-elevate active-elevate-2 cursor-pointer"
+                              data-testid={`invoice-item-${invoice.id}`}
+                            >
+                              <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                                <Receipt className="h-5 w-5 text-red-600 dark:text-red-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">
+                                  {invoice.tenantName || `Invoice #${invoice.invoiceNumber}`}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Due {formatDate(invoice.dueDate)}
+                                </p>
+                              </div>
+                              <span className="text-lg font-semibold text-red-600 dark:text-red-400 shrink-0">
+                                {formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.amountPaid || "0"))}
+                              </span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {(pendingTasks?.complianceAlerts.length || 0) > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <FileCheck className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                          Compliance Alerts
+                          <Badge variant="secondary" className="ml-1">
+                            {pendingTasks?.counts.complianceAlerts || 0}
+                          </Badge>
+                        </CardTitle>
+                        <Link href="/compliance">
+                          <Button variant="ghost" size="sm" data-testid="link-view-all-compliance">
+                            View All
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {pendingTasks?.complianceAlerts.slice(0, 5).map((doc) => (
+                          <Link key={doc.id} href="/compliance">
+                            <div 
+                              className="flex items-center gap-4 p-3 rounded-md border hover-elevate active-elevate-2 cursor-pointer"
+                              data-testid={`compliance-item-${doc.id}`}
+                            >
+                              <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                                doc.computedStatus === "EXPIRED" ? "bg-red-100 dark:bg-red-900/30" : "bg-orange-100 dark:bg-orange-900/30"
+                              }`}>
+                                <FileCheck className={`h-5 w-5 ${
+                                  doc.computedStatus === "EXPIRED" ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"
+                                }`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">{doc.documentType.replace(/_/g, " ")}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {doc.computedStatus === "EXPIRED" 
+                                    ? `Expired ${Math.abs(doc.daysUntilExpiry || 0)} days ago`
+                                    : `Expires in ${doc.daysUntilExpiry} days`
+                                  }
+                                </p>
+                              </div>
+                              <Badge variant={doc.computedStatus === "EXPIRED" ? "destructive" : "secondary"} className="shrink-0">
+                                {doc.computedStatus === "EXPIRED" ? "Expired" : "Expiring"}
+                              </Badge>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!pendingTasks?.maintenanceIssues.length && !pendingTasks?.overdueInvoices.length && !pendingTasks?.complianceAlerts.length && (
+                  <Card className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+                    <CardContent className="flex items-center gap-4 p-6">
+                      <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                        <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-green-800 dark:text-green-200">All Caught Up!</p>
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          No pending maintenance issues, overdue invoices, or compliance alerts.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              <div className="space-y-6">
+                {summary && (
+                  <>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg">Financial Summary</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm text-muted-foreground">Monthly Rent Due</span>
+                          <span className="font-semibold" data-testid="stat-monthly-rent-due">
+                            {formatCurrency(summary.financials.monthlyRentDue)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm text-muted-foreground">Received This Month</span>
+                          <span className="font-semibold text-green-600 dark:text-green-400" data-testid="stat-received-this-month">
+                            {formatCurrency(summary.financials.receivedThisMonth)}
+                          </span>
+                        </div>
+                        {summary.financials.monthlyRentDue > 0 && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1 gap-2">
+                              <span className="text-sm text-muted-foreground">Collection Rate</span>
+                              <span className="text-sm font-medium">
+                                {Math.round((summary.financials.receivedThisMonth / summary.financials.monthlyRentDue) * 100)}%
+                              </span>
+                            </div>
+                            <Progress 
+                              value={Math.min(100, (summary.financials.receivedThisMonth / summary.financials.monthlyRentDue) * 100)} 
+                              className="h-2" 
+                            />
+                          </div>
+                        )}
+                        <div className="pt-2 border-t">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm text-muted-foreground">Outstanding Loans</span>
+                            <span className="font-semibold" data-testid="stat-outstanding-loans">
+                              {formatCurrency(summary.loans.totalOutstanding)}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg">Portfolio Overview</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <Link href="/tenants">
+                          <div className="flex items-center justify-between p-2 -mx-2 rounded-md hover-elevate cursor-pointer" data-testid="link-tenants-overview">
+                            <div className="flex items-center gap-3">
+                              <Users className="h-5 w-5 text-muted-foreground" />
+                              <span className="text-sm">Active Tenants</span>
+                            </div>
+                            <span className="font-semibold" data-testid="stat-active-tenants">{summary.tenants.active}</span>
+                          </div>
+                        </Link>
+                        <Link href="/leases">
+                          <div className="flex items-center justify-between p-2 -mx-2 rounded-md hover-elevate cursor-pointer" data-testid="link-leases-overview">
+                            <div className="flex items-center gap-3">
+                              <FileText className="h-5 w-5 text-muted-foreground" />
+                              <span className="text-sm">Active Leases</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold" data-testid="stat-active-leases">{summary.leases.active}</span>
+                              {summary.leases.expiringSoon > 0 && (
+                                <Badge variant="secondary" className="text-amber-600 dark:text-amber-400">
+                                  {summary.leases.expiringSoon} expiring
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                        <Link href="/assets">
+                          <div className="flex items-center justify-between p-2 -mx-2 rounded-md hover-elevate cursor-pointer" data-testid="link-assets-overview">
+                            <div className="flex items-center gap-3">
+                              <PiggyBank className="h-5 w-5 text-muted-foreground" />
+                              <span className="text-sm">Asset Value</span>
+                            </div>
+                            <span className="font-semibold" data-testid="stat-asset-value">{formatCurrency(summary.assets.totalValue)}</span>
+                          </div>
+                        </Link>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+
+                <Card className="md:block">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Quick Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-3">
+                      {quickActions.map((action) => (
+                        <Link key={action.href} href={action.href}>
+                          <div 
+                            className="flex flex-col items-center gap-2 p-4 rounded-md border hover-elevate active-elevate-2 cursor-pointer" 
+                            data-testid={`quick-action-${action.label.toLowerCase().replace(/\s+/g, "-")}`}
+                          >
+                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                              <action.icon className={`h-5 w-5 ${action.color}`} />
+                            </div>
+                            <span className="text-sm font-medium text-center">{action.label}</span>
+                          </div>
+                        </Link>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
               </div>
-            )}
-
-            {summary && (
-              <div className="grid sm:grid-cols-3 gap-4">
-                <Link href="/tenants">
-                  <Card className="hover-elevate cursor-pointer">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Users className="h-5 w-5 text-primary" />
-                        Tenants
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold" data-testid="stat-active-tenants">{summary.tenants.active}</span>
-                        <span className="text-muted-foreground">active</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {summary.tenants.total} total tenants
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-
-                <Link href="/leases">
-                  <Card className="hover-elevate cursor-pointer">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-primary" />
-                        Leases
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold" data-testid="stat-active-leases">{summary.leases.active}</span>
-                        <span className="text-muted-foreground">active</span>
-                      </div>
-                      {summary.leases.expiringSoon > 0 && (
-                        <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
-                          {summary.leases.expiringSoon} expiring soon
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Link>
-
-                <Link href="/accounting">
-                  <Card className="hover-elevate cursor-pointer">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <DollarSign className="h-5 w-5 text-primary" />
-                        Financials
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold text-green-600 dark:text-green-400" data-testid="stat-collection-rate">
-                          {summary.financials.monthlyRentDue > 0 
-                            ? Math.round((summary.financials.receivedThisMonth / summary.financials.monthlyRentDue) * 100)
-                            : 0}%
-                        </span>
-                        <span className="text-muted-foreground">collected</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        this month
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </div>
-            )}
+            </div>
 
             {properties && properties.length > 0 ? (
               <div>
                 <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
                   <h2 className="text-xl font-semibold">Your Properties</h2>
                   <Link href="/properties">
-                    <Button variant="ghost" size="sm" data-testid="link-view-all">
-                      View All
+                    <Button variant="ghost" size="sm" data-testid="link-view-all-properties">
+                      View All Properties
                     </Button>
                   </Link>
                 </div>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {properties.slice(0, 6).map((property) => (
-                    <PropertyCard
-                      key={property.id}
-                      property={property}
-                      onDelete={(id) => deleteMutation.mutate(id)}
-                      isDeleting={deleteMutation.isPending}
-                    />
-                  ))}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {properties.slice(0, 8).map((property) => {
+                    const Icon = propertyTypeIcons[property.propertyType] || Building2;
+                    const unitCount = property.units?.length || 0;
+                    const occupiedCount = property.units?.filter((u) => u.status === "OCCUPIED").length || 0;
+                    const vacantCount = unitCount - occupiedCount;
+                    
+                    return (
+                      <Link key={property.id} href={`/properties/${property.id}`}>
+                        <Card 
+                          className="hover-elevate active-elevate-2 cursor-pointer h-full"
+                          data-testid={`property-card-${property.id}`}
+                        >
+                          <CardHeader className="pb-2">
+                            <div className="flex items-start gap-3">
+                              <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                                <Icon className="h-5 w-5 text-primary" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <CardTitle className="text-base truncate" data-testid={`text-property-name-${property.id}`}>
+                                  {property.name}
+                                </CardTitle>
+                                <CardDescription className="truncate">
+                                  {property.city}, {property.state}
+                                </CardDescription>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            {unitCount > 0 ? (
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <Badge variant="secondary" className="gap-1">
+                                  <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
+                                  {occupiedCount} Occupied
+                                </Badge>
+                                {vacantCount > 0 && (
+                                  <Badge variant="outline" className="gap-1">
+                                    {vacantCount} Vacant
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <Badge variant="outline">No units</Badge>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    );
+                  })}
                 </div>
-                {properties.length > 6 && (
-                  <div className="text-center mt-8">
+                {properties.length > 8 && (
+                  <div className="text-center mt-6">
                     <Link href="/properties">
-                      <Button variant="outline" data-testid="button-view-more">
+                      <Button variant="outline" data-testid="button-view-more-properties">
                         View All {properties.length} Properties
                       </Button>
                     </Link>

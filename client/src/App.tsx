@@ -15,6 +15,13 @@ import PropertyEditPage from "@/pages/property-edit-page";
 import PropertyDetailPage from "@/pages/property-detail-page";
 import DeletedPropertiesPage from "@/pages/deleted-properties-page";
 import MaintenancePage from "@/pages/maintenance-page";
+import TenantsPage from "@/pages/tenants-page";
+import OwnersPage from "@/pages/owners-page";
+import AccountingPage from "@/pages/accounting-page";
+import LeasesPage from "@/pages/leases-page";
+import UtilitiesPage from "@/pages/utilities-page";
+import LoansPage from "@/pages/loans-page";
+import AssetsPage from "@/pages/assets-page";
 
 function Router() {
   return (
@@ -26,6 +33,13 @@ function Router() {
       <ProtectedRoute path="/properties/:id/edit" component={PropertyEditPage} />
       <ProtectedRoute path="/properties/:id/maintenance" component={MaintenancePage} />
       <ProtectedRoute path="/properties/:id" component={PropertyDetailPage} />
+      <ProtectedRoute path="/tenants" component={TenantsPage} />
+      <ProtectedRoute path="/owners" component={OwnersPage} />
+      <ProtectedRoute path="/leases" component={LeasesPage} />
+      <ProtectedRoute path="/accounting" component={AccountingPage} />
+      <ProtectedRoute path="/utilities" component={UtilitiesPage} />
+      <ProtectedRoute path="/loans" component={LoansPage} />
+      <ProtectedRoute path="/assets" component={AssetsPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

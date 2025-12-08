@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Building2, Home, Plus, LogOut, User } from "lucide-react";
+import { Building2, Home, LogOut, User, Users, UserCircle, Calculator, FileText, Gauge, Landmark, Package, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,11 +27,22 @@ export function Header() {
       .slice(0, 2);
   };
 
-  const navItems = [
+  const mainNavItems = [
     { href: "/", label: "Dashboard", icon: Home },
     { href: "/properties", label: "Properties", icon: Building2 },
-    { href: "/properties/new", label: "Add Property", icon: Plus },
+    { href: "/tenants", label: "Tenants", icon: Users },
+    { href: "/leases", label: "Leases", icon: FileText },
   ];
+
+  const moreNavItems = [
+    { href: "/owners", label: "Owners", icon: UserCircle },
+    { href: "/accounting", label: "Accounting", icon: Calculator },
+    { href: "/utilities", label: "Utilities", icon: Gauge },
+    { href: "/loans", label: "Loans", icon: Landmark },
+    { href: "/assets", label: "Assets", icon: Package },
+  ];
+
+  const allNavItems = [...mainNavItems, ...moreNavItems];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -46,10 +57,10 @@ export function Header() {
             </Link>
 
             <nav className="hidden md:flex items-center gap-1">
-              {navItems.map((item) => {
+              {mainNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location === item.href || 
-                  (item.href === "/properties" && location.startsWith("/properties") && location !== "/properties/new");
+                  (item.href !== "/" && location.startsWith(item.href));
                 return (
                   <Link key={item.href} href={item.href}>
                     <Button
@@ -64,6 +75,33 @@ export function Header() {
                   </Link>
                 );
               })}
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={moreNavItems.some(item => location === item.href || (item.href !== "/" && location.startsWith(item.href))) ? "secondary" : "ghost"}
+                    size="sm"
+                    className="gap-1"
+                    data-testid="link-more"
+                  >
+                    More
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {moreNavItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <DropdownMenuItem key={item.href} asChild>
+                        <Link href={item.href} className="flex items-center gap-2 cursor-pointer" data-testid={`link-${item.label.toLowerCase().replace(" ", "-")}`}>
+                          <Icon className="h-4 w-4" />
+                          {item.label}
+                        </Link>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </nav>
           </div>
 
@@ -117,21 +155,21 @@ export function Header() {
         </div>
       </div>
 
-      <nav className="md:hidden border-t">
-        <div className="flex items-center justify-around py-2">
-          {navItems.map((item) => {
+      <nav className="md:hidden border-t overflow-x-auto">
+        <div className="flex items-center py-2 px-2 gap-1 min-w-max">
+          {allNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = location === item.href ||
-              (item.href === "/properties" && location.startsWith("/properties") && location !== "/properties/new");
+              (item.href !== "/" && location.startsWith(item.href));
             return (
               <Link key={item.href} href={item.href}>
                 <Button
                   variant={isActive ? "secondary" : "ghost"}
                   size="sm"
-                  className="flex-col h-auto gap-1 px-4 py-2"
+                  className="flex-col h-auto gap-1 px-3 py-2"
                   data-testid={`link-mobile-${item.label.toLowerCase().replace(" ", "-")}`}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4 w-4" />
                   <span className="text-xs">{item.label}</span>
                 </Button>
               </Link>

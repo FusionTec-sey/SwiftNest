@@ -12,6 +12,23 @@ import {
   maintenanceTaskActivity,
   maintenanceTaskMaterials,
   maintenanceSchedules,
+  owners,
+  propertyOwners,
+  tenants,
+  leases,
+  rentInvoices,
+  payments,
+  chartOfAccounts,
+  ledgerEntries,
+  ledgerLines,
+  utilityMeters,
+  meterReadings,
+  loans,
+  loanSchedule,
+  loanPayments,
+  assets,
+  depreciationRules,
+  depreciationRuns,
   type User, 
   type InsertUser, 
   type Property,
@@ -36,7 +53,44 @@ import {
   type InsertMaintenanceSchedule,
   type TeamMemberWithSkills,
   type IssueWithDetails,
-  type TaskWithDetails
+  type TaskWithDetails,
+  type Owner,
+  type InsertOwner,
+  type PropertyOwner,
+  type InsertPropertyOwner,
+  type Tenant,
+  type InsertTenant,
+  type Lease,
+  type InsertLease,
+  type LeaseWithDetails,
+  type RentInvoice,
+  type InsertRentInvoice,
+  type Payment,
+  type InsertPayment,
+  type ChartOfAccount,
+  type InsertChartOfAccount,
+  type LedgerEntry,
+  type InsertLedgerEntry,
+  type LedgerLine,
+  type InsertLedgerLine,
+  type LedgerEntryWithLines,
+  type UtilityMeter,
+  type InsertUtilityMeter,
+  type MeterReading,
+  type InsertMeterReading,
+  type Loan,
+  type InsertLoan,
+  type LoanScheduleEntry,
+  type LoanPayment,
+  type InsertLoanPayment,
+  type LoanWithSchedule,
+  type Asset,
+  type InsertAsset,
+  type AssetWithDepreciation,
+  type DepreciationRule,
+  type InsertDepreciationRule,
+  type DepreciationRun,
+  type OwnerWithProperties
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
@@ -138,6 +192,128 @@ export interface IStorage {
     completedThisMonth: number;
     lowStockMaterials: number;
   }>;
+
+  // =====================================================
+  // OWNERS MODULE
+  // =====================================================
+  getOwnersByUserId(userId: number): Promise<Owner[]>;
+  getOwnerById(id: number): Promise<Owner | undefined>;
+  getOwnerWithProperties(id: number): Promise<OwnerWithProperties | undefined>;
+  createOwner(owner: InsertOwner & { createdByUserId: number }): Promise<Owner>;
+  updateOwner(id: number, owner: Partial<InsertOwner>): Promise<Owner | undefined>;
+  deleteOwner(id: number): Promise<void>;
+
+  // Property Owners
+  getPropertyOwnersByPropertyId(propertyId: number): Promise<(PropertyOwner & { owner: Owner })[]>;
+  addPropertyOwner(data: InsertPropertyOwner): Promise<PropertyOwner>;
+  updatePropertyOwner(id: number, data: Partial<InsertPropertyOwner>): Promise<PropertyOwner | undefined>;
+  removePropertyOwner(id: number): Promise<void>;
+
+  // =====================================================
+  // TENANTS MODULE
+  // =====================================================
+  getTenantsByUserId(userId: number): Promise<Tenant[]>;
+  getTenantById(id: number): Promise<Tenant | undefined>;
+  createTenant(tenant: InsertTenant & { createdByUserId: number }): Promise<Tenant>;
+  updateTenant(id: number, tenant: Partial<InsertTenant>): Promise<Tenant | undefined>;
+  deleteTenant(id: number): Promise<void>;
+
+  // =====================================================
+  // LEASES MODULE
+  // =====================================================
+  getLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]>;
+  getLeasesByTenantId(tenantId: number): Promise<LeaseWithDetails[]>;
+  getLeaseById(id: number): Promise<LeaseWithDetails | undefined>;
+  getActiveLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]>;
+  createLease(lease: InsertLease & { createdByUserId: number }): Promise<Lease>;
+  updateLease(id: number, lease: Partial<Lease>): Promise<Lease | undefined>;
+  updateLeaseStatus(id: number, status: string): Promise<Lease | undefined>;
+  deleteLease(id: number): Promise<void>;
+
+  // =====================================================
+  // RENT INVOICES MODULE
+  // =====================================================
+  getInvoicesByLeaseId(leaseId: number): Promise<RentInvoice[]>;
+  getInvoiceById(id: number): Promise<RentInvoice | undefined>;
+  getOverdueInvoices(): Promise<RentInvoice[]>;
+  createRentInvoice(invoice: InsertRentInvoice): Promise<RentInvoice>;
+  updateRentInvoice(id: number, invoice: Partial<RentInvoice>): Promise<RentInvoice | undefined>;
+  issueInvoice(id: number): Promise<RentInvoice | undefined>;
+  recordInvoicePayment(invoiceId: number, amount: number, paymentId: number): Promise<RentInvoice | undefined>;
+  deleteRentInvoice(id: number): Promise<void>;
+
+  // =====================================================
+  // PAYMENTS MODULE
+  // =====================================================
+  getPaymentsByPayerId(payerType: string, payerId: number): Promise<Payment[]>;
+  getPaymentById(id: number): Promise<Payment | undefined>;
+  createPayment(payment: InsertPayment & { recordedByUserId: number }): Promise<Payment>;
+  deletePayment(id: number): Promise<void>;
+
+  // =====================================================
+  // CHART OF ACCOUNTS MODULE
+  // =====================================================
+  getAllAccounts(): Promise<ChartOfAccount[]>;
+  getAccountsByType(accountType: string): Promise<ChartOfAccount[]>;
+  getAccountById(id: number): Promise<ChartOfAccount | undefined>;
+  getAccountByCode(code: string): Promise<ChartOfAccount | undefined>;
+  createAccount(account: InsertChartOfAccount & { createdByUserId?: number }): Promise<ChartOfAccount>;
+  updateAccount(id: number, account: Partial<InsertChartOfAccount>): Promise<ChartOfAccount | undefined>;
+  deleteAccount(id: number): Promise<void>;
+  seedDefaultAccounts(userId: number): Promise<void>;
+
+  // =====================================================
+  // LEDGER ENTRIES MODULE
+  // =====================================================
+  getLedgerEntriesByModule(module: string, propertyId?: number): Promise<LedgerEntryWithLines[]>;
+  getLedgerEntryById(id: number): Promise<LedgerEntryWithLines | undefined>;
+  createLedgerEntry(entry: InsertLedgerEntry & { createdByUserId: number }, lines: InsertLedgerLine[]): Promise<LedgerEntry>;
+  reverseLedgerEntry(entryId: number, userId: number): Promise<LedgerEntry | undefined>;
+  getAccountBalance(accountId: number, asOfDate?: Date): Promise<{ debit: number; credit: number; balance: number }>;
+
+  // =====================================================
+  // UTILITY METERS MODULE
+  // =====================================================
+  getMetersByPropertyId(propertyId: number): Promise<UtilityMeter[]>;
+  getMeterById(id: number): Promise<UtilityMeter | undefined>;
+  createMeter(meter: InsertUtilityMeter): Promise<UtilityMeter>;
+  updateMeter(id: number, meter: Partial<InsertUtilityMeter>): Promise<UtilityMeter | undefined>;
+  deleteMeter(id: number): Promise<void>;
+
+  // Meter Readings
+  getReadingsByMeterId(meterId: number): Promise<MeterReading[]>;
+  getReadingById(id: number): Promise<MeterReading | undefined>;
+  createMeterReading(reading: InsertMeterReading & { recordedByUserId: number }): Promise<MeterReading>;
+  deleteMeterReading(id: number): Promise<void>;
+
+  // =====================================================
+  // LOANS MODULE
+  // =====================================================
+  getLoansByOwnerId(ownerId: number): Promise<LoanWithSchedule[]>;
+  getLoanById(id: number): Promise<LoanWithSchedule | undefined>;
+  createLoan(loan: InsertLoan & { createdByUserId: number }): Promise<Loan>;
+  updateLoan(id: number, loan: Partial<Loan>): Promise<Loan | undefined>;
+  deleteLoan(id: number): Promise<void>;
+  generateAmortizationSchedule(loanId: number): Promise<LoanScheduleEntry[]>;
+  recordLoanPayment(payment: InsertLoanPayment & { recordedByUserId: number }): Promise<LoanPayment>;
+  getLoanPaymentsByLoanId(loanId: number): Promise<LoanPayment[]>;
+
+  // =====================================================
+  // ASSETS MODULE
+  // =====================================================
+  getAssetsByOwnerId(ownerId: number): Promise<AssetWithDepreciation[]>;
+  getAssetsByPropertyId(propertyId: number): Promise<AssetWithDepreciation[]>;
+  getAssetById(id: number): Promise<AssetWithDepreciation | undefined>;
+  createAsset(asset: InsertAsset & { createdByUserId: number }): Promise<Asset>;
+  updateAsset(id: number, asset: Partial<Asset>): Promise<Asset | undefined>;
+  disposeAsset(id: number, disposalDate: Date, disposalAmount: number): Promise<Asset | undefined>;
+  deleteAsset(id: number): Promise<void>;
+
+  // Depreciation
+  getDepreciationRules(category?: string): Promise<DepreciationRule[]>;
+  createDepreciationRule(rule: InsertDepreciationRule): Promise<DepreciationRule>;
+  runDepreciation(assetId: number, runType: string, periodStart: Date, periodEnd: Date, userId: number): Promise<DepreciationRun>;
+  getDepreciationRunsByAssetId(assetId: number): Promise<DepreciationRun[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1062,6 +1238,867 @@ export class DatabaseStorage implements IStorage {
       completedThisMonth,
       lowStockMaterials: lowStockCount
     };
+  }
+
+  // =====================================================
+  // OWNERS MODULE
+  // =====================================================
+
+  async getOwnersByUserId(userId: number): Promise<Owner[]> {
+    return db
+      .select()
+      .from(owners)
+      .where(eq(owners.createdByUserId, userId))
+      .orderBy(desc(owners.createdAt));
+  }
+
+  async getOwnerById(id: number): Promise<Owner | undefined> {
+    const [owner] = await db.select().from(owners).where(eq(owners.id, id));
+    return owner || undefined;
+  }
+
+  async getOwnerWithProperties(id: number): Promise<OwnerWithProperties | undefined> {
+    const owner = await this.getOwnerById(id);
+    if (!owner) return undefined;
+
+    const ownerships = await db
+      .select()
+      .from(propertyOwners)
+      .where(eq(propertyOwners.ownerId, id));
+
+    const ownershipWithProps = await Promise.all(
+      ownerships.map(async (po) => {
+        const [property] = await db.select().from(properties).where(eq(properties.id, po.propertyId));
+        return { ...po, property };
+      })
+    );
+
+    return { ...owner, propertyOwnerships: ownershipWithProps };
+  }
+
+  async createOwner(owner: InsertOwner & { createdByUserId: number }): Promise<Owner> {
+    const [newOwner] = await db.insert(owners).values(owner).returning();
+    return newOwner;
+  }
+
+  async updateOwner(id: number, owner: Partial<InsertOwner>): Promise<Owner | undefined> {
+    const [updated] = await db
+      .update(owners)
+      .set({ ...owner, updatedAt: new Date() })
+      .where(eq(owners.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteOwner(id: number): Promise<void> {
+    await db.delete(owners).where(eq(owners.id, id));
+  }
+
+  async getPropertyOwnersByPropertyId(propertyId: number): Promise<(PropertyOwner & { owner: Owner })[]> {
+    const pos = await db
+      .select()
+      .from(propertyOwners)
+      .where(eq(propertyOwners.propertyId, propertyId));
+
+    return Promise.all(
+      pos.map(async (po) => {
+        const [owner] = await db.select().from(owners).where(eq(owners.id, po.ownerId));
+        return { ...po, owner };
+      })
+    );
+  }
+
+  async addPropertyOwner(data: InsertPropertyOwner): Promise<PropertyOwner> {
+    const [po] = await db.insert(propertyOwners).values(data).returning();
+    return po;
+  }
+
+  async updatePropertyOwner(id: number, data: Partial<InsertPropertyOwner>): Promise<PropertyOwner | undefined> {
+    const [updated] = await db
+      .update(propertyOwners)
+      .set(data)
+      .where(eq(propertyOwners.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async removePropertyOwner(id: number): Promise<void> {
+    await db.delete(propertyOwners).where(eq(propertyOwners.id, id));
+  }
+
+  // =====================================================
+  // TENANTS MODULE
+  // =====================================================
+
+  async getTenantsByUserId(userId: number): Promise<Tenant[]> {
+    return db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.createdByUserId, userId))
+      .orderBy(desc(tenants.createdAt));
+  }
+
+  async getTenantById(id: number): Promise<Tenant | undefined> {
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
+    return tenant || undefined;
+  }
+
+  async createTenant(tenant: InsertTenant & { createdByUserId: number }): Promise<Tenant> {
+    const [newTenant] = await db.insert(tenants).values(tenant).returning();
+    return newTenant;
+  }
+
+  async updateTenant(id: number, tenant: Partial<InsertTenant>): Promise<Tenant | undefined> {
+    const [updated] = await db
+      .update(tenants)
+      .set({ ...tenant, updatedAt: new Date() })
+      .where(eq(tenants.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteTenant(id: number): Promise<void> {
+    await db.delete(tenants).where(eq(tenants.id, id));
+  }
+
+  // =====================================================
+  // LEASES MODULE
+  // =====================================================
+
+  private async enrichLease(lease: Lease): Promise<LeaseWithDetails> {
+    const [property] = await db.select().from(properties).where(eq(properties.id, lease.propertyId));
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, lease.tenantId));
+    let unit = null;
+    if (lease.unitId) {
+      const [u] = await db.select().from(units).where(eq(units.id, lease.unitId));
+      unit = u || null;
+    }
+    return { ...lease, property, tenant, unit };
+  }
+
+  async getLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]> {
+    const leaseList = await db
+      .select()
+      .from(leases)
+      .where(eq(leases.propertyId, propertyId))
+      .orderBy(desc(leases.createdAt));
+    return Promise.all(leaseList.map((l) => this.enrichLease(l)));
+  }
+
+  async getLeasesByTenantId(tenantId: number): Promise<LeaseWithDetails[]> {
+    const leaseList = await db
+      .select()
+      .from(leases)
+      .where(eq(leases.tenantId, tenantId))
+      .orderBy(desc(leases.createdAt));
+    return Promise.all(leaseList.map((l) => this.enrichLease(l)));
+  }
+
+  async getLeaseById(id: number): Promise<LeaseWithDetails | undefined> {
+    const [lease] = await db.select().from(leases).where(eq(leases.id, id));
+    if (!lease) return undefined;
+    return this.enrichLease(lease);
+  }
+
+  async getActiveLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]> {
+    const leaseList = await db
+      .select()
+      .from(leases)
+      .where(and(eq(leases.propertyId, propertyId), eq(leases.status, "ACTIVE")));
+    return Promise.all(leaseList.map((l) => this.enrichLease(l)));
+  }
+
+  async createLease(lease: InsertLease & { createdByUserId: number }): Promise<Lease> {
+    const [newLease] = await db.insert(leases).values(lease).returning();
+    return newLease;
+  }
+
+  async updateLease(id: number, lease: Partial<Lease>): Promise<Lease | undefined> {
+    const [updated] = await db
+      .update(leases)
+      .set({ ...lease, updatedAt: new Date() })
+      .where(eq(leases.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateLeaseStatus(id: number, status: string): Promise<Lease | undefined> {
+    const [updated] = await db
+      .update(leases)
+      .set({ status: status as any, updatedAt: new Date() })
+      .where(eq(leases.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteLease(id: number): Promise<void> {
+    await db.delete(leases).where(eq(leases.id, id));
+  }
+
+  // =====================================================
+  // RENT INVOICES MODULE
+  // =====================================================
+
+  async getInvoicesByLeaseId(leaseId: number): Promise<RentInvoice[]> {
+    return db
+      .select()
+      .from(rentInvoices)
+      .where(eq(rentInvoices.leaseId, leaseId))
+      .orderBy(desc(rentInvoices.createdAt));
+  }
+
+  async getInvoiceById(id: number): Promise<RentInvoice | undefined> {
+    const [invoice] = await db.select().from(rentInvoices).where(eq(rentInvoices.id, id));
+    return invoice || undefined;
+  }
+
+  async getOverdueInvoices(): Promise<RentInvoice[]> {
+    const now = new Date();
+    const allInvoices = await db.select().from(rentInvoices);
+    return allInvoices.filter(
+      (inv) =>
+        inv.dueDate < now &&
+        inv.status !== "PAID" &&
+        inv.status !== "CANCELLED"
+    );
+  }
+
+  async createRentInvoice(invoice: InsertRentInvoice): Promise<RentInvoice> {
+    const count = await db.select().from(rentInvoices);
+    const invoiceNumber = `INV-${String(count.length + 1).padStart(6, "0")}`;
+    const [newInvoice] = await db
+      .insert(rentInvoices)
+      .values({ ...invoice, invoiceNumber })
+      .returning();
+    return newInvoice;
+  }
+
+  async updateRentInvoice(id: number, invoice: Partial<RentInvoice>): Promise<RentInvoice | undefined> {
+    const [updated] = await db
+      .update(rentInvoices)
+      .set({ ...invoice, updatedAt: new Date() })
+      .where(eq(rentInvoices.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async issueInvoice(id: number): Promise<RentInvoice | undefined> {
+    const [updated] = await db
+      .update(rentInvoices)
+      .set({ status: "ISSUED", issuedAt: new Date(), updatedAt: new Date() })
+      .where(eq(rentInvoices.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async recordInvoicePayment(invoiceId: number, amount: number, paymentId: number): Promise<RentInvoice | undefined> {
+    const [invoice] = await db.select().from(rentInvoices).where(eq(rentInvoices.id, invoiceId));
+    if (!invoice) return undefined;
+
+    const newAmountPaid = parseFloat(invoice.amountPaid || "0") + amount;
+    const totalAmount = parseFloat(invoice.totalAmount);
+    let newStatus: "PAID" | "PARTIALLY_PAID" = newAmountPaid >= totalAmount ? "PAID" : "PARTIALLY_PAID";
+
+    const [updated] = await db
+      .update(rentInvoices)
+      .set({
+        amountPaid: String(newAmountPaid),
+        status: newStatus,
+        paidAt: newStatus === "PAID" ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(rentInvoices.id, invoiceId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteRentInvoice(id: number): Promise<void> {
+    await db.delete(rentInvoices).where(eq(rentInvoices.id, id));
+  }
+
+  // =====================================================
+  // PAYMENTS MODULE
+  // =====================================================
+
+  async getPaymentsByPayerId(payerType: string, payerId: number): Promise<Payment[]> {
+    return db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.payerType, payerType as any), eq(payments.payerId, payerId)))
+      .orderBy(desc(payments.paymentDate));
+  }
+
+  async getPaymentById(id: number): Promise<Payment | undefined> {
+    const [payment] = await db.select().from(payments).where(eq(payments.id, id));
+    return payment || undefined;
+  }
+
+  async createPayment(payment: InsertPayment & { recordedByUserId: number }): Promise<Payment> {
+    const [newPayment] = await db.insert(payments).values(payment).returning();
+    return newPayment;
+  }
+
+  async deletePayment(id: number): Promise<void> {
+    await db.delete(payments).where(eq(payments.id, id));
+  }
+
+  // =====================================================
+  // CHART OF ACCOUNTS MODULE
+  // =====================================================
+
+  async getAllAccounts(): Promise<ChartOfAccount[]> {
+    return db.select().from(chartOfAccounts).orderBy(chartOfAccounts.code);
+  }
+
+  async getAccountsByType(accountType: string): Promise<ChartOfAccount[]> {
+    return db
+      .select()
+      .from(chartOfAccounts)
+      .where(eq(chartOfAccounts.accountType, accountType as any))
+      .orderBy(chartOfAccounts.code);
+  }
+
+  async getAccountById(id: number): Promise<ChartOfAccount | undefined> {
+    const [account] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.id, id));
+    return account || undefined;
+  }
+
+  async getAccountByCode(code: string): Promise<ChartOfAccount | undefined> {
+    const [account] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, code));
+    return account || undefined;
+  }
+
+  async createAccount(account: InsertChartOfAccount & { createdByUserId?: number }): Promise<ChartOfAccount> {
+    const [newAccount] = await db.insert(chartOfAccounts).values(account).returning();
+    return newAccount;
+  }
+
+  async updateAccount(id: number, account: Partial<InsertChartOfAccount>): Promise<ChartOfAccount | undefined> {
+    const [updated] = await db
+      .update(chartOfAccounts)
+      .set({ ...account, updatedAt: new Date() })
+      .where(eq(chartOfAccounts.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteAccount(id: number): Promise<void> {
+    await db.delete(chartOfAccounts).where(eq(chartOfAccounts.id, id));
+  }
+
+  async seedDefaultAccounts(userId: number): Promise<void> {
+    const existingAccounts = await db.select().from(chartOfAccounts);
+    if (existingAccounts.length > 0) return;
+
+    const defaultAccounts = [
+      { code: "1000", name: "Cash", accountType: "ASSET" as const, isSystem: 1 },
+      { code: "1100", name: "Bank Account", accountType: "ASSET" as const, isSystem: 1 },
+      { code: "1200", name: "Accounts Receivable", accountType: "ASSET" as const, isSystem: 1 },
+      { code: "1300", name: "Prepaid Expenses", accountType: "ASSET" as const, isSystem: 1 },
+      { code: "1500", name: "Fixed Assets", accountType: "ASSET" as const, isSystem: 1 },
+      { code: "1550", name: "Accumulated Depreciation", accountType: "ASSET" as const, isSystem: 1 },
+      { code: "2000", name: "Accounts Payable", accountType: "LIABILITY" as const, isSystem: 1 },
+      { code: "2100", name: "Tenant Deposits", accountType: "LIABILITY" as const, isSystem: 1 },
+      { code: "2200", name: "Loans Payable", accountType: "LIABILITY" as const, isSystem: 1 },
+      { code: "3000", name: "Owner Equity", accountType: "EQUITY" as const, isSystem: 1 },
+      { code: "3100", name: "Retained Earnings", accountType: "EQUITY" as const, isSystem: 1 },
+      { code: "4000", name: "Rental Income", accountType: "INCOME" as const, isSystem: 1 },
+      { code: "4100", name: "Utility Recovery", accountType: "INCOME" as const, isSystem: 1 },
+      { code: "4200", name: "Other Income", accountType: "INCOME" as const, isSystem: 1 },
+      { code: "5000", name: "Maintenance Expense", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5100", name: "Utilities Expense", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5200", name: "Insurance Expense", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5300", name: "Property Tax", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5400", name: "Depreciation Expense", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5500", name: "Interest Expense", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5600", name: "Professional Fees", accountType: "EXPENSE" as const, isSystem: 1 },
+      { code: "5700", name: "Other Expenses", accountType: "EXPENSE" as const, isSystem: 1 },
+    ];
+
+    for (const acc of defaultAccounts) {
+      await db.insert(chartOfAccounts).values({ ...acc, createdByUserId: userId });
+    }
+  }
+
+  // =====================================================
+  // LEDGER ENTRIES MODULE
+  // =====================================================
+
+  private async enrichLedgerEntry(entry: LedgerEntry): Promise<LedgerEntryWithLines> {
+    const lines = await db.select().from(ledgerLines).where(eq(ledgerLines.entryId, entry.id));
+    const linesWithAccounts = await Promise.all(
+      lines.map(async (line) => {
+        const [account] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.id, line.accountId));
+        return { ...line, account };
+      })
+    );
+    return { ...entry, lines: linesWithAccounts };
+  }
+
+  async getLedgerEntriesByModule(module: string, propertyId?: number): Promise<LedgerEntryWithLines[]> {
+    let entries;
+    if (propertyId) {
+      entries = await db
+        .select()
+        .from(ledgerEntries)
+        .where(and(eq(ledgerEntries.module, module as any), eq(ledgerEntries.propertyId, propertyId)))
+        .orderBy(desc(ledgerEntries.entryDate));
+    } else {
+      entries = await db
+        .select()
+        .from(ledgerEntries)
+        .where(eq(ledgerEntries.module, module as any))
+        .orderBy(desc(ledgerEntries.entryDate));
+    }
+    return Promise.all(entries.map((e) => this.enrichLedgerEntry(e)));
+  }
+
+  async getLedgerEntryById(id: number): Promise<LedgerEntryWithLines | undefined> {
+    const [entry] = await db.select().from(ledgerEntries).where(eq(ledgerEntries.id, id));
+    if (!entry) return undefined;
+    return this.enrichLedgerEntry(entry);
+  }
+
+  async createLedgerEntry(
+    entry: InsertLedgerEntry & { createdByUserId: number },
+    lines: InsertLedgerLine[]
+  ): Promise<LedgerEntry> {
+    const count = await db.select().from(ledgerEntries);
+    const entryNumber = `JE-${String(count.length + 1).padStart(6, "0")}`;
+
+    const [newEntry] = await db
+      .insert(ledgerEntries)
+      .values({ ...entry, entryNumber })
+      .returning();
+
+    for (const line of lines) {
+      await db.insert(ledgerLines).values({ ...line, entryId: newEntry.id });
+    }
+
+    return newEntry;
+  }
+
+  async reverseLedgerEntry(entryId: number, userId: number): Promise<LedgerEntry | undefined> {
+    const original = await this.getLedgerEntryById(entryId);
+    if (!original || original.isReversed) return undefined;
+
+    const reversalEntry = await this.createLedgerEntry(
+      {
+        entryDate: new Date(),
+        propertyId: original.propertyId,
+        ownerId: original.ownerId,
+        module: original.module,
+        memo: `Reversal of ${original.entryNumber}`,
+        createdByUserId: userId,
+      },
+      original.lines.map((line) => ({
+        accountId: line.accountId,
+        debit: line.credit,
+        credit: line.debit,
+        memo: `Reversal`,
+      }))
+    );
+
+    await db
+      .update(ledgerEntries)
+      .set({ isReversed: 1, reversedByEntryId: reversalEntry.id })
+      .where(eq(ledgerEntries.id, entryId));
+
+    return reversalEntry;
+  }
+
+  async getAccountBalance(accountId: number, asOfDate?: Date): Promise<{ debit: number; credit: number; balance: number }> {
+    let lines = await db.select().from(ledgerLines).where(eq(ledgerLines.accountId, accountId));
+
+    if (asOfDate) {
+      const entryIds = new Set(lines.map((l) => l.entryId));
+      const entries = await db.select().from(ledgerEntries).where(inArray(ledgerEntries.id, Array.from(entryIds)));
+      const validEntryIds = new Set(entries.filter((e) => e.entryDate <= asOfDate).map((e) => e.id));
+      lines = lines.filter((l) => validEntryIds.has(l.entryId));
+    }
+
+    const totalDebit = lines.reduce((sum, l) => sum + parseFloat(l.debit || "0"), 0);
+    const totalCredit = lines.reduce((sum, l) => sum + parseFloat(l.credit || "0"), 0);
+
+    return { debit: totalDebit, credit: totalCredit, balance: totalDebit - totalCredit };
+  }
+
+  // =====================================================
+  // UTILITY METERS MODULE
+  // =====================================================
+
+  async getMetersByPropertyId(propertyId: number): Promise<UtilityMeter[]> {
+    return db.select().from(utilityMeters).where(eq(utilityMeters.propertyId, propertyId));
+  }
+
+  async getMeterById(id: number): Promise<UtilityMeter | undefined> {
+    const [meter] = await db.select().from(utilityMeters).where(eq(utilityMeters.id, id));
+    return meter || undefined;
+  }
+
+  async createMeter(meter: InsertUtilityMeter): Promise<UtilityMeter> {
+    const [newMeter] = await db.insert(utilityMeters).values(meter).returning();
+    return newMeter;
+  }
+
+  async updateMeter(id: number, meter: Partial<InsertUtilityMeter>): Promise<UtilityMeter | undefined> {
+    const [updated] = await db
+      .update(utilityMeters)
+      .set({ ...meter, updatedAt: new Date() })
+      .where(eq(utilityMeters.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteMeter(id: number): Promise<void> {
+    await db.delete(utilityMeters).where(eq(utilityMeters.id, id));
+  }
+
+  async getReadingsByMeterId(meterId: number): Promise<MeterReading[]> {
+    return db
+      .select()
+      .from(meterReadings)
+      .where(eq(meterReadings.meterId, meterId))
+      .orderBy(desc(meterReadings.readingDate));
+  }
+
+  async getReadingById(id: number): Promise<MeterReading | undefined> {
+    const [reading] = await db.select().from(meterReadings).where(eq(meterReadings.id, id));
+    return reading || undefined;
+  }
+
+  async createMeterReading(reading: InsertMeterReading & { recordedByUserId: number }): Promise<MeterReading> {
+    let consumption = null;
+    if (reading.previousReading) {
+      consumption = String(parseFloat(reading.currentReading) - parseFloat(reading.previousReading));
+    }
+    const [newReading] = await db
+      .insert(meterReadings)
+      .values({ ...reading, consumption })
+      .returning();
+    return newReading;
+  }
+
+  async deleteMeterReading(id: number): Promise<void> {
+    await db.delete(meterReadings).where(eq(meterReadings.id, id));
+  }
+
+  // =====================================================
+  // LOANS MODULE
+  // =====================================================
+
+  private async enrichLoan(loan: Loan): Promise<LoanWithSchedule> {
+    const [owner] = await db.select().from(owners).where(eq(owners.id, loan.ownerId));
+    let property = null;
+    if (loan.propertyId) {
+      const [p] = await db.select().from(properties).where(eq(properties.id, loan.propertyId));
+      property = p || null;
+    }
+    const schedule = await db
+      .select()
+      .from(loanSchedule)
+      .where(eq(loanSchedule.loanId, loan.id))
+      .orderBy(loanSchedule.periodNumber);
+    const loanPaymentsList = await db
+      .select()
+      .from(loanPayments)
+      .where(eq(loanPayments.loanId, loan.id))
+      .orderBy(desc(loanPayments.paymentDate));
+    return { ...loan, owner, property, schedule, payments: loanPaymentsList };
+  }
+
+  async getLoansByOwnerId(ownerId: number): Promise<LoanWithSchedule[]> {
+    const loanList = await db
+      .select()
+      .from(loans)
+      .where(eq(loans.ownerId, ownerId))
+      .orderBy(desc(loans.createdAt));
+    return Promise.all(loanList.map((l) => this.enrichLoan(l)));
+  }
+
+  async getLoanById(id: number): Promise<LoanWithSchedule | undefined> {
+    const [loan] = await db.select().from(loans).where(eq(loans.id, id));
+    if (!loan) return undefined;
+    return this.enrichLoan(loan);
+  }
+
+  async createLoan(loan: InsertLoan & { createdByUserId: number }): Promise<Loan> {
+    const endDate = new Date(loan.startDate);
+    endDate.setMonth(endDate.getMonth() + loan.termMonths);
+
+    const [newLoan] = await db
+      .insert(loans)
+      .values({ ...loan, endDate, outstandingBalance: loan.principal })
+      .returning();
+    return newLoan;
+  }
+
+  async updateLoan(id: number, loan: Partial<Loan>): Promise<Loan | undefined> {
+    const [updated] = await db
+      .update(loans)
+      .set({ ...loan, updatedAt: new Date() })
+      .where(eq(loans.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteLoan(id: number): Promise<void> {
+    await db.delete(loans).where(eq(loans.id, id));
+  }
+
+  async generateAmortizationSchedule(loanId: number): Promise<LoanScheduleEntry[]> {
+    const loan = await this.getLoanById(loanId);
+    if (!loan) return [];
+
+    await db.delete(loanSchedule).where(eq(loanSchedule.loanId, loanId));
+
+    const principal = parseFloat(loan.principal);
+    const annualRate = parseFloat(loan.interestRate) / 100;
+    const monthlyRate = annualRate / 12;
+    const numPayments = loan.termMonths;
+
+    const schedule: LoanScheduleEntry[] = [];
+    let balance = principal;
+    const monthlyPayment =
+      loan.amortizationMethod === "REDUCING_BALANCE"
+        ? (principal * monthlyRate * Math.pow(1 + monthlyRate, numPayments)) /
+          (Math.pow(1 + monthlyRate, numPayments) - 1)
+        : principal / numPayments + balance * monthlyRate;
+
+    for (let i = 1; i <= numPayments; i++) {
+      const dueDate = new Date(loan.startDate);
+      dueDate.setMonth(dueDate.getMonth() + i);
+
+      const interestDue = balance * monthlyRate;
+      const principalDue =
+        loan.amortizationMethod === "INTEREST_ONLY" && i < numPayments
+          ? 0
+          : loan.amortizationMethod === "REDUCING_BALANCE"
+          ? monthlyPayment - interestDue
+          : principal / numPayments;
+      const totalDue = principalDue + interestDue;
+      const closingBalance = balance - principalDue;
+
+      const [entry] = await db
+        .insert(loanSchedule)
+        .values({
+          loanId,
+          periodNumber: i,
+          dueDate,
+          openingBalance: String(balance),
+          principalDue: String(principalDue),
+          interestDue: String(interestDue),
+          totalDue: String(totalDue),
+          closingBalance: String(Math.max(0, closingBalance)),
+        })
+        .returning();
+      schedule.push(entry);
+      balance = closingBalance;
+    }
+
+    return schedule;
+  }
+
+  async recordLoanPayment(payment: InsertLoanPayment & { recordedByUserId: number }): Promise<LoanPayment> {
+    const [newPayment] = await db.insert(loanPayments).values(payment).returning();
+
+    const loan = await this.getLoanById(payment.loanId);
+    if (loan) {
+      const newBalance =
+        parseFloat(loan.outstandingBalance || "0") - parseFloat(payment.principalComponent);
+      const newInterestPaid =
+        parseFloat(loan.totalInterestPaid || "0") + parseFloat(payment.interestComponent);
+      const newPrincipalPaid =
+        parseFloat(loan.totalPrincipalPaid || "0") + parseFloat(payment.principalComponent);
+
+      await db
+        .update(loans)
+        .set({
+          outstandingBalance: String(Math.max(0, newBalance)),
+          totalInterestPaid: String(newInterestPaid),
+          totalPrincipalPaid: String(newPrincipalPaid),
+          isActive: newBalance <= 0 ? 0 : 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(loans.id, payment.loanId));
+
+      if (payment.scheduleId) {
+        await db
+          .update(loanSchedule)
+          .set({ isPaid: 1, paidDate: payment.paymentDate })
+          .where(eq(loanSchedule.id, payment.scheduleId));
+      }
+    }
+
+    return newPayment;
+  }
+
+  async getLoanPaymentsByLoanId(loanId: number): Promise<LoanPayment[]> {
+    return db
+      .select()
+      .from(loanPayments)
+      .where(eq(loanPayments.loanId, loanId))
+      .orderBy(desc(loanPayments.paymentDate));
+  }
+
+  // =====================================================
+  // ASSETS MODULE
+  // =====================================================
+
+  private async enrichAsset(asset: Asset): Promise<AssetWithDepreciation> {
+    const [owner] = await db.select().from(owners).where(eq(owners.id, asset.ownerId));
+    let property = null;
+    if (asset.propertyId) {
+      const [p] = await db.select().from(properties).where(eq(properties.id, asset.propertyId));
+      property = p || null;
+    }
+    const runs = await db
+      .select()
+      .from(depreciationRuns)
+      .where(eq(depreciationRuns.assetId, asset.id))
+      .orderBy(desc(depreciationRuns.periodEnd));
+    return { ...asset, owner, property, depreciationRuns: runs };
+  }
+
+  async getAssetsByOwnerId(ownerId: number): Promise<AssetWithDepreciation[]> {
+    const assetList = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.ownerId, ownerId))
+      .orderBy(desc(assets.createdAt));
+    return Promise.all(assetList.map((a) => this.enrichAsset(a)));
+  }
+
+  async getAssetsByPropertyId(propertyId: number): Promise<AssetWithDepreciation[]> {
+    const assetList = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.propertyId, propertyId))
+      .orderBy(desc(assets.createdAt));
+    return Promise.all(assetList.map((a) => this.enrichAsset(a)));
+  }
+
+  async getAssetById(id: number): Promise<AssetWithDepreciation | undefined> {
+    const [asset] = await db.select().from(assets).where(eq(assets.id, id));
+    if (!asset) return undefined;
+    return this.enrichAsset(asset);
+  }
+
+  async createAsset(asset: InsertAsset & { createdByUserId: number }): Promise<Asset> {
+    const [newAsset] = await db.insert(assets).values(asset).returning();
+    return newAsset;
+  }
+
+  async updateAsset(id: number, asset: Partial<Asset>): Promise<Asset | undefined> {
+    const [updated] = await db
+      .update(assets)
+      .set({ ...asset, updatedAt: new Date() })
+      .where(eq(assets.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async disposeAsset(id: number, disposalDate: Date, disposalAmount: number): Promise<Asset | undefined> {
+    const [updated] = await db
+      .update(assets)
+      .set({
+        status: "DISPOSED",
+        disposalDate,
+        disposalAmount: String(disposalAmount),
+        updatedAt: new Date(),
+      })
+      .where(eq(assets.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteAsset(id: number): Promise<void> {
+    await db.delete(assets).where(eq(assets.id, id));
+  }
+
+  async getDepreciationRules(category?: string): Promise<DepreciationRule[]> {
+    if (category) {
+      return db
+        .select()
+        .from(depreciationRules)
+        .where(eq(depreciationRules.assetCategory, category as any));
+    }
+    return db.select().from(depreciationRules);
+  }
+
+  async createDepreciationRule(rule: InsertDepreciationRule): Promise<DepreciationRule> {
+    const [newRule] = await db.insert(depreciationRules).values(rule).returning();
+    return newRule;
+  }
+
+  async runDepreciation(
+    assetId: number,
+    runType: string,
+    periodStart: Date,
+    periodEnd: Date,
+    userId: number
+  ): Promise<DepreciationRun> {
+    const asset = await this.getAssetById(assetId);
+    if (!asset) throw new Error("Asset not found");
+
+    const cost = parseFloat(asset.cost);
+    const salvage = parseFloat(asset.salvageValue || "0");
+    const depreciableAmount = cost - salvage;
+    const monthlyDepreciation = depreciableAmount / asset.usefulLifeMonths;
+
+    const months =
+      (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 +
+      (periodEnd.getMonth() - periodStart.getMonth()) +
+      1;
+    const depreciationAmount = monthlyDepreciation * months;
+
+    const currentAccumulated =
+      runType === "BOOK"
+        ? parseFloat(asset.bookAccumulatedDepreciation || "0")
+        : parseFloat(asset.taxAccumulatedDepreciation || "0");
+    const openingNBV = cost - currentAccumulated;
+    const closingNBV = openingNBV - depreciationAmount;
+
+    const [run] = await db
+      .insert(depreciationRuns)
+      .values({
+        assetId,
+        runType: runType as any,
+        periodStart,
+        periodEnd,
+        depreciationAmount: String(depreciationAmount),
+        openingNetBookValue: String(openingNBV),
+        closingNetBookValue: String(Math.max(0, closingNBV)),
+        createdByUserId: userId,
+      })
+      .returning();
+
+    const newAccumulated = currentAccumulated + depreciationAmount;
+    if (runType === "BOOK") {
+      await db
+        .update(assets)
+        .set({
+          bookAccumulatedDepreciation: String(newAccumulated),
+          status: closingNBV <= 0 ? "FULLY_DEPRECIATED" : asset.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(assets.id, assetId));
+    } else {
+      await db
+        .update(assets)
+        .set({ taxAccumulatedDepreciation: String(newAccumulated), updatedAt: new Date() })
+        .where(eq(assets.id, assetId));
+    }
+
+    return run;
+  }
+
+  async getDepreciationRunsByAssetId(assetId: number): Promise<DepreciationRun[]> {
+    return db
+      .select()
+      .from(depreciationRuns)
+      .where(eq(depreciationRuns.assetId, assetId))
+      .orderBy(desc(depreciationRuns.periodEnd));
   }
 }
 

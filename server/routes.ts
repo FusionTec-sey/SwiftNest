@@ -17,7 +17,22 @@ import {
   insertMaintenanceMaterialSchema,
   insertMaintenanceIssueSchema,
   insertMaintenanceTaskSchema,
-  insertMaintenanceScheduleSchema
+  insertMaintenanceScheduleSchema,
+  insertOwnerSchema,
+  insertPropertyOwnerSchema,
+  insertTenantSchema,
+  insertLeaseSchema,
+  insertRentInvoiceSchema,
+  insertPaymentSchema,
+  insertChartOfAccountSchema,
+  insertLedgerEntrySchema,
+  insertLedgerLineSchema,
+  insertUtilityMeterSchema,
+  insertMeterReadingSchema,
+  insertLoanSchema,
+  insertLoanPaymentSchema,
+  insertAssetSchema,
+  insertDepreciationRuleSchema
 } from "@shared/schema";
 
 const uploadDir = path.join(process.cwd(), "uploads", "properties");
@@ -1562,6 +1577,1015 @@ export async function registerRoutes(
 
       const stats = await storage.getMaintenanceStats(propertyId);
       res.json(stats);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // OWNERS MODULE
+  // =====================================================
+
+  app.get("/api/owners", requireAuth, async (req, res, next) => {
+    try {
+      const owners = await storage.getOwnersByUserId(req.user!.id);
+      res.json(owners);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/owners/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const owner = await storage.getOwnerWithProperties(id);
+      if (!owner) {
+        return res.status(404).json({ message: "Owner not found" });
+      }
+      if (owner.createdByUserId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json(owner);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/owners", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertOwnerSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const owner = await storage.createOwner({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(owner);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/owners/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const existing = await storage.getOwnerById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Owner not found" });
+      }
+      if (existing.createdByUserId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateOwner(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/owners/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const existing = await storage.getOwnerById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Owner not found" });
+      }
+      if (existing.createdByUserId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      await storage.deleteOwner(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Property Owners (linking owners to properties)
+  app.get("/api/properties/:propertyId/owners", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const propertyOwners = await storage.getPropertyOwnersByPropertyId(propertyId);
+      res.json(propertyOwners);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/owners", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const validation = insertPropertyOwnerSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const propertyOwner = await storage.addPropertyOwner(validation.data);
+      res.status(201).json(propertyOwner);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/property-owners/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid ID" });
+      }
+      await storage.removePropertyOwner(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // TENANTS MODULE
+  // =====================================================
+
+  app.get("/api/tenants", requireAuth, async (req, res, next) => {
+    try {
+      const tenants = await storage.getTenantsByUserId(req.user!.id);
+      res.json(tenants);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/tenants/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid tenant ID" });
+      }
+      const tenant = await storage.getTenantById(id);
+      if (!tenant) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      if (tenant.createdByUserId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json(tenant);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/tenants", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertTenantSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const tenant = await storage.createTenant({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(tenant);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/tenants/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid tenant ID" });
+      }
+      const existing = await storage.getTenantById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      if (existing.createdByUserId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateTenant(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/tenants/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid tenant ID" });
+      }
+      const existing = await storage.getTenantById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      if (existing.createdByUserId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      await storage.deleteTenant(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // LEASES MODULE
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/leases", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const leases = await storage.getLeasesByPropertyId(propertyId);
+      res.json(leases);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/tenants/:tenantId/leases", requireAuth, async (req, res, next) => {
+    try {
+      const tenantId = parseInt(req.params.tenantId);
+      if (isNaN(tenantId)) {
+        return res.status(400).json({ message: "Invalid tenant ID" });
+      }
+      const leases = await storage.getLeasesByTenantId(tenantId);
+      res.json(leases);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/leases/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const lease = await storage.getLeaseById(id);
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      const access = await storage.canUserAccessProperty(lease.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json(lease);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/leases", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertLeaseSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const access = await storage.canUserAccessProperty(validation.data.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const lease = await storage.createLease({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(lease);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/leases/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const existing = await storage.getLeaseById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateLease(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/leases/:id/status", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const existing = await storage.getLeaseById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateLeaseStatus(id, req.body.status);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/leases/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const existing = await storage.getLeaseById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess || !access.isOwner) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      await storage.deleteLease(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // RENT INVOICES MODULE
+  // =====================================================
+
+  app.get("/api/leases/:leaseId/invoices", requireAuth, async (req, res, next) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      if (isNaN(leaseId)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const invoices = await storage.getInvoicesByLeaseId(leaseId);
+      res.json(invoices);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/invoices/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid invoice ID" });
+      }
+      const invoice = await storage.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      res.json(invoice);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/invoices/overdue", requireAuth, async (req, res, next) => {
+    try {
+      const invoices = await storage.getOverdueInvoices();
+      res.json(invoices);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/invoices", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertRentInvoiceSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const invoice = await storage.createRentInvoice(validation.data);
+      res.status(201).json(invoice);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/invoices/:id/issue", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid invoice ID" });
+      }
+      const invoice = await storage.issueInvoice(id);
+      res.json(invoice);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/invoices/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid invoice ID" });
+      }
+      await storage.deleteRentInvoice(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // PAYMENTS MODULE
+  // =====================================================
+
+  app.get("/api/payments/:payerType/:payerId", requireAuth, async (req, res, next) => {
+    try {
+      const payerId = parseInt(req.params.payerId);
+      if (isNaN(payerId)) {
+        return res.status(400).json({ message: "Invalid payer ID" });
+      }
+      const payments = await storage.getPaymentsByPayerId(req.params.payerType, payerId);
+      res.json(payments);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/payments", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertPaymentSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const payment = await storage.createPayment({ ...validation.data, recordedByUserId: req.user!.id });
+      
+      if (validation.data.appliedToType === "RENT_INVOICE") {
+        await storage.recordInvoicePayment(
+          validation.data.appliedToId,
+          parseFloat(validation.data.amount),
+          payment.id
+        );
+      }
+      
+      res.status(201).json(payment);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/payments/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid payment ID" });
+      }
+      await storage.deletePayment(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // CHART OF ACCOUNTS MODULE
+  // =====================================================
+
+  app.get("/api/accounts", requireAuth, async (req, res, next) => {
+    try {
+      const accounts = await storage.getAllAccounts();
+      res.json(accounts);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/accounts/type/:type", requireAuth, async (req, res, next) => {
+    try {
+      const accounts = await storage.getAccountsByType(req.params.type);
+      res.json(accounts);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/accounts", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertChartOfAccountSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const account = await storage.createAccount({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(account);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/accounts/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid account ID" });
+      }
+      const updated = await storage.updateAccount(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/accounts/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid account ID" });
+      }
+      await storage.deleteAccount(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/accounts/seed", requireAuth, async (req, res, next) => {
+    try {
+      await storage.seedDefaultAccounts(req.user!.id);
+      res.json({ message: "Default accounts seeded successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // LEDGER ENTRIES MODULE
+  // =====================================================
+
+  app.get("/api/ledger/:module", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      const entries = await storage.getLedgerEntriesByModule(req.params.module, propertyId);
+      res.json(entries);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/ledger/entry/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid entry ID" });
+      }
+      const entry = await storage.getLedgerEntryById(id);
+      if (!entry) {
+        return res.status(404).json({ message: "Ledger entry not found" });
+      }
+      res.json(entry);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/ledger", requireAuth, async (req, res, next) => {
+    try {
+      const { entry, lines } = req.body;
+      const validatedEntry = insertLedgerEntrySchema.safeParse(entry);
+      if (!validatedEntry.success) {
+        return res.status(400).json({ message: validatedEntry.error.errors[0]?.message || "Invalid entry" });
+      }
+      const newEntry = await storage.createLedgerEntry(
+        { ...validatedEntry.data, createdByUserId: req.user!.id },
+        lines
+      );
+      res.status(201).json(newEntry);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/ledger/:id/reverse", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid entry ID" });
+      }
+      const reversed = await storage.reverseLedgerEntry(id, req.user!.id);
+      if (!reversed) {
+        return res.status(400).json({ message: "Cannot reverse this entry" });
+      }
+      res.json(reversed);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/accounts/:id/balance", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid account ID" });
+      }
+      const asOfDate = req.query.asOf ? new Date(req.query.asOf as string) : undefined;
+      const balance = await storage.getAccountBalance(id, asOfDate);
+      res.json(balance);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // UTILITY METERS MODULE
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/meters", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const meters = await storage.getMetersByPropertyId(propertyId);
+      res.json(meters);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/meters/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const meter = await storage.getMeterById(id);
+      if (!meter) {
+        return res.status(404).json({ message: "Meter not found" });
+      }
+      res.json(meter);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/meters", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertUtilityMeterSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const access = await storage.canUserAccessProperty(validation.data.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const meter = await storage.createMeter(validation.data);
+      res.status(201).json(meter);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/meters/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const updated = await storage.updateMeter(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/meters/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      await storage.deleteMeter(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Meter Readings
+  app.get("/api/meters/:meterId/readings", requireAuth, async (req, res, next) => {
+    try {
+      const meterId = parseInt(req.params.meterId);
+      if (isNaN(meterId)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const readings = await storage.getReadingsByMeterId(meterId);
+      res.json(readings);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/meters/:meterId/readings", requireAuth, async (req, res, next) => {
+    try {
+      const meterId = parseInt(req.params.meterId);
+      if (isNaN(meterId)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const validation = insertMeterReadingSchema.safeParse({ ...req.body, meterId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const reading = await storage.createMeterReading({ ...validation.data, recordedByUserId: req.user!.id });
+      res.status(201).json(reading);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // LOANS MODULE
+  // =====================================================
+
+  app.get("/api/owners/:ownerId/loans", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const loans = await storage.getLoansByOwnerId(ownerId);
+      res.json(loans);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/loans/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid loan ID" });
+      }
+      const loan = await storage.getLoanById(id);
+      if (!loan) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      res.json(loan);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/loans", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertLoanSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const loan = await storage.createLoan({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(loan);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/loans/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid loan ID" });
+      }
+      const updated = await storage.updateLoan(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/loans/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid loan ID" });
+      }
+      await storage.deleteLoan(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/loans/:id/schedule", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid loan ID" });
+      }
+      const schedule = await storage.generateAmortizationSchedule(id);
+      res.json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/loans/:loanId/payments", requireAuth, async (req, res, next) => {
+    try {
+      const loanId = parseInt(req.params.loanId);
+      if (isNaN(loanId)) {
+        return res.status(400).json({ message: "Invalid loan ID" });
+      }
+      const validation = insertLoanPaymentSchema.safeParse({ ...req.body, loanId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const payment = await storage.recordLoanPayment({ ...validation.data, recordedByUserId: req.user!.id });
+      res.status(201).json(payment);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // ASSETS MODULE
+  // =====================================================
+
+  app.get("/api/owners/:ownerId/assets", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const assets = await storage.getAssetsByOwnerId(ownerId);
+      res.json(assets);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/properties/:propertyId/assets", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const assets = await storage.getAssetsByPropertyId(propertyId);
+      res.json(assets);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/assets/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid asset ID" });
+      }
+      const asset = await storage.getAssetById(id);
+      if (!asset) {
+        return res.status(404).json({ message: "Asset not found" });
+      }
+      res.json(asset);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/assets", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertAssetSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const asset = await storage.createAsset({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(asset);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/assets/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid asset ID" });
+      }
+      const updated = await storage.updateAsset(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/assets/:id/dispose", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid asset ID" });
+      }
+      const { disposalDate, disposalAmount } = req.body;
+      const disposed = await storage.disposeAsset(id, new Date(disposalDate), disposalAmount);
+      res.json(disposed);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/assets/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid asset ID" });
+      }
+      await storage.deleteAsset(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Depreciation
+  app.get("/api/depreciation-rules", requireAuth, async (req, res, next) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const rules = await storage.getDepreciationRules(category);
+      res.json(rules);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/depreciation-rules", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertDepreciationRuleSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const rule = await storage.createDepreciationRule(validation.data);
+      res.status(201).json(rule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/assets/:id/depreciate", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid asset ID" });
+      }
+      const { runType, periodStart, periodEnd } = req.body;
+      const run = await storage.runDepreciation(
+        id,
+        runType,
+        new Date(periodStart),
+        new Date(periodEnd),
+        req.user!.id
+      );
+      res.status(201).json(run);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/assets/:id/depreciation-runs", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid asset ID" });
+      }
+      const runs = await storage.getDepreciationRunsByAssetId(id);
+      res.json(runs);
     } catch (error) {
       next(error);
     }

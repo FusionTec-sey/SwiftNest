@@ -23,9 +23,11 @@ import {
 import type { Property, Unit } from "@shared/schema";
 
 interface PropertyCardProps {
-  property: Property & { units?: Unit[] };
+  property: Property & { units?: Unit[]; role?: string };
   onDelete?: (id: number) => void;
   isDeleting?: boolean;
+  hideDelete?: boolean;
+  hideEdit?: boolean;
 }
 
 const propertyTypeIcons: Record<string, typeof Building> = {
@@ -44,7 +46,7 @@ const propertyTypeColors: Record<string, string> = {
   SHOP: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-300",
 };
 
-export function PropertyCard({ property, onDelete, isDeleting }: PropertyCardProps) {
+export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideEdit }: PropertyCardProps) {
   const Icon = propertyTypeIcons[property.propertyType] || Building;
   const typeColorClass = propertyTypeColors[property.propertyType] || "bg-muted text-muted-foreground";
   const unitCount = property.units?.length || 0;
@@ -93,44 +95,48 @@ export function PropertyCard({ property, onDelete, isDeleting }: PropertyCardPro
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <Link href={`/properties/${property.id}/edit`}>
-              <DropdownMenuItem className="cursor-pointer" data-testid={`button-edit-property-${property.id}`}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-            </Link>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <DropdownMenuItem 
-                  onSelect={(e) => e.preventDefault()}
-                  className="text-destructive focus:text-destructive cursor-pointer"
-                  data-testid={`button-delete-property-${property.id}`}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
+            {!hideEdit && (
+              <Link href={`/properties/${property.id}/edit`}>
+                <DropdownMenuItem className="cursor-pointer" data-testid={`button-edit-property-${property.id}`}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
                 </DropdownMenuItem>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Property</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete "{property.name}"? This action cannot be undone.
-                    {unitCount > 0 && ` This will also delete ${unitCount} unit(s) associated with this property.`}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => onDelete?.(property.id)}
-                    className="bg-destructive text-destructive-foreground"
-                    disabled={isDeleting}
-                    data-testid={`button-confirm-delete-${property.id}`}
+              </Link>
+            )}
+            {!hideDelete && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <DropdownMenuItem 
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-destructive focus:text-destructive cursor-pointer"
+                    data-testid={`button-delete-property-${property.id}`}
                   >
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Property</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete "{property.name}"? This action cannot be undone.
+                      {unitCount > 0 && ` This will also delete ${unitCount} unit(s) associated with this property.`}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => onDelete?.(property.id)}
+                      className="bg-destructive text-destructive-foreground"
+                      disabled={isDeleting}
+                      data-testid={`button-confirm-delete-${property.id}`}
+                    >
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>

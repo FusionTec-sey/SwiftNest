@@ -1,10 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Plus, Search } from "lucide-react";
+import { Building2, Plus, Search, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -20,6 +22,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Property, Unit } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[] };
+type SharedProperty = Property & { units: Unit[]; role: string };
 
 const propertyTypes = [
   { value: "all", label: "All Types" },
@@ -37,6 +40,10 @@ export default function PropertiesPage() {
 
   const { data: properties, isLoading } = useQuery<PropertyWithUnits[]>({
     queryKey: ["/api/properties"],
+  });
+
+  const { data: sharedProperties, isLoading: isLoadingShared } = useQuery<SharedProperty[]>({
+    queryKey: ["/api/shared-properties"],
   });
 
   const deleteMutation = useMutation({
@@ -80,12 +87,20 @@ export default function PropertiesPage() {
               Manage all your properties in one place
             </p>
           </div>
-          <Link href="/properties/new">
-            <Button className="gap-2" data-testid="button-add-property">
-              <Plus className="h-4 w-4" />
-              Add Property
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/properties/deleted">
+              <Button variant="outline" className="gap-2" data-testid="button-view-trash">
+                <Trash2 className="h-4 w-4" />
+                Trash
+              </Button>
+            </Link>
+            <Link href="/properties/new">
+              <Button className="gap-2" data-testid="button-add-property">
+                <Plus className="h-4 w-4" />
+                Add Property
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -154,6 +169,52 @@ export default function PropertiesPage() {
             actionLabel="Add Your First Property"
             actionHref="/properties/new"
           />
+        )}
+
+        {sharedProperties && sharedProperties.length > 0 && (
+          <>
+            <Separator className="my-8" />
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                <h2 className="text-xl font-semibold" data-testid="text-shared-title">Shared with Me</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Properties that others have shared with you
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {sharedProperties.map((property) => (
+                <div key={property.id} className="relative">
+                  <Badge 
+                    variant="secondary" 
+                    className="absolute top-3 right-3 z-10 text-xs"
+                  >
+                    {property.role === "EDITOR" ? "Editor" : "Viewer"}
+                  </Badge>
+                  <PropertyCard
+                    property={property}
+                    onDelete={() => {}}
+                    isDeleting={false}
+                    hideDelete={true}
+                    hideEdit={property.role === "VIEWER"}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {isLoadingShared && (
+          <div className="mt-8">
+            <Skeleton className="h-8 w-48 mb-4" />
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-72" />
+              ))}
+            </div>
+          </div>
         )}
       </main>
     </div>

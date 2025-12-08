@@ -2,15 +2,17 @@ import {
   users, 
   properties, 
   units,
+  propertyCollaborators,
   type User, 
   type InsertUser, 
   type Property,
   type InsertProperty,
   type Unit,
-  type InsertUnit 
+  type InsertUnit,
+  type PropertyCollaborator 
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -25,16 +27,27 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   
   getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]>;
+  getDeletedPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]>;
   getPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
+  getDeletedPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
   createProperty(property: InsertProperty & { ownerUserId: number; ownerOrgName?: string | null }): Promise<Property>;
   updateProperty(id: number, property: Partial<InsertProperty>): Promise<Property | undefined>;
   deleteProperty(id: number): Promise<void>;
+  restoreProperty(id: number): Promise<Property | undefined>;
+  permanentlyDeleteProperty(id: number): Promise<void>;
   
   getUnitsByPropertyId(propertyId: number): Promise<Unit[]>;
   getUnitById(id: number): Promise<Unit | undefined>;
   createUnit(unit: InsertUnit): Promise<Unit>;
   updateUnit(id: number, unit: Partial<InsertUnit>): Promise<Unit | undefined>;
   deleteUnit(id: number): Promise<void>;
+  
+  getCollaboratorsByPropertyId(propertyId: number): Promise<(PropertyCollaborator & { user: User })[]>;
+  getSharedPropertiesForUser(userId: number): Promise<(Property & { units: Unit[]; role: string })[]>;
+  addCollaborator(propertyId: number, userId: number, role: string, invitedBy: number): Promise<PropertyCollaborator>;
+  removeCollaborator(propertyId: number, userId: number): Promise<void>;
+  getCollaboratorRole(propertyId: number, userId: number): Promise<string | null>;
+  canUserAccessProperty(propertyId: number, userId: number): Promise<{ canAccess: boolean; role: string | null; isOwner: boolean }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -127,6 +140,58 @@ export class DatabaseStorage implements IStorage {
       .where(eq(properties.id, id));
   }
 
+  async getDeletedPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]> {
+    const propertyList = await db
+      .select()
+      .from(properties)
+      .where(and(eq(properties.ownerUserId, userId), eq(properties.isDeleted, 1)))
+      .orderBy(desc(properties.updatedAt));
+    
+    const propertiesWithUnits = await Promise.all(
+      propertyList.map(async (property) => {
+        const propertyUnits = await db
+          .select()
+          .from(units)
+          .where(eq(units.propertyId, property.id))
+          .orderBy(units.unitName);
+        return { ...property, units: propertyUnits };
+      })
+    );
+    
+    return propertiesWithUnits;
+  }
+
+  async getDeletedPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined> {
+    const [property] = await db
+      .select()
+      .from(properties)
+      .where(and(eq(properties.id, id), eq(properties.isDeleted, 1)));
+    
+    if (!property) return undefined;
+    
+    const propertyUnits = await db
+      .select()
+      .from(units)
+      .where(eq(units.propertyId, id))
+      .orderBy(units.unitName);
+    
+    return { ...property, units: propertyUnits };
+  }
+
+  async restoreProperty(id: number): Promise<Property | undefined> {
+    const [restored] = await db
+      .update(properties)
+      .set({ isDeleted: 0, updatedAt: new Date() })
+      .where(eq(properties.id, id))
+      .returning();
+    return restored || undefined;
+  }
+
+  async permanentlyDeleteProperty(id: number): Promise<void> {
+    await db.delete(units).where(eq(units.propertyId, id));
+    await db.delete(properties).where(eq(properties.id, id));
+  }
+
   async getUnitsByPropertyId(propertyId: number): Promise<Unit[]> {
     return db
       .select()
@@ -159,6 +224,131 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUnit(id: number): Promise<void> {
     await db.delete(units).where(eq(units.id, id));
+  }
+
+  async getCollaboratorsByPropertyId(propertyId: number): Promise<(PropertyCollaborator & { user: User })[]> {
+    const collaborators = await db
+      .select()
+      .from(propertyCollaborators)
+      .where(eq(propertyCollaborators.propertyId, propertyId));
+    
+    const collaboratorsWithUsers = await Promise.all(
+      collaborators.map(async (collab) => {
+        const [user] = await db.select().from(users).where(eq(users.id, collab.userId));
+        return { ...collab, user };
+      })
+    );
+    
+    return collaboratorsWithUsers;
+  }
+
+  async getSharedPropertiesForUser(userId: number): Promise<(Property & { units: Unit[]; role: string })[]> {
+    const collaborations = await db
+      .select()
+      .from(propertyCollaborators)
+      .where(eq(propertyCollaborators.userId, userId));
+    
+    if (collaborations.length === 0) return [];
+    
+    const propertyIds = collaborations.map(c => c.propertyId);
+    const roleMap = new Map(collaborations.map(c => [c.propertyId, c.role]));
+    
+    const propertyList = await db
+      .select()
+      .from(properties)
+      .where(and(
+        inArray(properties.id, propertyIds),
+        eq(properties.isDeleted, 0)
+      ))
+      .orderBy(desc(properties.createdAt));
+    
+    const propertiesWithUnits = await Promise.all(
+      propertyList.map(async (property) => {
+        const propertyUnits = await db
+          .select()
+          .from(units)
+          .where(eq(units.propertyId, property.id))
+          .orderBy(units.unitName);
+        return { 
+          ...property, 
+          units: propertyUnits,
+          role: roleMap.get(property.id) || 'VIEWER'
+        };
+      })
+    );
+    
+    return propertiesWithUnits;
+  }
+
+  async addCollaborator(propertyId: number, userId: number, role: string, invitedBy: number): Promise<PropertyCollaborator> {
+    const existing = await db
+      .select()
+      .from(propertyCollaborators)
+      .where(and(
+        eq(propertyCollaborators.propertyId, propertyId),
+        eq(propertyCollaborators.userId, userId)
+      ));
+    
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(propertyCollaborators)
+        .set({ role: role as "VIEWER" | "EDITOR" })
+        .where(and(
+          eq(propertyCollaborators.propertyId, propertyId),
+          eq(propertyCollaborators.userId, userId)
+        ))
+        .returning();
+      return updated;
+    }
+    
+    const [collaborator] = await db
+      .insert(propertyCollaborators)
+      .values({
+        propertyId,
+        userId,
+        role: role as "VIEWER" | "EDITOR",
+        invitedBy
+      })
+      .returning();
+    return collaborator;
+  }
+
+  async removeCollaborator(propertyId: number, userId: number): Promise<void> {
+    await db
+      .delete(propertyCollaborators)
+      .where(and(
+        eq(propertyCollaborators.propertyId, propertyId),
+        eq(propertyCollaborators.userId, userId)
+      ));
+  }
+
+  async getCollaboratorRole(propertyId: number, userId: number): Promise<string | null> {
+    const [collab] = await db
+      .select()
+      .from(propertyCollaborators)
+      .where(and(
+        eq(propertyCollaborators.propertyId, propertyId),
+        eq(propertyCollaborators.userId, userId)
+      ));
+    return collab?.role || null;
+  }
+
+  async canUserAccessProperty(propertyId: number, userId: number): Promise<{ canAccess: boolean; role: string | null; isOwner: boolean }> {
+    const [property] = await db
+      .select()
+      .from(properties)
+      .where(eq(properties.id, propertyId));
+    
+    if (!property) {
+      return { canAccess: false, role: null, isOwner: false };
+    }
+    
+    if (property.ownerUserId === userId) {
+      return { canAccess: true, role: 'OWNER', isOwner: true };
+    }
+    
+    const role = await this.getCollaboratorRole(propertyId, userId);
+    return { canAccess: role !== null, role, isOwner: false };
   }
 }
 

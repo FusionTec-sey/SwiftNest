@@ -6,6 +6,7 @@ import {
   Building,
   Building2,
   Home,
+  ImagePlus,
   Landmark,
   MapPin,
   Pencil,
@@ -46,11 +47,13 @@ import {
 import { Header } from "@/components/header";
 import { UnitForm } from "@/components/unit-form";
 import { EmptyState } from "@/components/empty-state";
+import { ImageGallery } from "@/components/image-gallery";
+import { ShareDialog } from "@/components/share-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Property, Unit, InsertUnit } from "@shared/schema";
 
-type PropertyWithUnits = Property & { units: Unit[] };
+type PropertyWithUnits = Property & { units: Unit[]; userRole?: string; isOwner?: boolean };
 
 const propertyTypeIcons: Record<string, typeof Building> = {
   APARTMENT: Building,
@@ -263,67 +266,142 @@ export default function PropertyDetailPage() {
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
-              <Link href={`/properties/${propertyId}/edit`}>
-                <Button variant="outline" className="gap-2" data-testid="button-edit-property">
-                  <Pencil className="h-4 w-4" />
-                  Edit
-                </Button>
-              </Link>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="gap-2" data-testid="button-delete-property">
-                    <Trash2 className="h-4 w-4" />
-                    Delete
+            <div className="flex items-center gap-2 flex-wrap">
+              {property.isOwner !== false && (
+                <ShareDialog propertyId={propertyId} propertyName={property.name} />
+              )}
+              {(property.isOwner !== false || property.userRole === "EDITOR") && (
+                <Link href={`/properties/${propertyId}/edit`}>
+                  <Button variant="outline" className="gap-2" data-testid="button-edit-property">
+                    <Pencil className="h-4 w-4" />
+                    Edit
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Property</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Are you sure you want to delete "{property.name}"? This action cannot be undone.
-                      {property.units?.length > 0 &&
-                        ` This will also delete ${property.units.length} unit(s) associated with this property.`}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => deletePropertyMutation.mutate()}
-                      className="bg-destructive text-destructive-foreground"
-                      disabled={deletePropertyMutation.isPending}
-                      data-testid="button-confirm-delete-property"
-                    >
-                      {deletePropertyMutation.isPending ? "Deleting..." : "Delete"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                </Link>
+              )}
+              {property.isOwner !== false && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="gap-2" data-testid="button-delete-property">
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Property</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete "{property.name}"? This action cannot be undone.
+                        {property.units?.length > 0 &&
+                          ` This will also delete ${property.units.length} unit(s) associated with this property.`}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => deletePropertyMutation.mutate()}
+                        className="bg-destructive text-destructive-foreground"
+                        disabled={deletePropertyMutation.isPending}
+                        data-testid="button-confirm-delete-property"
+                      >
+                        {deletePropertyMutation.isPending ? "Deleting..." : "Delete"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              {property.userRole && property.userRole !== "OWNER" && (
+                <Badge variant="secondary" className="text-xs">
+                  {property.userRole === "EDITOR" ? "Editor" : "Viewer"}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <div className="aspect-video bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center rounded-t-md">
-                <Icon className="h-24 w-24 text-primary/40" />
-              </div>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-medium">Address</p>
-                    <p className="text-muted-foreground" data-testid="text-full-address">{fullAddress}</p>
-                    {property.latitude && property.longitude && (
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Coordinates: {property.latitude}, {property.longitude}
-                      </p>
-                    )}
+            {property.images && property.images.length > 0 ? (
+              <ImageGallery propertyId={propertyId} images={property.images} />
+            ) : (
+              <Card>
+                <div className="aspect-video bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center rounded-t-md relative">
+                  <Icon className="h-24 w-24 text-primary/40" />
+                  <div className="absolute bottom-4 right-4">
+                    <input
+                      id="quick-upload"
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const files = e.target.files;
+                        if (files && files.length > 0) {
+                          const formData = new FormData();
+                          Array.from(files).forEach((file) => {
+                            formData.append("images", file);
+                          });
+                          try {
+                            const res = await fetch(`/api/properties/${propertyId}/images`, {
+                              method: "POST",
+                              body: formData,
+                              credentials: "include",
+                            });
+                            if (res.ok) {
+                              queryClient.invalidateQueries({ queryKey: ["/api/properties", propertyId] });
+                            }
+                          } catch {
+                          }
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => document.getElementById("quick-upload")?.click()}
+                      data-testid="button-quick-upload"
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                      Add Photos
+                    </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Address</p>
+                      <p className="text-muted-foreground" data-testid="text-full-address">{fullAddress}</p>
+                      {property.latitude && property.longitude && (
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Coordinates: {property.latitude}, {property.longitude}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {property.images && property.images.length > 0 && (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Address</p>
+                      <p className="text-muted-foreground">{fullAddress}</p>
+                      {property.latitude && property.longitude && (
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Coordinates: {property.latitude}, {property.longitude}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">

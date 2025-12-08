@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useLocation } from "wouter";
+import { Redirect } from "wouter";
 import { Building2, User, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +47,6 @@ const organizationTypes = [
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
-  const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -77,8 +76,7 @@ export default function AuthPage() {
   const accountType = registerForm.watch("accountType");
 
   if (user) {
-    setLocation("/");
-    return null;
+    return <Redirect to="/" />;
   }
 
   const handleLogin = (data: LoginData) => {

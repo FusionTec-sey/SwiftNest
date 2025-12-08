@@ -62,10 +62,17 @@ Preferred communication style: Simple, everyday language.
 
 **Database Schema Design**
 - **Users Table**: Stores authentication credentials and account metadata (individual vs organization)
-- **Properties Table**: Property details with foreign key to owner user
+- **Properties Table**: Property details with foreign key to owner user, supports images array and soft delete
 - **Units Table**: Sub-properties within a property (apartments, offices, etc.)
-- Enums for type safety: account_type, property_type, unit_status
-- Indexed columns for performance: email, ownerUserId, city
+- **Property Collaborators Table**: Enables property sharing with role-based permissions (VIEWER/EDITOR)
+- Enums for type safety: account_type, property_type, unit_status, collaborator_role
+- Indexed columns for performance: email, ownerUserId, city, propertyId, userId
+
+**Advanced Features**
+- Soft delete: Properties use isDeleted flag for trash/restore functionality
+- Property images: Stored as JSON array, uploaded via multer to /uploads/properties
+- Property sharing: Invite users by email with VIEWER or EDITOR roles
+- Occupancy analytics: Dashboard shows vacant/occupied counts and occupancy rate percentages
 
 **Data Validation**
 - Zod schemas for runtime validation

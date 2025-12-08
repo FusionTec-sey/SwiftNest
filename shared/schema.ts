@@ -41,6 +41,7 @@ export const properties = pgTable("properties", {
   pincode: text("pincode").notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 8 }),
   longitude: decimal("longitude", { precision: 11, scale: 8 }),
+  images: text("images").array().default([]),
   isDeleted: integer("is_deleted").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -63,6 +64,22 @@ export const units = pgTable("units", {
   index("units_property_idx").on(table.propertyId),
 ]);
 
+// Collaborator role enum
+export const collaboratorRoleEnum = pgEnum("collaborator_role", ["VIEWER", "EDITOR"]);
+
+// Property Collaborators table
+export const propertyCollaborators = pgTable("property_collaborators", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: collaboratorRoleEnum("role").notNull().default("VIEWER"),
+  invitedBy: integer("invited_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("collaborators_property_idx").on(table.propertyId),
+  index("collaborators_user_idx").on(table.userId),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   properties: many(properties),
@@ -80,6 +97,17 @@ export const unitsRelations = relations(units, ({ one }) => ({
   property: one(properties, {
     fields: [units.propertyId],
     references: [properties.id],
+  }),
+}));
+
+export const propertyCollaboratorsRelations = relations(propertyCollaborators, ({ one }) => ({
+  property: one(properties, {
+    fields: [propertyCollaborators.propertyId],
+    references: [properties.id],
+  }),
+  user: one(users, {
+    fields: [propertyCollaborators.userId],
+    references: [users.id],
   }),
 }));
 
@@ -119,6 +147,17 @@ export const insertUnitSchema = createInsertSchema(units).omit({
   unitName: z.string().min(1, "Unit name is required"),
 });
 
+export const insertCollaboratorSchema = createInsertSchema(propertyCollaborators).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Share property schema
+export const sharePropertySchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  role: z.enum(["VIEWER", "EDITOR"]),
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -126,6 +165,9 @@ export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 export type InsertUnit = z.infer<typeof insertUnitSchema>;
 export type Unit = typeof units.$inferSelect;
+export type InsertCollaborator = z.infer<typeof insertCollaboratorSchema>;
+export type PropertyCollaborator = typeof propertyCollaborators.$inferSelect;
+export type SharePropertyData = z.infer<typeof sharePropertySchema>;
 
 // Property with units type
 export type PropertyWithUnits = Property & { units: Unit[] };

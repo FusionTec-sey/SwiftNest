@@ -13,12 +13,14 @@ import PropertiesPage from "@/pages/properties-page";
 import PropertyNewPage from "@/pages/property-new-page";
 import PropertyEditPage from "@/pages/property-edit-page";
 import PropertyDetailPage from "@/pages/property-detail-page";
+import DeletedPropertiesPage from "@/pages/deleted-properties-page";
 
 function Router() {
   return (
     <Switch>
       <ProtectedRoute path="/" component={DashboardPage} />
       <ProtectedRoute path="/properties" component={PropertiesPage} />
+      <ProtectedRoute path="/properties/deleted" component={DeletedPropertiesPage} />
       <ProtectedRoute path="/properties/new" component={PropertyNewPage} />
       <ProtectedRoute path="/properties/:id/edit" component={PropertyEditPage} />
       <ProtectedRoute path="/properties/:id" component={PropertyDetailPage} />

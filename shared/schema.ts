@@ -548,6 +548,9 @@ export const utilityTypeEnum = pgEnum("utility_type", ["ELECTRICITY", "WATER", "
 // Utility bill status enum
 export const utilityBillStatusEnum = pgEnum("utility_bill_status", ["PENDING", "FORWARDED", "PAID", "PARTIALLY_PAID", "OVERDUE"]);
 
+// Meter assignee type enum (who is responsible for meter bills)
+export const meterAssigneeTypeEnum = pgEnum("meter_assignee_type", ["OWNER", "TENANT"]);
+
 // Loan compounding enum
 export const loanCompoundingEnum = pgEnum("loan_compounding", ["SIMPLE", "COMPOUND_MONTHLY", "COMPOUND_ANNUALLY"]);
 
@@ -808,6 +811,10 @@ export const utilityMeters = pgTable("utility_meters", {
   provider: text("provider"),
   ratePerUnit: decimal("rate_per_unit", { precision: 10, scale: 4 }),
   fixedCharge: decimal("fixed_charge", { precision: 10, scale: 2 }).default("0"),
+  assignedToType: meterAssigneeTypeEnum("assigned_to_type").notNull().default("OWNER"),
+  assignedToOwnerId: integer("assigned_to_owner_id").references(() => owners.id, { onDelete: "set null" }),
+  assignedToTenantId: integer("assigned_to_tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  assignedAt: timestamp("assigned_at").defaultNow(),
   isActive: integer("is_active").default(1).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -815,6 +822,8 @@ export const utilityMeters = pgTable("utility_meters", {
   index("utility_meters_property_idx").on(table.propertyId),
   index("utility_meters_unit_idx").on(table.unitId),
   index("utility_meters_type_idx").on(table.utilityType),
+  index("utility_meters_owner_idx").on(table.assignedToOwnerId),
+  index("utility_meters_tenant_idx").on(table.assignedToTenantId),
 ]);
 
 // =====================================================
@@ -841,6 +850,33 @@ export const meterReadings = pgTable("meter_readings", {
 }, (table) => [
   index("meter_readings_meter_idx").on(table.meterId),
   index("meter_readings_date_idx").on(table.readingDate),
+]);
+
+// =====================================================
+// METER ASSIGNMENT HISTORY TABLE
+// =====================================================
+
+export const meterAssignmentHistory = pgTable("meter_assignment_history", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  meterId: integer("meter_id").notNull().references(() => utilityMeters.id, { onDelete: "cascade" }),
+  previousAssigneeType: meterAssigneeTypeEnum("previous_assignee_type"),
+  previousOwnerId: integer("previous_owner_id").references(() => owners.id, { onDelete: "set null" }),
+  previousTenantId: integer("previous_tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  newAssigneeType: meterAssigneeTypeEnum("new_assignee_type").notNull(),
+  newOwnerId: integer("new_owner_id").references(() => owners.id, { onDelete: "set null" }),
+  newTenantId: integer("new_tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  leaseId: integer("lease_id").references(() => leases.id, { onDelete: "set null" }),
+  transferDate: timestamp("transfer_date").defaultNow().notNull(),
+  finalMeterReading: decimal("final_meter_reading", { precision: 12, scale: 2 }),
+  outstandingBillsSettled: integer("outstanding_bills_settled").default(0).notNull(),
+  settlementAmount: decimal("settlement_amount", { precision: 12, scale: 2 }),
+  transferReason: text("transfer_reason"),
+  notes: text("notes"),
+  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("meter_assignment_history_meter_idx").on(table.meterId),
+  index("meter_assignment_history_date_idx").on(table.transferDate),
 ]);
 
 // =====================================================
@@ -1134,6 +1170,7 @@ export const insertLedgerLineSchema = createInsertSchema(ledgerLines).omit({
 // Utility meter schemas
 export const insertUtilityMeterSchema = createInsertSchema(utilityMeters).omit({
   id: true,
+  assignedAt: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
@@ -1168,6 +1205,17 @@ export const insertUtilityBillSchema = createInsertSchema(utilityBills).omit({
 
 export type InsertUtilityBill = z.infer<typeof insertUtilityBillSchema>;
 export type UtilityBill = typeof utilityBills.$inferSelect;
+
+// Meter assignment history schemas
+export const insertMeterAssignmentHistorySchema = createInsertSchema(meterAssignmentHistory).omit({
+  id: true,
+  transferDate: true,
+  recordedByUserId: true,
+  createdAt: true,
+});
+
+export type InsertMeterAssignmentHistory = z.infer<typeof insertMeterAssignmentHistorySchema>;
+export type MeterAssignmentHistory = typeof meterAssignmentHistory.$inferSelect;
 
 // Loan schemas
 export const insertLoanSchema = createInsertSchema(loans).omit({

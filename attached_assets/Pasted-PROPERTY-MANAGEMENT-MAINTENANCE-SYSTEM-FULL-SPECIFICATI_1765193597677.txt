@@ -1,0 +1,357 @@
+PROPERTY MANAGEMENT & MAINTENANCE
+SYSTEM – FULL SPECIFICATION
+This document combines the full functional specification for a Property Management & Maintenance
+System, including:
+- Property & maintenance management
+- Task and to-do generation and assignment
+- Inventory and materials usage
+- Full financial management (rent, utilities, maintenance costs)
+- Owners (individuals and businesses)
+- Loans, repayments, projections
+- Asset register and depreciation logic aligned with Seychelles tax concepts
+- Core reporting requirements
+1. SYSTEM OVERVIEW
+The system is designed to manage properties end-to-end:
+• Operationally: property details, inspections, maintenance tasks, inventory usage and staff
+assignment.
+depreciation.
+• Financially: rental billing (short and long term), loan servicing, utilities, deposits, expenses, and asset
+• Reporting: property-wise, owner-wise, and portfolio-wide financial and operational KPIs.
+All key actions (e.g. rent invoice, loan repayment, maintenance cost) are mapped to a Chart of
+Accounts and stored as ledger entries to support proper accounting and tax reporting.
+2. CORE OPERATIONAL PROCESSES
+2.1 Property Registration Process
+• Add property details: location, size, owner(s), building type.
+• Upload utility information: electricity meters, water meters, AC units, plumbing layout.
+• Add inventory mapping: fixed appliances, structural elements.
+• Set maintenance intervals per category (e.g. AC quarterly, plumbing monthly).
+• Link property to one or more owners with ownership percentages.
+2.2 Issue Reporting Process
+• Issues can be created from:
+– Tenant service requests
+– Periodic inspections
+– System-triggered alerts or reminders
+– Manual staff input
+• Capture for each issue:
+– Property and unit
+– Category (Electrical, Plumbing, AC, Structural, Cleaning, Pest Control, etc.)
+– Severity (Low/Medium/High/Urgent)
+– Description and photos/videos
+– Recommended action or trade required.
+2.3 Maintenance Scheduling Process
+• System generates tasks from:
+– Recurring schedules (preventive maintenance)
+– Logged issues
+– Seasonal jobs and compliance checks
+• For each new task, system determines:
+– Priority and required completion date
+– Skill category (AC, Electrical, Plumbing, etc.)
+– Required materials (if known)
+– Whether the cost is owner-borne or re-billable to tenant.
+2.4 Task Assignment & Execution
+• Tasks are assigned to users (internal technicians or external contractors) based on:
+– Skill category
+– Location/proximity
+– Current workload
+• Execution flow:
+– Task assigned → assignee notified
+– Assignee accepts/rejects
+– Work in progress with status updates
+– Photos and notes uploaded
+– Completion submitted for supervisor review
+– Supervisor approves and closes or reopens task.
+2.5 Quality Control & Follow-Up
+• Use QC checklists per task type (AC service, electrical checks, etc.).
+• Log time taken, materials used and total cost.
+• Update next scheduled maintenance date where relevant.
+• For repeated issues, flag property/equipment for deeper inspection.
+3. SYSTEM FUNCTIONS
+3.1 Property Functions
+• Create, edit, deactivate properties and units.
+• Store and view documents: plans, warranties, insurance, contracts.
+• Auto-generate a property maintenance calendar.
+• View full maintenance and financial history for each property.
+3.2 Task & To-Do Management
+• Create tasks manually or auto-generate from schedules/issues.
+• Set priority, due date, and category.
+• Assign tasks to users or teams.
+• Track task status (Pending, In Progress, On Hold, Completed, Cancelled).
+• Upload photos, documents, comments and materials used.
+• Reopen tasks if QC fails or tenant marks unresolved.
+3.3 Team & User Management
+• User roles: Admin, Supervisor, Technician, Cleaner, Contractor, Accountant, Owner.
+• Skillsets per user (AC, plumbing, electrical, carpentry, multi-trade).
+• Track utilization and performance (tasks completed, rework, response time).
+3.4 Notifications & Alerts
+• New task assignment.
+• Tasks due soon and overdue tasks.
+• Upcoming preventive maintenance.
+• Low inventory alerts.
+• Tenant emergency requests.
+• Upcoming loan repayments and important financial deadlines.
+3.5 Inventory & Materials
+• Maintain items: code, description, unit, cost, stock level, preferred supplier.
+• Link materials to tasks and jobs.
+• Auto-deduct stock when materials are used.
+• Allow purchase orders and goods received notes (optional phase).
+• Support costing of jobs and capital improvements.
+3.6 Reporting Functions
+• Operational:
+– Open vs completed tasks
+– Average response/closure time
+– Most common issue types
+• Financial:
+– Property-wise and owner-wise P&L;
+– Maintenance cost breakdown by category
+– Utility recovery analysis (cost vs re-billed)
+– Loan repayment schedules and outstanding balances
+– Asset and depreciation reports.
+4. TASK GENERATION & ASSIGNMENT LOGIC
+4.1 Recurring Preventive Tasks
+• Examples:
+– AC: Quarterly filter cleaning and checks.
+– Plumbing: Monthly leak and pressure checks.
+– Electrical: Semi-annual distribution board tightening and safety tests.
+– Pest control: Quarterly site treatment.
+– Cleaning: Weekly or monthly deep-clean routines.
+• When a task is completed, the next occurrence is automatically scheduled based on the defined
+interval.
+4.2 Conditional Tasks (Triggers)
+• Trigger sources:
+– Sensor alerts (e.g. temperature, pump run-time).
+– Tenant-reported issues.
+– Repeat failures or abnormal patterns.
+– Warranty expiry notices.
+• Example rule:
+– If severity = High or category = “Safety”, create urgent task with same-day or next-day due date and
+immediate notification to supervisor.
+4.3 Manual Tasks
+• Supervisors can create ad hoc tasks for:
+– Renovations and upgrades.
+– Painting.
+– Deep cleaning.
+– Capital works.
+– Emergency repairs.
+4.4 Assignment Rules
+• Assignment is based on:
+– Skill category and certifications.
+– Current workload and availability.
+– Proximity to property.
+– Task priority.
+• Escalation rules:
+– If overdue beyond defined threshold, notify supervisor and optionally reassign.
+– If the same issue repeats within short time, escalate to senior technician or engineer.
+5. CORE DATA MODEL (TABLE OVERVIEW)
+5.1 Operational Tables
+• Properties
+– property_id, name, address, type, status, default_maintenance_intervals.
+• Units
+– unit_id, property_id, unit_code, floor, size, status.
+• Owners
+– owner_id, owner_type (Individual/Company), legal_name, registration_number, IDs, contact details.
+• PropertyOwners (link table)
+– property_owner_id, property_id, owner_id, ownership_percent.
+• Users
+– user_id, full_name, role, skillset, contact, active_flag.
+• Tasks
+– task_id, property_id, unit_id, category, description, severity, priority, due_date, assigned_to, status,
+cost_summary.
+• InventoryItems
+– item_id, code, name, unit, cost, stock_quantity, preferred_supplier.
+• InventoryUsage
+– usage_id, task_id, item_id, quantity, unit_cost, total_cost.
+5.2 Financial & Accounting Tables
+• ChartOfAccounts
+– account_id, code, name, type (Asset, Liability, Equity, Income, Expense).
+• LedgerEntry (JournalEntry)
+– entry_id, date, description, source_module (Rent, Loan, Maintenance, etc.).
+• LedgerLine (JournalLine)
+– line_id, entry_id, account_id, debit, credit, related_object (e.g. invoice_id, loan_id, task_id).
+5.3 Rental & Tenant Tables
+• Tenants
+– tenant_id, name, contact, ID/passport, type (individual/company).
+• Leases
+– lease_id, property_id, unit_id, tenant_id, start_date, end_date, rent_amount, frequency,
+deposit_amount, escalation_rules.
+• RentInvoices
+– invoice_id, lease_id, period_start, period_end, amount, status, due_date.
+• Payments
+– payment_id, payer_type (Tenant/Owner), payer_id, date, amount, method, applied_to (invoice or
+loan), bank_account_id.
+5.4 Utility & Maintenance Cost Tables
+• UtilityMeters
+– meter_id, property_id, unit_id, type (Electricity/Water), meter_number.
+• MeterReadings
+– reading_id, meter_id, date, value, billing_period.
+• MaintenanceCosts
+– part of Tasks and InventoryUsage and linked financial entries.
+5.5 Loans & Assets Tables
+• Loans
+– loan_id, owner_id, linked_property_id, lender_name, currency, principal, interest_rate,
+interest_method, term_months, start_date, end_date.
+• LoanSchedule
+– schedule_id, loan_id, period_number, due_date, opening_balance, principal_due, interest_due,
+total_payment, closing_balance, paid_status.
+• LoanPayments
+– payment_id, loan_id, schedule_id, payment_date, amount_paid, principal_component,
+interest_component, bank_account_id, journal_entry_id.
+• Assets
+– asset_id, owner_id, property_id, asset_category, description, acquisition_date, cost,
+useful_life_years, depreciation_method_book, depreciation_method_tax, tax_rate_code,
+business_use_percent.
+• DepreciationRules
+– rule_id, asset_category, jurisdiction, law_reference, rate_percent_per_year, is_100pct_year1,
+effective_from_date, effective_to_date.
+6. CHART OF ACCOUNTS & FINANCIAL FLOWS
+6.1 Chart of Accounts Structure (Summary)
+Assets (1000)
+• Land, Buildings, Furniture & Fixtures, Appliances, AC units, Vehicles & Equipment.
+• Inventory (materials and spare parts).
+• Security deposits held.
+• Accumulated depreciation (contra-asset).
+Liabilities (2000)
+• Tenant security deposits payable.
+• Utilities payable.
+• Supplier payables.
+• Loan and mortgage payables.
+Equity (3000)
+• Owner’s equity and retained earnings.
+Income (4000)
+• Rental income – long term.
+• Rental income – short term.
+• Cleaning fees recovery.
+• Maintenance recovery (tenant-billed).
+• Utility recovery (electricity/water rebilled).
+• Late payment fees and other services.
+Expenses (5000)
+• Maintenance & repairs (by trade).
+• Cleaning and gardening.
+• Pest control.
+• Utilities (owner-borne).
+• Insurance, property tax, staff costs, administration.
+• Depreciation expense.
+6.2 Key Transaction Flows
+Rent Billing
+• When rent invoice is created:
+– Debit: Tenant Receivable (Asset)
+– Credit: Rental Income (Income)
+• When rent is paid:
+– Debit: Cash/Bank
+– Credit: Tenant Receivable
+Utility Billing
+• Owner pays utility bill:
+– Debit: Utility Expense
+– Credit: Cash/Bank
+• Tenant portion is rebilled:
+– Debit: Tenant Receivable
+– Credit: Utility Recovery Income
+• When tenant pays:
+– Debit: Cash/Bank
+– Credit: Tenant Receivable
+Maintenance Costs
+• Owner-borne maintenance:
+– Debit: Maintenance Expense
+– Credit: Inventory (if using stock) or Cash/Payables (if paid directly)
+• Tenant-recoverable maintenance:
+– Debit: Tenant Receivable
+– Credit: Maintenance Recovery Income
+Inventory Usage
+• For routine repairs:
+– Debit: Maintenance Expense
+– Credit: Inventory
+• For capital improvements:
+– Debit: Relevant Property Asset
+– Credit: Inventory
+Loan Transactions
+• When a loan is received:
+– Debit: Cash/Bank
+– Credit: Loan Liability
+• When a repayment is made:
+– Debit: Loan Liability (principal portion)
+– Debit: Interest Expense (interest portion)
+– Credit: Cash/Bank (total payment)
+Depreciation
+• Periodic posting:
+– Debit: Depreciation Expense
+– Credit: Accumulated Depreciation
+7. OWNERS, LOANS, PROJECTIONS &
+DEPRECIATION
+7.1 Owner Model
+• Owners can be individuals or companies.
+• Key fields:
+– owner_type (Individual/Company)
+– legal_name
+– registration_number (for companies)
+– tax or business identification (where applicable)
+– contact details and address
+– residency flag (for tax-related reporting).
+• Properties can have multiple owners:
+– PropertyOwners table records ownership_percent per owner.
+– Reports can be produced per owner and show share of income, costs and net results.
+7.2 Loan & Repayment Management
+• Each loan is recorded in the Loans table with:
+– Owner linkage (and, optionally, linked_property_id and linked_asset_ids).
+– Lender details, currency, principal, interest rate and method.
+– Term and frequency of repayment.
+• When a loan is created, the system generates an amortisation schedule in LoanSchedule:
+– period_number, due_date, opening_balance, principal_due, interest_due, total_payment,
+closing_balance.
+– Schedule is used for cashflow projections and reminders.
+• When an actual payment is recorded in LoanPayments:
+– Principal and interest components are stored.
+– A linked journal entry is created in the ledger to update Loan Liability and Interest Expense and
+reduce Cash/Bank.
+7.3 Cashflow & Projections
+• For each future month, the system can calculate:
+– Projected rent inflows (based on leases).
+– Projected loan outflows (from LoanSchedule).
+– Expected operating and maintenance costs (from recurring patterns and budgets).
+– Net projected cashflow per property and per owner.
+• ProjectionMonth summary table can support dashboards and scenario planning.
+7.4 Asset Register & Depreciation Framework
+• Assets table records each significant asset:
+– Buildings, equipment, vehicles, AC units, furniture and other capital items.
+– Acquisition cost, date, useful life for accounting purposes.
+– Depreciation methods for:
+• Book depreciation (internal/IFRS-like).
+• Tax depreciation (aligned to defined rules).
+• DepreciationRules table defines per-category tax rates and special rules, with references to the
+governing law and effective dates.
+• For each period (monthly or annually), depreciation is computed:
+– Book depreciation for financial statements.
+– Tax depreciation for tax computation.
+– Cumulative depreciation is capped not to exceed asset cost.
+• Reports:
+– Asset register with cost and net book value.
+– Depreciation schedules by asset and category.
+– Reconciliation between book and tax depreciation.
+8. REPORTING REQUIREMENTS
+8.1 Operational Reports
+• Task status dashboard (open, in progress, overdue, completed).
+• Preventive maintenance compliance (on-time vs overdue).
+• Technician performance and workload.
+• Issues by category and property.
+8.2 Financial Reports
+• Property-wise P&L;:
+– Rental income, utility recovery, other income.
+– Maintenance and operating expenses.
+– Net operating income, loan interest, depreciation.
+• Owner-wise P&L; and share of profit/loss.
+• Portfolio summary for all properties combined.
+• Aged receivables (tenant balances).
+• Aged payables (suppliers and loans).
+8.3 Loan & Asset Reports
+• Loan summary:
+– Outstanding principal per loan and lender.
+– Repayment schedule for the next 12 months.
+• Asset and depreciation:
+– Asset register by category and location.
+– Depreciation by period and category.
+– Net book value over time.
+8.4 Tax & Compliance Support (Conceptual)
+• Exportable data for tax computations:
+– Revenue and allowable expenses categories.
+– Tax depreciation amounts by asset.
+– Loan interest totals.
+• Audit trail:
+– Every financial posting linked back to source module (lease, task, loan payment, etc.).

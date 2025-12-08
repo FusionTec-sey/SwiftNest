@@ -35,7 +35,8 @@ import {
   insertLoanSchema,
   insertLoanPaymentSchema,
   insertAssetSchema,
-  insertDepreciationRuleSchema
+  insertDepreciationRuleSchema,
+  insertComplianceDocumentSchema
 } from "@shared/schema";
 import { generateInvoicePDF, generateReceiptPDF, getInvoicePDFPath, getReceiptPDFPath } from "./pdf-service";
 
@@ -3922,6 +3923,204 @@ export async function registerRoutes(
 
   // Serve uploaded documents (for inline viewing)
   app.use("/uploads/documents", express.static(documentsDir));
+
+  // =====================================================
+  // COMPLIANCE DOCUMENTS API
+  // =====================================================
+
+  // Get all compliance documents for user
+  app.get("/api/compliance-documents", requireAuth, async (req, res, next) => {
+    try {
+      const documents = await storage.getComplianceDocumentsByUser(req.user!.id);
+      res.json(documents);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get expiring documents
+  app.get("/api/compliance-documents/expiring", requireAuth, async (req, res, next) => {
+    try {
+      const withinDays = req.query.days ? parseInt(req.query.days as string) : 30;
+      const documents = await storage.getExpiringComplianceDocuments(req.user!.id, withinDays);
+      res.json(documents);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get compliance documents by entity
+  app.get("/api/compliance-documents/entity/:type/:id", requireAuth, async (req, res, next) => {
+    try {
+      const { type, id } = req.params;
+      const entityId = parseInt(id);
+      
+      if (!["OWNER", "PROPERTY"].includes(type) || isNaN(entityId)) {
+        return res.status(400).json({ message: "Invalid entity type or ID" });
+      }
+
+      // Verify access
+      if (type === "OWNER") {
+        const access = await storage.canUserAccessOwner(entityId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        const access = await storage.canUserAccessProperty(entityId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const documents = await storage.getComplianceDocumentsByEntity(type as "OWNER" | "PROPERTY", entityId);
+      res.json(documents);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get single compliance document
+  app.get("/api/compliance-documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getComplianceDocumentById(id);
+      if (!document) {
+        return res.status(404).json({ message: "Compliance document not found" });
+      }
+
+      // Verify access based on entity
+      if (document.entityType === "OWNER") {
+        const access = await storage.canUserAccessOwner(document.entityId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        const access = await storage.canUserAccessProperty(document.entityId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      res.json(document);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create compliance document
+  app.post("/api/compliance-documents", requireAuth, async (req, res, next) => {
+    try {
+      const parseResult = insertComplianceDocumentSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const data = parseResult.data;
+
+      // Verify access based on entity
+      if (data.entityType === "OWNER") {
+        const access = await storage.canUserAccessOwner(data.entityId, req.user!.id);
+        if (!access.canAccess || access.role === "VIEWER") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        const access = await storage.canUserAccessProperty(data.entityId, req.user!.id);
+        if (!access.canAccess || (access.role === "VIEWER" && !access.isOwner)) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const document = await storage.createComplianceDocument({
+        ...data,
+        createdByUserId: req.user!.id,
+      });
+      res.status(201).json(document);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update compliance document
+  app.patch("/api/compliance-documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const existingDoc = await storage.getComplianceDocumentById(id);
+      if (!existingDoc) {
+        return res.status(404).json({ message: "Compliance document not found" });
+      }
+
+      // Verify access based on entity
+      if (existingDoc.entityType === "OWNER") {
+        const access = await storage.canUserAccessOwner(existingDoc.entityId, req.user!.id);
+        if (!access.canAccess || access.role === "VIEWER") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        const access = await storage.canUserAccessProperty(existingDoc.entityId, req.user!.id);
+        if (!access.canAccess || (access.role === "VIEWER" && !access.isOwner)) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const partialSchema = insertComplianceDocumentSchema.partial();
+      const parseResult = partialSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const updated = await storage.updateComplianceDocument(id, parseResult.data);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete compliance document
+  app.delete("/api/compliance-documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const existingDoc = await storage.getComplianceDocumentById(id);
+      if (!existingDoc) {
+        return res.status(404).json({ message: "Compliance document not found" });
+      }
+
+      // Verify access based on entity
+      if (existingDoc.entityType === "OWNER") {
+        const access = await storage.canUserAccessOwner(existingDoc.entityId, req.user!.id);
+        if (!access.canAccess || access.role === "VIEWER") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        const access = await storage.canUserAccessProperty(existingDoc.entityId, req.user!.id);
+        if (!access.canAccess || (access.role === "VIEWER" && !access.isOwner)) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      await storage.deleteComplianceDocument(id);
+      res.json({ message: "Compliance document deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);

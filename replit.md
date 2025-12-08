@@ -78,6 +78,17 @@ Preferred communication style: Simple, everyday language.
 - Property images: Stored as JSON array, uploaded via multer to /uploads/properties
 - Property sharing: Invite users by email with VIEWER or EDITOR roles
 - Occupancy analytics: Dashboard shows vacant/occupied counts and occupancy rate percentages
+- Property Maintenance Management: Full issue tracking, task management, team management, materials inventory, and recurring schedules
+
+**Maintenance Module (8 tables)**
+- **maintenance_team_members**: Property maintenance staff with roles and contact info
+- **maintenance_member_skills**: Junction table for team member skills (PLUMBING, ELECTRICAL, etc.)
+- **maintenance_materials**: Inventory tracking with quantity, unit, cost, reorder threshold
+- **maintenance_issues**: Issue reporting with severity (LOW/MEDIUM/HIGH/URGENT), status workflow
+- **maintenance_tasks**: Task management with priority, status, assignment, estimated cost/duration
+- **maintenance_task_activity**: Activity log for task status changes and updates
+- **maintenance_task_materials**: Junction table for materials used in tasks
+- **maintenance_schedules**: Recurring maintenance schedules with frequency (DAILY/WEEKLY/MONTHLY/etc.)
 
 **Data Validation**
 - Zod schemas for runtime validation

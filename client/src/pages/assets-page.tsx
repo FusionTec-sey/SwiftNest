@@ -404,7 +404,7 @@ export default function AssetsPage() {
                   <FormItem>
                     <FormLabel>Property (Optional)</FormLabel>
                     <Select
-                      onValueChange={(val) => field.onChange(val ? parseInt(val) : undefined)}
+                      onValueChange={(val) => field.onChange(val && val !== "none" ? parseInt(val) : undefined)}
                       value={field.value ? field.value.toString() : ""}
                     >
                       <FormControl>
@@ -413,7 +413,7 @@ export default function AssetsPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="none">No Property</SelectItem>
                         {properties?.map((property) => (
                           <SelectItem key={property.id} value={property.id.toString()}>
                             {property.name}

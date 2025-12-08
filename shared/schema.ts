@@ -1255,6 +1255,93 @@ export const depreciationRuns = pgTable("depreciation_runs", {
 ]);
 
 // =====================================================
+// EXPENSE MANAGEMENT
+// =====================================================
+
+// Expense category enum
+export const expenseCategoryEnum = pgEnum("expense_category", [
+  "MAINTENANCE",           // Repairs, maintenance work
+  "DOCUMENT_FEES",         // License renewals, permit fees, registration
+  "INSURANCE",             // Insurance premiums
+  "UTILITIES",             // Landlord-paid utilities
+  "PROPERTY_TAX",          // Property taxes
+  "MANAGEMENT_FEES",       // Property management fees
+  "LEGAL_FEES",            // Legal and professional fees
+  "SUPPLIES",              // Cleaning supplies, consumables
+  "CAPITAL_IMPROVEMENT",   // Major renovations, upgrades
+  "TRAVEL",                // Travel related to property management
+  "MARKETING",             // Advertising, tenant acquisition
+  "BANK_CHARGES",          // Bank fees, transaction fees
+  "OTHER"                  // Miscellaneous expenses
+]);
+
+// Expense payment status enum
+export const expensePaymentStatusEnum = pgEnum("expense_payment_status", [
+  "UNPAID",                // Not yet paid
+  "PAID",                  // Fully paid
+  "PARTIALLY_PAID",        // Partially paid
+  "CANCELLED"              // Cancelled/voided
+]);
+
+// Expense payment method enum
+export const expensePaymentMethodEnum = pgEnum("expense_payment_method", [
+  "CASH",
+  "BANK_TRANSFER",
+  "CREDIT_CARD",
+  "DEBIT_CARD",
+  "CHECK",
+  "MOBILE_PAYMENT",
+  "OTHER"
+]);
+
+// Expenses table
+export const expenses = pgTable("expenses", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerId: integer("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  // Optional links to related modules
+  maintenanceIssueId: integer("maintenance_issue_id").references(() => maintenanceIssues.id, { onDelete: "set null" }),
+  maintenanceTaskId: integer("maintenance_task_id").references(() => maintenanceTasks.id, { onDelete: "set null" }),
+  complianceDocumentId: integer("compliance_document_id").references(() => complianceDocuments.id, { onDelete: "set null" }),
+  // Expense details
+  category: expenseCategoryEnum("category").notNull(),
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  taxAmount: decimal("tax_amount", { precision: 14, scale: 2 }).default("0"),
+  totalAmount: decimal("total_amount", { precision: 14, scale: 2 }).notNull(),
+  expenseDate: timestamp("expense_date").notNull(),
+  // Vendor information
+  vendorName: text("vendor_name"),
+  vendorTaxId: text("vendor_tax_id"),
+  vendorContact: text("vendor_contact"),
+  invoiceNumber: text("invoice_number"),
+  // Payment details
+  paymentStatus: expensePaymentStatusEnum("payment_status").notNull().default("UNPAID"),
+  paymentMethod: expensePaymentMethodEnum("payment_method"),
+  paymentDate: timestamp("payment_date"),
+  paymentReference: text("payment_reference"),
+  // Attachments (receipt images, invoices)
+  attachments: text("attachments").array().default([]),
+  notes: text("notes"),
+  // Accounting integration
+  ledgerEntryId: integer("ledger_entry_id"),
+  // Audit fields
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("expenses_owner_idx").on(table.ownerId),
+  index("expenses_property_idx").on(table.propertyId),
+  index("expenses_category_idx").on(table.category),
+  index("expenses_date_idx").on(table.expenseDate),
+  index("expenses_status_idx").on(table.paymentStatus),
+  index("expenses_maintenance_issue_idx").on(table.maintenanceIssueId),
+  index("expenses_maintenance_task_idx").on(table.maintenanceTaskId),
+  index("expenses_compliance_idx").on(table.complianceDocumentId),
+]);
+
+// =====================================================
 // ROLE-BASED ACCESS CONTROL (RBAC) SYSTEM
 // =====================================================
 
@@ -1576,6 +1663,26 @@ export const insertDepreciationRuleSchema = createInsertSchema(depreciationRules
 });
 
 // =====================================================
+// EXPENSE INSERT SCHEMAS
+// =====================================================
+
+export const insertExpenseSchema = createInsertSchema(expenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  ledgerEntryId: true,
+}).extend({
+  amount: z.string().or(z.number()).transform((val) => String(val)),
+  taxAmount: z.string().or(z.number()).optional().transform((val) => val ? String(val) : "0"),
+  totalAmount: z.string().or(z.number()).transform((val) => String(val)),
+  expenseDate: z.string().or(z.date()).transform((val) => typeof val === 'string' ? new Date(val) : val),
+  paymentDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? new Date(val) : val;
+  }),
+});
+
+// =====================================================
 // RBAC INSERT SCHEMAS
 // =====================================================
 
@@ -1674,6 +1781,8 @@ export type InsertAsset = z.infer<typeof insertAssetSchema>;
 export type DepreciationRule = typeof depreciationRules.$inferSelect;
 export type InsertDepreciationRule = z.infer<typeof insertDepreciationRuleSchema>;
 export type DepreciationRun = typeof depreciationRuns.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
 // Extended types with relations
 export type OwnerWithProperties = Owner & {
@@ -1697,6 +1806,15 @@ export type AssetWithDepreciation = Asset & {
   owner: Owner;
   property?: Property | null;
   depreciationRuns: DepreciationRun[];
+};
+
+export type ExpenseWithDetails = Expense & {
+  owner: Owner;
+  property?: Property | null;
+  unit?: Unit | null;
+  maintenanceIssue?: MaintenanceIssue | null;
+  maintenanceTask?: MaintenanceTask | null;
+  complianceDocument?: ComplianceDocument | null;
 };
 
 export type LedgerEntryWithLines = LedgerEntry & {

@@ -49,6 +49,7 @@ import { UnitForm } from "@/components/unit-form";
 import { EmptyState } from "@/components/empty-state";
 import { ImageGallery } from "@/components/image-gallery";
 import { ShareDialog } from "@/components/share-dialog";
+import { PropertyTree } from "@/components/property-tree";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Property, Unit, InsertUnit } from "@shared/schema";
@@ -526,6 +527,15 @@ export default function PropertyDetailPage() {
                     }}
                   />
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <PropertyTree 
+                  propertyId={propertyId} 
+                  canEdit={property.isOwner !== false || property.userRole === "EDITOR"}
+                />
               </CardContent>
             </Card>
           </div>

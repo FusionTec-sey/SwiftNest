@@ -16,7 +16,7 @@ import {
   type PropertyNodeWithChildren
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, or, inArray } from "drizzle-orm";
+import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -402,9 +402,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPropertyNode(node: InsertPropertyNode): Promise<PropertyNode> {
+    let sortOrder = node.sortOrder;
+    if (sortOrder === undefined || sortOrder === null) {
+      const siblings = await db
+        .select()
+        .from(propertyNodes)
+        .where(
+          node.parentId === null || node.parentId === undefined
+            ? and(eq(propertyNodes.propertyId, node.propertyId), isNull(propertyNodes.parentId))
+            : eq(propertyNodes.parentId, node.parentId)
+        );
+      const maxSort = siblings.reduce((max, s) => Math.max(max, s.sortOrder), -1);
+      sortOrder = maxSort + 1;
+    }
+    
     const [newNode] = await db
       .insert(propertyNodes)
-      .values(node)
+      .values({ ...node, sortOrder })
       .returning();
     return newNode;
   }
@@ -419,17 +433,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async movePropertyNode(nodeId: number, parentId: number | null, sortOrder?: number): Promise<PropertyNode | undefined> {
-    const updates: Partial<PropertyNode> = { 
-      parentId, 
-      updatedAt: new Date() 
-    };
-    if (sortOrder !== undefined) {
-      updates.sortOrder = sortOrder;
+    const existingNode = await this.getNodeById(nodeId);
+    if (!existingNode) return undefined;
+    
+    let finalSortOrder = sortOrder;
+    if (finalSortOrder === undefined) {
+      const siblings = await db
+        .select()
+        .from(propertyNodes)
+        .where(
+          parentId === null
+            ? and(eq(propertyNodes.propertyId, existingNode.propertyId), isNull(propertyNodes.parentId))
+            : eq(propertyNodes.parentId, parentId)
+        );
+      const maxSort = siblings.filter(s => s.id !== nodeId).reduce((max, s) => Math.max(max, s.sortOrder), -1);
+      finalSortOrder = maxSort + 1;
     }
     
     const [updated] = await db
       .update(propertyNodes)
-      .set(updates)
+      .set({ parentId, sortOrder: finalSortOrder, updatedAt: new Date() })
       .where(eq(propertyNodes.id, nodeId))
       .returning();
     return updated || undefined;

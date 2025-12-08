@@ -70,6 +70,7 @@ export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideE
   const typeColorClass = propertyTypeColors[property.propertyType] || "bg-muted text-muted-foreground";
   const unitCount = property.units?.length || 0;
   const vacantCount = property.units?.filter((u) => u.status === "VACANT").length || 0;
+  const occupiedCount = property.units?.filter((u) => u.status === "OCCUPIED").length || 0;
 
   const fullAddress = [
     property.addressLine1,
@@ -187,15 +188,33 @@ export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideE
         </div>
         
         {unitCount > 0 && (
-          <div className="flex items-center gap-3 mt-3 pt-3 border-t">
-            <div className="text-sm">
-              <span className="font-medium">{unitCount}</span>
-              <span className="text-muted-foreground ml-1">Units</span>
+          <div className="mt-3 pt-3 border-t">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="text-sm">
+                <span className="font-medium">{unitCount}</span>
+                <span className="text-muted-foreground ml-1">Units</span>
+              </div>
+              <div className="text-sm">
+                <span className="font-medium text-green-600 dark:text-green-400">{occupiedCount}</span>
+                <span className="text-muted-foreground ml-1">Occupied</span>
+              </div>
+              <div className="text-sm">
+                <span className="font-medium text-gray-500 dark:text-gray-400">{vacantCount}</span>
+                <span className="text-muted-foreground ml-1">Vacant</span>
+              </div>
             </div>
-            <div className="text-sm">
-              <span className="font-medium text-green-600 dark:text-green-400">{vacantCount}</span>
-              <span className="text-muted-foreground ml-1">Vacant</span>
-            </div>
+            {occupiedCount > 0 && (
+              <div className="mt-2">
+                <Badge 
+                  variant="secondary" 
+                  className="gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 border-0"
+                  data-testid={`badge-leased-${property.id}`}
+                >
+                  <User className="h-3 w-3" />
+                  {Math.round((occupiedCount / unitCount) * 100)}% Occupancy
+                </Badge>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
+import { hasPermission, getAccessiblePropertyIds, requirePermission, hasAnyPermission, requireSuperAdmin } from "./rbac";
 import { 
   insertPropertySchema, 
   insertUnitSchema, 
@@ -4192,15 +4193,11 @@ export async function registerRoutes(
   // ADMIN / RBAC API
   // =====================================================
 
+  const superAdminMiddleware = requireSuperAdmin();
+
   // Get all roles with their permissions
-  app.get("/api/admin/roles", requireAuth, async (req, res, next) => {
+  app.get("/api/admin/roles", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      // Only super admins can view roles
-      const user = await storage.getUser(req.user!.id);
-      if (!user || user.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const allRoles = await storage.getAllRoles();
       res.json(allRoles);
     } catch (error) {
@@ -4209,13 +4206,8 @@ export async function registerRoutes(
   });
 
   // Get all permissions
-  app.get("/api/admin/permissions", requireAuth, async (req, res, next) => {
+  app.get("/api/admin/permissions", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const user = await storage.getUser(req.user!.id);
-      if (!user || user.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const allPermissions = await storage.getAllPermissions();
       res.json(allPermissions);
     } catch (error) {
@@ -4224,13 +4216,8 @@ export async function registerRoutes(
   });
 
   // Get all users with their roles
-  app.get("/api/admin/users", requireAuth, async (req, res, next) => {
+  app.get("/api/admin/users", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const user = await storage.getUser(req.user!.id);
-      if (!user || user.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
     } catch (error) {
@@ -4239,13 +4226,8 @@ export async function registerRoutes(
   });
 
   // Get a specific user with their roles
-  app.get("/api/admin/users/:id", requireAuth, async (req, res, next) => {
+  app.get("/api/admin/users/:id", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const user = await storage.getUser(req.user!.id);
-      if (!user || user.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const userId = parseInt(req.params.id);
       if (isNaN(userId)) {
         return res.status(400).json({ message: "Invalid user ID" });
@@ -4263,13 +4245,8 @@ export async function registerRoutes(
   });
 
   // Create a new user (admin only)
-  app.post("/api/admin/users", requireAuth, async (req, res, next) => {
+  app.post("/api/admin/users", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const currentUser = await storage.getUser(req.user!.id);
-      if (!currentUser || currentUser.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const { name, email, phone, password, accountType, organizationName, organizationType, roleAssignments } = req.body;
       
       if (!name || !email || !phone || !password) {
@@ -4321,13 +4298,8 @@ export async function registerRoutes(
   });
 
   // Update user active status (activate/deactivate)
-  app.patch("/api/admin/users/:id/status", requireAuth, async (req, res, next) => {
+  app.patch("/api/admin/users/:id/status", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const currentUser = await storage.getUser(req.user!.id);
-      if (!currentUser || currentUser.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const userId = parseInt(req.params.id);
       if (isNaN(userId)) {
         return res.status(400).json({ message: "Invalid user ID" });
@@ -4355,13 +4327,8 @@ export async function registerRoutes(
   });
 
   // Assign a role to a user
-  app.post("/api/admin/users/:id/roles", requireAuth, async (req, res, next) => {
+  app.post("/api/admin/users/:id/roles", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const currentUser = await storage.getUser(req.user!.id);
-      if (!currentUser || currentUser.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const userId = parseInt(req.params.id);
       if (isNaN(userId)) {
         return res.status(400).json({ message: "Invalid user ID" });
@@ -4400,13 +4367,8 @@ export async function registerRoutes(
   });
 
   // Remove a role assignment from a user
-  app.delete("/api/admin/role-assignments/:id", requireAuth, async (req, res, next) => {
+  app.delete("/api/admin/role-assignments/:id", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
-      const currentUser = await storage.getUser(req.user!.id);
-      if (!currentUser || currentUser.isSuperAdmin !== 1) {
-        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
-      }
-      
       const assignmentId = parseInt(req.params.id);
       if (isNaN(assignmentId)) {
         return res.status(400).json({ message: "Invalid assignment ID" });

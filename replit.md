@@ -32,7 +32,12 @@ Preferred communication style: Simple, everyday language.
 
 -   **Framework:** Express.js with TypeScript on Node.js, RESTful API.
 -   **Authentication:** Session-based with Passport.js (Local Strategy), Scrypt for password hashing, PostgreSQL session store.
--   **Authorization:** Centralized Collaborator Access Pattern for role-based property access (OWNER, EDITOR, VIEWER), team management with roles (ADMIN, ACCOUNTANT, MAINTENANCE_MANAGER, MAINTENANCE_STAFF, VIEWER).
+-   **Authorization:** Comprehensive Role-Based Access Control (RBAC) system with:
+    -   **Roles:** Super Admin, Property Manager, Accountant, Maintenance Supervisor, Compliance Officer, Viewer
+    -   **Permissions:** 43 granular permissions across 9 modules (property, unit, tenant, lease, payment, maintenance, accounting, compliance, report)
+    -   **Property Scoping:** Role assignments can be global (all properties) or scoped to specific properties
+    -   **RBAC Module:** `server/rbac.ts` provides middleware and helper functions for permission checking
+    -   **Admin UI:** `/admin` page for super admins to create users and assign roles
 -   **Database:** PostgreSQL with Drizzle ORM for type-safe operations.
 -   **Schema Design:**
     -   **Multi-entity Ownership:** `Owners` table allows a single user to manage properties under multiple legal entities (Individual, Company, Trust).

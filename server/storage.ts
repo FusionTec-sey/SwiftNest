@@ -609,6 +609,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAccessiblePropertyIds(userId: number): Promise<number[]> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    
+    if (user?.isSuperAdmin === 1) {
+      const allProps = await db
+        .select({ id: properties.id })
+        .from(properties)
+        .where(eq(properties.isDeleted, 0));
+      return allProps.map(p => p.id);
+    }
+    
     const ownedProperties = await db
       .select({ id: properties.id })
       .from(properties)
@@ -623,15 +633,81 @@ export class DatabaseStorage implements IStorage {
         eq(properties.isDeleted, 0)
       ));
     
+    const globalRbacAssignment = await db
+      .select()
+      .from(userRoleAssignments)
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.isActive, 1),
+        isNull(userRoleAssignments.propertyId)
+      ));
+    
+    if (globalRbacAssignment.length > 0) {
+      const allProps = await db
+        .select({ id: properties.id })
+        .from(properties)
+        .where(eq(properties.isDeleted, 0));
+      return allProps.map(p => p.id);
+    }
+    
+    const propertyRbacAssignments = await db
+      .select({ propertyId: userRoleAssignments.propertyId })
+      .from(userRoleAssignments)
+      .innerJoin(properties, eq(properties.id, userRoleAssignments.propertyId))
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.isActive, 1),
+        eq(properties.isDeleted, 0),
+        sql`${userRoleAssignments.propertyId} IS NOT NULL`
+      ));
+    
     const allIds = new Set([
       ...ownedProperties.map(p => p.id),
-      ...sharedProperties.map(p => p.id)
+      ...sharedProperties.map(p => p.id),
+      ...propertyRbacAssignments.filter(p => p.propertyId !== null).map(p => p.propertyId as number)
     ]);
     
     return Array.from(allIds);
   }
 
   async getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string })[]> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    
+    const globalRbacAssignment = await db
+      .select()
+      .from(userRoleAssignments)
+      .innerJoin(roles, eq(userRoleAssignments.roleId, roles.id))
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.isActive, 1),
+        isNull(userRoleAssignments.propertyId)
+      ));
+    
+    if (user?.isSuperAdmin === 1 || globalRbacAssignment.length > 0) {
+      const allProps = await db
+        .select()
+        .from(properties)
+        .where(eq(properties.isDeleted, 0))
+        .orderBy(desc(properties.createdAt));
+      
+      const globalRole = user?.isSuperAdmin === 1 
+        ? 'SUPER_ADMIN' 
+        : globalRbacAssignment[0]?.roles.name || 'RBAC_ACCESS';
+      
+      const propertiesWithUnits = await Promise.all(
+        allProps.map(async (property) => {
+          const propertyUnits = await db
+            .select()
+            .from(units)
+            .where(eq(units.propertyId, property.id))
+            .orderBy(units.unitName);
+          return { ...property, units: propertyUnits, role: globalRole };
+        })
+      );
+      
+      return propertiesWithUnits;
+    }
+    
     const ownedProperties = await db
       .select()
       .from(properties)
@@ -644,7 +720,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(propertyCollaborators.userId, userId));
     
     const sharedPropertyIds = collaborations.map(c => c.propertyId);
-    const roleMap = new Map(collaborations.map(c => [c.propertyId, c.role]));
+    const roleMap = new Map<number, string>(collaborations.map(c => [c.propertyId, c.role]));
     
     let sharedProperties: Property[] = [];
     if (sharedPropertyIds.length > 0) {
@@ -658,9 +734,55 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(properties.createdAt));
     }
     
+    const propertyRbacAssignments = await db
+      .select({
+        propertyId: userRoleAssignments.propertyId,
+        roleName: roles.name
+      })
+      .from(userRoleAssignments)
+      .innerJoin(roles, eq(userRoleAssignments.roleId, roles.id))
+      .innerJoin(properties, eq(properties.id, userRoleAssignments.propertyId))
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.isActive, 1),
+        eq(properties.isDeleted, 0),
+        sql`${userRoleAssignments.propertyId} IS NOT NULL`
+      ));
+    
+    const rbacPropertyIds = propertyRbacAssignments
+      .filter(a => a.propertyId !== null)
+      .map(a => a.propertyId as number);
+    
+    const rbacRoleMap = new Map<number, string>(
+      propertyRbacAssignments
+        .filter(a => a.propertyId !== null)
+        .map(a => [a.propertyId as number, a.roleName])
+    );
+    
+    let rbacProperties: Property[] = [];
+    if (rbacPropertyIds.length > 0) {
+      const ownedAndSharedIds = new Set([
+        ...ownedProperties.map(p => p.id),
+        ...sharedProperties.map(p => p.id)
+      ]);
+      const uniqueRbacPropertyIds = rbacPropertyIds.filter(id => !ownedAndSharedIds.has(id));
+      
+      if (uniqueRbacPropertyIds.length > 0) {
+        rbacProperties = await db
+          .select()
+          .from(properties)
+          .where(and(
+            inArray(properties.id, uniqueRbacPropertyIds),
+            eq(properties.isDeleted, 0)
+          ))
+          .orderBy(desc(properties.createdAt));
+      }
+    }
+    
     const allProperties = [
       ...ownedProperties.map(p => ({ ...p, role: 'OWNER' as string })),
-      ...sharedProperties.map(p => ({ ...p, role: roleMap.get(p.id) || 'VIEWER' }))
+      ...sharedProperties.map(p => ({ ...p, role: roleMap.get(p.id) || 'VIEWER' })),
+      ...rbacProperties.map(p => ({ ...p, role: rbacRoleMap.get(p.id) || 'RBAC_ACCESS' }))
     ];
     
     const propertiesWithUnits = await Promise.all(
@@ -917,16 +1039,40 @@ export class DatabaseStorage implements IStorage {
       .from(properties)
       .where(eq(properties.id, propertyId));
     
-    if (!property) {
+    if (!property || property.isDeleted === 1) {
       return { canAccess: false, role: null, isOwner: false };
+    }
+    
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (user?.isSuperAdmin === 1) {
+      return { canAccess: true, role: 'SUPER_ADMIN', isOwner: false };
     }
     
     if (property.ownerUserId === userId) {
       return { canAccess: true, role: 'OWNER', isOwner: true };
     }
     
-    const role = await this.getCollaboratorRole(propertyId, userId);
-    return { canAccess: role !== null, role, isOwner: false };
+    const rbacAssignments = await db
+      .select()
+      .from(userRoleAssignments)
+      .innerJoin(roles, eq(userRoleAssignments.roleId, roles.id))
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.isActive, 1),
+        or(
+          isNull(userRoleAssignments.propertyId),
+          eq(userRoleAssignments.propertyId, propertyId)
+        )
+      ));
+    
+    if (rbacAssignments.length > 0) {
+      const propertyScoped = rbacAssignments.find(a => a.user_role_assignments.propertyId === propertyId);
+      const role = propertyScoped?.roles.name || rbacAssignments[0]?.roles.name || 'RBAC_ACCESS';
+      return { canAccess: true, role, isOwner: false };
+    }
+    
+    const collabRole = await this.getCollaboratorRole(propertyId, userId);
+    return { canAccess: collabRole !== null, role: collabRole, isOwner: false };
   }
 
   async getPropertyTree(propertyId: number): Promise<PropertyNodeWithChildren[]> {

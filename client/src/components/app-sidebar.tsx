@@ -15,6 +15,7 @@ import {
   LogOut,
   Trash2,
   FileCheck,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -191,6 +192,23 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {user?.isSuperAdmin === 1 && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive("/admin")}
+                    tooltip="Admin"
+                  >
+                    <Link 
+                      href="/admin" 
+                      data-testid="sidebar-link-admin"
+                    >
+                      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

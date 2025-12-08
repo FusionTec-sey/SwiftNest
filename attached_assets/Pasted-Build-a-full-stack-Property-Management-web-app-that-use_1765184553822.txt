@@ -1,0 +1,114 @@
+Build a full-stack **Property Management** web app that uses **PostgreSQL** as the main database.
+
+Name of the project: **SwiftNest**
+
+🏗 Tech stack (very important):
+- Backend: Node.js + Express (TypeScript preferred)
+- Frontend: React (Vite or Next.js, whichever you support best)
+- Database: **PostgreSQL**
+- ORM: Prisma (or another good Node.js ORM) configured for PostgreSQL
+- Auth: JWT-based authentication (access + refresh tokens) or secure session-based auth
+
+🧩 Core Features:
+
+1. **User Registration & Login**
+   - User can register and log in.
+   - During registration, user must choose **Account Type**:
+     - **Individual**
+     - **Organization**
+   - Common fields:
+     - Full name
+     - Email (unique)
+     - Phone
+     - Password (hashed, never stored in plain text)
+   - Extra fields for **Organization**:
+     - Organization name
+     - Organization type (e.g. Builder, Property Manager, Company, etc.)
+     - GST / tax ID (optional)
+   - Store account type in the database (e.g. enum: `INDIVIDUAL`, `ORGANIZATION`).
+
+2. **Database Models (PostgreSQL)**
+   - `User`
+     - id (primary key)
+     - name
+     - email (unique)
+     - phone
+     - password_hash
+     - account_type (`INDIVIDUAL` or `ORGANIZATION`)
+     - created_at, updated_at
+   - `Property`
+     - id (primary key)
+     - owner_user_id (FK to User.id)
+     - optional: owner_org_name (for organization accounts, duplicate of org name for easy reading)
+     - name (e.g. "Shree Residency", "Green Villa 101")
+     - property_type (e.g. APARTMENT, VILLA, PLOT, OFFICE, SHOP — can be enum or text)
+     - address_line1
+     - address_line2
+     - city
+     - state
+     - country
+     - pincode
+     - latitude, longitude (optional)
+     - created_at, updated_at
+   - (Optional but preferred) `Unit`
+     - id
+     - property_id (FK)
+     - unit_name / number (e.g. "A-101", "Plot 23")
+     - floor (optional)
+     - area_sq_ft (optional)
+     - status (e.g. VACANT, OCCUPIED)
+
+   Use proper foreign keys and indexes in PostgreSQL.
+
+3. **Property Management Features**
+   - After login, show a dashboard:
+     - For **Individual**: list of properties they own/added.
+     - For **Organization**: list of properties under the organization account.
+   - CRUD for `Property`:
+     - Create a property (form with name, type, address, etc.).
+     - Edit property.
+     - Delete property (soft delete if possible).
+     - View property details page.
+   - (Optional) CRUD for `Unit` within a property.
+
+4. **API Design**
+   - Implement REST API endpoints (JSON) such as:
+     - `POST /api/auth/register`
+     - `POST /api/auth/login`
+     - `GET /api/me` (get logged-in user)
+     - `GET /api/properties`
+     - `POST /api/properties`
+     - `GET /api/properties/:id`
+     - `PUT /api/properties/:id`
+     - `DELETE /api/properties/:id`
+   - Protect property routes so only authenticated users can access them.
+   - Only allow users to access their own properties.
+
+5. **Frontend UI**
+   - Simple, clean, responsive layout.
+   - Pages:
+     - Login
+     - Register (with toggle/radio: Individual vs Organization, show extra fields dynamically)
+     - Dashboard: table/list of properties.
+     - Add/Edit Property form.
+     - Property details page showing full address and units (if units are implemented).
+   - Use client-side form validation and show nice error messages from the backend.
+
+6. **PostgreSQL Setup**
+   - Use a single PostgreSQL database.
+   - Provide migration files or Prisma schema migrations.
+   - Configuration:
+     - Read database URL from `.env` as `DATABASE_URL`.
+   - Include a script or instructions to run migrations and start the app.
+
+7. **Developer Experience**
+   - Provide a clear `README` with:
+     - How to set up `.env` (especially PostgreSQL connection string).
+     - How to run migrations.
+     - How to start backend and frontend.
+   - Add a small seed script to create:
+     - One individual user with sample property.
+     - One organization user with sample property.
+   - Use sensible error handling and return structured error JSON.
+
+Make sure the generated project is runnable on Replit with minimal configuration: one command to start the app, PostgreSQL integration, and working registration -> login -> add property flow.

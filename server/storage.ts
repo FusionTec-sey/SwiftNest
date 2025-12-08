@@ -381,10 +381,12 @@ export interface IStorage {
   // =====================================================
   // LEASES MODULE
   // =====================================================
+  getLeasesByUserId(userId: number): Promise<LeaseWithDetails[]>;
   getLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]>;
   getLeasesByTenantId(tenantId: number): Promise<LeaseWithDetails[]>;
   getLeaseById(id: number): Promise<LeaseWithDetails | undefined>;
   getActiveLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]>;
+  getActiveLeasesDueForInvoicing(userId: number): Promise<Lease[]>;
   createLease(lease: InsertLease & { createdByUserId: number }): Promise<Lease>;
   updateLease(id: number, lease: Partial<Lease>): Promise<Lease | undefined>;
   updateLeaseStatus(id: number, status: string): Promise<Lease | undefined>;
@@ -393,6 +395,7 @@ export interface IStorage {
   // =====================================================
   // RENT INVOICES MODULE
   // =====================================================
+  getInvoicesByUserId(userId: number): Promise<RentInvoice[]>;
   getInvoicesByLeaseId(leaseId: number): Promise<RentInvoice[]>;
   getInvoiceById(id: number): Promise<RentInvoice | undefined>;
   getOverdueInvoices(): Promise<RentInvoice[]>;
@@ -1806,6 +1809,18 @@ export class DatabaseStorage implements IStorage {
     return { ...lease, property, tenant, unit };
   }
 
+  async getLeasesByUserId(userId: number): Promise<LeaseWithDetails[]> {
+    const userProperties = await this.getPropertiesByUserId(userId);
+    const propertyIds = userProperties.map(p => p.id);
+    if (propertyIds.length === 0) return [];
+    const leaseList = await db
+      .select()
+      .from(leases)
+      .where(inArray(leases.propertyId, propertyIds))
+      .orderBy(desc(leases.createdAt));
+    return Promise.all(leaseList.map((l) => this.enrichLease(l)));
+  }
+
   async getLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]> {
     const leaseList = await db
       .select()
@@ -1838,6 +1853,25 @@ export class DatabaseStorage implements IStorage {
     return Promise.all(leaseList.map((l) => this.enrichLease(l)));
   }
 
+  async getActiveLeasesDueForInvoicing(userId: number): Promise<Lease[]> {
+    const now = new Date();
+    const userProperties = await this.getPropertiesByUserId(userId);
+    const propertyIds = userProperties.map(p => p.id);
+    if (propertyIds.length === 0) return [];
+    const activeLeases = await db
+      .select()
+      .from(leases)
+      .where(and(
+        eq(leases.status, "ACTIVE"),
+        inArray(leases.propertyId, propertyIds),
+        or(
+          isNull(leases.nextInvoiceDate),
+          lte(leases.nextInvoiceDate, now)
+        )
+      ));
+    return activeLeases;
+  }
+
   async createLease(lease: InsertLease & { createdByUserId: number }): Promise<Lease> {
     const [newLease] = await db.insert(leases).values(lease).returning();
     return newLease;
@@ -1868,6 +1902,23 @@ export class DatabaseStorage implements IStorage {
   // =====================================================
   // RENT INVOICES MODULE
   // =====================================================
+
+  async getInvoicesByUserId(userId: number): Promise<RentInvoice[]> {
+    const userProperties = await this.getPropertiesByUserId(userId);
+    const propertyIds = userProperties.map(p => p.id);
+    if (propertyIds.length === 0) return [];
+    const userLeases = await db
+      .select({ id: leases.id })
+      .from(leases)
+      .where(inArray(leases.propertyId, propertyIds));
+    const leaseIds = userLeases.map(l => l.id);
+    if (leaseIds.length === 0) return [];
+    return db
+      .select()
+      .from(rentInvoices)
+      .where(inArray(rentInvoices.leaseId, leaseIds))
+      .orderBy(desc(rentInvoices.createdAt));
+  }
 
   async getInvoicesByLeaseId(leaseId: number): Promise<RentInvoice[]> {
     return db

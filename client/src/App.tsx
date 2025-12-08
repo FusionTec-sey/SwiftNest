@@ -24,6 +24,7 @@ import LoansPage from "@/pages/loans-page";
 import AssetsPage from "@/pages/assets-page";
 import ReportsPage from "@/pages/reports-page";
 import InvitePage from "@/pages/invite-page";
+import RentCollectionPage from "@/pages/rent-collection-page";
 
 function Router() {
   return (
@@ -38,6 +39,7 @@ function Router() {
       <ProtectedRoute path="/tenants" component={TenantsPage} />
       <ProtectedRoute path="/owners" component={OwnersPage} />
       <ProtectedRoute path="/leases" component={LeasesPage} />
+      <ProtectedRoute path="/rent-collection" component={RentCollectionPage} />
       <ProtectedRoute path="/accounting" component={AccountingPage} />
       <ProtectedRoute path="/utilities" component={UtilitiesPage} />
       <ProtectedRoute path="/loans" component={LoansPage} />

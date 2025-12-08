@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Building2, Home, LogOut, User, Users, UserCircle, Calculator, FileText, Gauge, Landmark, Package, ChevronDown, BarChart3 } from "lucide-react";
+import { Building2, Home, LogOut, User, Users, UserCircle, Calculator, FileText, Gauge, Landmark, Package, ChevronDown, BarChart3, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,6 +35,7 @@ export function Header() {
   ];
 
   const moreNavItems = [
+    { href: "/rent-collection", label: "Rent Collection", icon: Receipt },
     { href: "/owners", label: "Owners", icon: UserCircle },
     { href: "/accounting", label: "Accounting", icon: Calculator },
     { href: "/utilities", label: "Utilities", icon: Gauge },

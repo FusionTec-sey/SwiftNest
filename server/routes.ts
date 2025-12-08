@@ -37,6 +37,7 @@ import {
   insertAssetSchema,
   insertDepreciationRuleSchema
 } from "@shared/schema";
+import { generateInvoicePDF, generateReceiptPDF, getInvoicePDFPath, getReceiptPDFPath } from "./pdf-service";
 
 const uploadDir = path.join(process.cwd(), "uploads", "properties");
 if (!fs.existsSync(uploadDir)) {
@@ -2128,6 +2129,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leases", requireAuth, async (req, res, next) => {
+    try {
+      const leases = await storage.getLeasesByUserId(req.user!.id);
+      res.json(leases);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/leases/:id", requireAuth, async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
@@ -2232,6 +2242,15 @@ export async function registerRoutes(
   // RENT INVOICES MODULE
   // =====================================================
 
+  app.get("/api/invoices", requireAuth, async (req, res, next) => {
+    try {
+      const invoices = await storage.getInvoicesByUserId(req.user!.id);
+      res.json(invoices);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/leases/:leaseId/invoices", requireAuth, async (req, res, next) => {
     try {
       const leaseId = parseInt(req.params.leaseId);
@@ -2309,6 +2328,179 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/leases/:leaseId/generate-invoice", requireAuth, async (req, res, next) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      if (isNaN(leaseId)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const lease = await storage.getLeaseById(leaseId);
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      const access = await storage.canUserAccessProperty(lease.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const now = new Date();
+      const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const dueDate = new Date(now.getFullYear(), now.getMonth(), lease.paymentDueDay || 1);
+      if (dueDate < now) {
+        dueDate.setMonth(dueDate.getMonth() + 1);
+      }
+      const invoiceNumber = `INV-${leaseId}-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+      const invoice = await storage.createRentInvoice({
+        leaseId,
+        invoiceNumber,
+        periodStart,
+        periodEnd,
+        rentAmount: lease.rentAmount,
+        utilityCharges: "0",
+        maintenanceCharges: "0",
+        lateFees: "0",
+        otherCharges: "0",
+        totalAmount: lease.rentAmount,
+        dueDate,
+        notes: null,
+      });
+      const property = await storage.getPropertyById(lease.propertyId);
+      const tenant = await storage.getTenantById(lease.tenantId);
+      if (property && tenant) {
+        const pdfFileName = await generateInvoicePDF({
+          invoice,
+          lease,
+          property,
+          tenant,
+        });
+        const document = await storage.createDocument({
+          documentType: "INVOICE",
+          module: "LEASE",
+          moduleId: leaseId,
+          propertyId: lease.propertyId,
+          fileName: pdfFileName,
+          originalName: `Invoice_${invoiceNumber}.pdf`,
+          fileSize: 0,
+          mimeType: "application/pdf",
+          storagePath: `uploads/documents/${pdfFileName}`,
+          uploadedByUserId: req.user!.id,
+        });
+        await storage.updateRentInvoice(invoice.id, { invoiceDocumentId: document.id });
+      }
+      await storage.updateLease(leaseId, { 
+        nextInvoiceDate: new Date(now.getFullYear(), now.getMonth() + 1, lease.paymentDueDay || 1),
+        lastInvoiceGeneratedAt: now 
+      });
+      res.status(201).json(invoice);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/invoices/:id/pdf", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid invoice ID" });
+      }
+      const invoice = await storage.getInvoiceById(id);
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+      const lease = await storage.getLeaseById(invoice.leaseId);
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      const access = await storage.canUserAccessProperty(lease.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (invoice.invoiceDocumentId) {
+        const document = await storage.getDocumentById(invoice.invoiceDocumentId);
+        if (document) {
+          const filePath = getInvoicePDFPath(document.fileName);
+          if (fs.existsSync(filePath)) {
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", `inline; filename="${document.originalName}"`);
+            return res.sendFile(filePath);
+          }
+        }
+      }
+      const property = await storage.getPropertyById(lease.propertyId);
+      const tenant = await storage.getTenantById(lease.tenantId);
+      if (!property || !tenant) {
+        return res.status(404).json({ message: "Property or tenant not found" });
+      }
+      const pdfFileName = await generateInvoicePDF({ invoice, lease, property, tenant });
+      const filePath = getInvoicePDFPath(pdfFileName);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="Invoice_${invoice.invoiceNumber}.pdf"`);
+      res.sendFile(filePath);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/leases/generate-all-invoices", requireAuth, async (req, res, next) => {
+    try {
+      const activeLeases = await storage.getActiveLeasesDueForInvoicing(req.user!.id);
+      const generatedInvoices = [];
+      for (const lease of activeLeases) {
+        const now = new Date();
+        const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const dueDate = new Date(now.getFullYear(), now.getMonth(), lease.paymentDueDay || 1);
+        if (dueDate < now) {
+          dueDate.setMonth(dueDate.getMonth() + 1);
+        }
+        const invoiceNumber = `INV-${lease.id}-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+        const invoice = await storage.createRentInvoice({
+          leaseId: lease.id,
+          invoiceNumber,
+          periodStart,
+          periodEnd,
+          rentAmount: lease.rentAmount,
+          utilityCharges: "0",
+          maintenanceCharges: "0",
+          lateFees: "0",
+          otherCharges: "0",
+          totalAmount: lease.rentAmount,
+          dueDate,
+          notes: null,
+        });
+        const property = await storage.getPropertyById(lease.propertyId);
+        const tenant = await storage.getTenantById(lease.tenantId);
+        if (property && tenant) {
+          const pdfFileName = await generateInvoicePDF({ invoice, lease, property, tenant });
+          const document = await storage.createDocument({
+            documentType: "INVOICE",
+            module: "LEASE",
+            moduleId: lease.id,
+            propertyId: lease.propertyId,
+            fileName: pdfFileName,
+            originalName: `Invoice_${invoiceNumber}.pdf`,
+            fileSize: 0,
+            mimeType: "application/pdf",
+            storagePath: `uploads/documents/${pdfFileName}`,
+            uploadedByUserId: req.user!.id,
+          });
+          await storage.updateRentInvoice(invoice.id, { invoiceDocumentId: document.id });
+        }
+        await storage.updateLease(lease.id, { 
+          nextInvoiceDate: new Date(now.getFullYear(), now.getMonth() + 1, lease.paymentDueDay || 1),
+          lastInvoiceGeneratedAt: now 
+        });
+        generatedInvoices.push(invoice);
+      }
+      res.status(201).json({ 
+        message: `Generated ${generatedInvoices.length} invoices`,
+        invoices: generatedInvoices 
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // =====================================================
   // PAYMENTS MODULE
   // =====================================================
@@ -2343,6 +2535,43 @@ export async function registerRoutes(
       }
       
       res.status(201).json(payment);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/payments/:id/receipt", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid payment ID" });
+      }
+      const payment = await storage.getPaymentById(id);
+      if (!payment) {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+      if (payment.appliedToType === "RENT_INVOICE") {
+        const invoice = await storage.getInvoiceById(payment.appliedToId);
+        if (invoice) {
+          const lease = await storage.getLeaseById(invoice.leaseId);
+          if (lease) {
+            const access = await storage.canUserAccessProperty(lease.propertyId, req.user!.id);
+            if (!access.canAccess) {
+              return res.status(403).json({ message: "Access denied" });
+            }
+            const property = await storage.getPropertyById(lease.propertyId);
+            const tenant = await storage.getTenantById(lease.tenantId);
+            if (property && tenant) {
+              const pdfFileName = await generateReceiptPDF({ payment, invoice, property, tenant });
+              const filePath = getReceiptPDFPath(pdfFileName);
+              res.setHeader("Content-Type", "application/pdf");
+              res.setHeader("Content-Disposition", `inline; filename="Receipt_${payment.id}.pdf"`);
+              return res.sendFile(filePath);
+            }
+          }
+        }
+      }
+      res.status(400).json({ message: "Cannot generate receipt for this payment type" });
     } catch (error) {
       next(error);
     }

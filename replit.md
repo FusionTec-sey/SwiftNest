@@ -133,6 +133,23 @@ Preferred communication style: Simple, everyday language.
 - **Entry Reversal**: Reversing entries creates a new entry with opposite debits/credits
 - **Reports**: Trial Balance, Account Summary by account type
 
+**Rent Collection Workflow**
+- Dedicated rent collection page at `/rent-collection`
+- **Dashboard Metrics**: Active Leases count, Pending Invoices count, Total Outstanding amount, Collected This Month amount
+- **Invoice Generation**:
+  - Generate individual invoice from lease: `POST /api/leases/:leaseId/generate-invoice`
+  - Bulk generate invoices for all due leases: `POST /api/leases/generate-all-invoices`
+  - Automatically creates PDF invoice document and links to lease
+  - Updates lease.nextInvoiceDate for next billing cycle
+- **PDF Generation** (server/pdf-service.ts):
+  - Professional invoice PDFs with property, tenant, and billing details
+  - Payment receipts for completed payments
+  - Uses pdfkit library, stores files in /uploads/documents
+- **Invoice PDF Download**: `GET /api/invoices/:id/pdf`
+- **Payment Recording**: Record payments against invoices with automatic ledger posting
+- **Payment Receipt PDF**: `GET /api/payments/:id/receipt`
+- **Overdue Tracking**: Visual highlighting of overdue invoices with quick payment actions
+
 **Data Validation**
 - Zod schemas for runtime validation
 - Drizzle-Zod integration for automatic schema generation from database schema

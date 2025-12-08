@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Plus, Search, Trash2, Users } from "lucide-react";
-import { useState } from "react";
-import { Link } from "wouter";
+import { Building2, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,10 +18,11 @@ import { PropertyCard } from "@/components/property-card";
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit } from "@shared/schema";
+import type { Property, Unit, Owner } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[] };
 type SharedProperty = Property & { units: Unit[]; role: string };
+type PropertyWithOwnership = Property & { units: Unit[]; ownerships: { ownerId: number; ownershipPercent: string }[] };
 
 const propertyTypes = [
   { value: "all", label: "All Types" },
@@ -40,16 +41,32 @@ const propertyTypes = [
 
 export default function PropertiesPage() {
   const { toast } = useToast();
+  const searchString = useSearch();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [ownerFilter, setOwnerFilter] = useState<number | null>(null);
 
-  const { data: properties, isLoading } = useQuery<PropertyWithUnits[]>({
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const ownerParam = params.get("owner");
+    if (ownerParam) {
+      setOwnerFilter(parseInt(ownerParam));
+    }
+  }, [searchString]);
+
+  const { data: properties, isLoading } = useQuery<PropertyWithOwnership[]>({
     queryKey: ["/api/properties"],
   });
 
   const { data: sharedProperties, isLoading: isLoadingShared } = useQuery<SharedProperty[]>({
     queryKey: ["/api/shared-properties"],
   });
+
+  const { data: owners } = useQuery<Owner[]>({
+    queryKey: ["/api/owners"],
+  });
+
+  const selectedOwner = owners?.find(o => o.id === ownerFilter);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -77,8 +94,16 @@ export default function PropertiesPage() {
       property.city.toLowerCase().includes(search.toLowerCase()) ||
       property.addressLine1.toLowerCase().includes(search.toLowerCase());
     const matchesType = typeFilter === "all" || property.propertyType === typeFilter;
-    return matchesSearch && matchesType;
+    const matchesOwner = ownerFilter === null || 
+      property.ownerships?.some(o => o.ownerId === ownerFilter) ||
+      (selectedOwner && property.ownerUserId === selectedOwner.userId);
+    return matchesSearch && matchesType && matchesOwner;
   });
+
+  const clearOwnerFilter = () => {
+    setOwnerFilter(null);
+    window.history.replaceState({}, "", "/properties");
+  };
 
   return (
     <div className="p-6">
@@ -131,6 +156,23 @@ export default function PropertiesPage() {
           </Select>
         </div>
 
+        {selectedOwner && (
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <Badge variant="secondary" className="flex items-center gap-2 text-sm">
+              Filtering by owner: {selectedOwner.legalName}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-4 w-4 p-0 ml-1"
+                onClick={clearOwnerFilter}
+                data-testid="button-clear-owner-filter"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </Badge>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (
@@ -162,6 +204,7 @@ export default function PropertiesPage() {
             onAction={() => {
               setSearch("");
               setTypeFilter("all");
+              clearOwnerFilter();
             }}
           />
         ) : (

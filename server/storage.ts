@@ -261,7 +261,7 @@ export interface IStorage {
   updateUserPassword(id: number, newPassword: string): Promise<boolean>;
   
   getAccessiblePropertyIds(userId: number): Promise<number[]>;
-  getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string })[]>;
+  getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string; ownerships: { ownerId: number; ownershipPercent: string }[] })[]>;
   getDeletedPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]>;
   getPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
   getDeletedPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
@@ -670,7 +670,7 @@ export class DatabaseStorage implements IStorage {
     return Array.from(allIds);
   }
 
-  async getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string })[]> {
+  async getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string; ownerships: { ownerId: number; ownershipPercent: string }[] })[]> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     
     const globalRbacAssignment = await db
@@ -701,7 +701,11 @@ export class DatabaseStorage implements IStorage {
             .from(units)
             .where(eq(units.propertyId, property.id))
             .orderBy(units.unitName);
-          return { ...property, units: propertyUnits, role: globalRole };
+          const propOwnerships = await db
+            .select({ ownerId: propertyOwners.ownerId, ownershipPercent: propertyOwners.ownershipPercent })
+            .from(propertyOwners)
+            .where(eq(propertyOwners.propertyId, property.id));
+          return { ...property, units: propertyUnits, role: globalRole, ownerships: propOwnerships };
         })
       );
       
@@ -792,7 +796,11 @@ export class DatabaseStorage implements IStorage {
           .from(units)
           .where(eq(units.propertyId, property.id))
           .orderBy(units.unitName);
-        return { ...property, units: propertyUnits };
+        const propOwnerships = await db
+          .select({ ownerId: propertyOwners.ownerId, ownershipPercent: propertyOwners.ownershipPercent })
+          .from(propertyOwners)
+          .where(eq(propertyOwners.propertyId, property.id));
+        return { ...property, units: propertyUnits, ownerships: propOwnerships };
       })
     );
     

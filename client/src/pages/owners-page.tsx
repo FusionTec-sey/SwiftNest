@@ -291,6 +291,16 @@ export default function OwnersPage() {
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      <Link href={`/properties?owner=${owner.id}`}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          data-testid={`button-properties-${owner.id}`}
+                          title="View Properties"
+                        >
+                          <Building2 className="h-4 w-4" />
+                        </Button>
+                      </Link>
                       {(() => {
                         const status = getOwnerComplianceStatus(owner.id);
                         const hasIssues = status.expired > 0 || status.expiring > 0;

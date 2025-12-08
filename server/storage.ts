@@ -243,7 +243,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
-  getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]>;
+  getAccessiblePropertyIds(userId: number): Promise<number[]>;
+  getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string })[]>;
   getDeletedPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]>;
   getPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
   getDeletedPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
@@ -562,15 +563,63 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[] })[]> {
-    const propertyList = await db
+  async getAccessiblePropertyIds(userId: number): Promise<number[]> {
+    const ownedProperties = await db
+      .select({ id: properties.id })
+      .from(properties)
+      .where(and(eq(properties.ownerUserId, userId), eq(properties.isDeleted, 0)));
+    
+    const sharedProperties = await db
+      .select({ id: propertyCollaborators.propertyId })
+      .from(propertyCollaborators)
+      .innerJoin(properties, eq(properties.id, propertyCollaborators.propertyId))
+      .where(and(
+        eq(propertyCollaborators.userId, userId),
+        eq(properties.isDeleted, 0)
+      ));
+    
+    const allIds = new Set([
+      ...ownedProperties.map(p => p.id),
+      ...sharedProperties.map(p => p.id)
+    ]);
+    
+    return Array.from(allIds);
+  }
+
+  async getPropertiesByUserId(userId: number): Promise<(Property & { units: Unit[]; role: string })[]> {
+    const ownedProperties = await db
       .select()
       .from(properties)
       .where(and(eq(properties.ownerUserId, userId), eq(properties.isDeleted, 0)))
       .orderBy(desc(properties.createdAt));
     
+    const collaborations = await db
+      .select()
+      .from(propertyCollaborators)
+      .where(eq(propertyCollaborators.userId, userId));
+    
+    const sharedPropertyIds = collaborations.map(c => c.propertyId);
+    const roleMap = new Map(collaborations.map(c => [c.propertyId, c.role]));
+    
+    let sharedProperties: Property[] = [];
+    if (sharedPropertyIds.length > 0) {
+      sharedProperties = await db
+        .select()
+        .from(properties)
+        .where(and(
+          inArray(properties.id, sharedPropertyIds),
+          eq(properties.isDeleted, 0)
+        ))
+        .orderBy(desc(properties.createdAt));
+    }
+    
+    const allProperties = [
+      ...ownedProperties.map(p => ({ ...p, role: 'OWNER' as string })),
+      ...sharedProperties.map(p => ({ ...p, role: roleMap.get(p.id) || 'VIEWER' }))
+    ];
+    
     const propertiesWithUnits = await Promise.all(
-      propertyList.map(async (property) => {
+      allProperties.map(async (property) => {
         const propertyUnits = await db
           .select()
           .from(units)
@@ -1764,11 +1813,34 @@ export class DatabaseStorage implements IStorage {
   // =====================================================
 
   async getTenantsByUserId(userId: number): Promise<Tenant[]> {
-    return db
+    const accessiblePropertyIds = await this.getAccessiblePropertyIds(userId);
+    
+    const ownedTenants = await db
       .select()
       .from(tenants)
       .where(eq(tenants.createdByUserId, userId))
       .orderBy(desc(tenants.createdAt));
+    
+    if (accessiblePropertyIds.length === 0) return ownedTenants;
+    
+    const leaseTenantIds = await db
+      .select({ tenantId: leases.tenantId })
+      .from(leases)
+      .where(inArray(leases.propertyId, accessiblePropertyIds));
+    
+    const tenantIdsFromLeases = leaseTenantIds.map(l => l.tenantId);
+    const ownedTenantIds = new Set(ownedTenants.map(t => t.id));
+    const additionalTenantIds = tenantIdsFromLeases.filter(id => !ownedTenantIds.has(id));
+    
+    if (additionalTenantIds.length === 0) return ownedTenants;
+    
+    const additionalTenants = await db
+      .select()
+      .from(tenants)
+      .where(inArray(tenants.id, additionalTenantIds))
+      .orderBy(desc(tenants.createdAt));
+    
+    return [...ownedTenants, ...additionalTenants];
   }
 
   async getTenantById(id: number): Promise<Tenant | undefined> {
@@ -2552,14 +2624,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPendingBillsByUserId(userId: number): Promise<UtilityBill[]> {
-    const userProperties = await db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(and(eq(properties.ownerUserId, userId), eq(properties.isDeleted, 0)));
+    const propertyIds = await this.getAccessiblePropertyIds(userId);
     
-    if (userProperties.length === 0) return [];
+    if (propertyIds.length === 0) return [];
     
-    const propertyIds = userProperties.map(p => p.id);
     return db
       .select()
       .from(utilityBills)
@@ -3339,10 +3407,10 @@ export class DatabaseStorage implements IStorage {
       const invoices = await this.getInvoicesByLeaseId(lease.id);
       for (const inv of invoices) {
         if (inv.status === "OVERDUE") {
-          overdueAmount += parseFloat(inv.totalAmount) - parseFloat(inv.paidAmount || "0");
+          overdueAmount += parseFloat(inv.totalAmount) - parseFloat(inv.amountPaid || "0");
         }
         if (inv.paidAt && inv.paidAt >= monthStart) {
-          receivedThisMonth += parseFloat(inv.paidAmount || "0");
+          receivedThisMonth += parseFloat(inv.amountPaid || "0");
         }
       }
     }

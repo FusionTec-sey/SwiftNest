@@ -98,6 +98,28 @@ const documentUpload = multer({
   },
 });
 
+async function requirePropertyEditAccess(propertyId: number, userId: number): Promise<{ allowed: boolean; message?: string }> {
+  const access = await storage.canUserAccessProperty(propertyId, userId);
+  if (!access.canAccess) {
+    return { allowed: false, message: "Access denied" };
+  }
+  if (access.role === "VIEWER") {
+    return { allowed: false, message: "View-only access - editing not permitted" };
+  }
+  return { allowed: true };
+}
+
+async function requirePropertyOwnerAccess(propertyId: number, userId: number): Promise<{ allowed: boolean; message?: string }> {
+  const access = await storage.canUserAccessProperty(propertyId, userId);
+  if (!access.canAccess) {
+    return { allowed: false, message: "Access denied" };
+  }
+  if (!access.isOwner) {
+    return { allowed: false, message: "Only property owners can perform this action" };
+  }
+  return { allowed: true };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express

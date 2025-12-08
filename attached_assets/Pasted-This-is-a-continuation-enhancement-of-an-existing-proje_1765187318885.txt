@@ -1,0 +1,141 @@
+This is a continuation / enhancement of an existing project spec.
+
+Project: **SwiftNest** – Property Management System  
+
+Stack requirements (keep same as before):
+- Backend: Node.js + Express (TypeScript preferred)
+- Frontend: React
+- Database: **PostgreSQL**
+- ORM: Prisma (or another good Node.js ORM) configured for PostgreSQL
+
+Already implemented (do NOT remove, just extend):
+- User registration & login (Individual / Organization)
+- PostgreSQL models: User, Property (and optionally Unit)
+- CRUD for Property
+- JWT auth / protected routes
+- Dashboard per user, property list, etc.
+
+====================================================
+🔹 REQUIREMENT 1: Hierarchical Tree View per Property
+====================================================
+
+For each Property, I want a **custom hierarchical structure (tree)** that depends on the property type and is fully flexible.
+
+### 1.1 Data Model for Tree Structure
+
+Add a new table/model, for example: `PropertyNode`:
+
+- `id` (primary key)
+- `property_id` (FK → Property.id)
+- `parent_id` (nullable FK → PropertyNode.id, for tree structure)
+- `label` (string) → display name, e.g. "Building A", "Floor 1", "Flat 101", "Bedroom 1"
+- `node_type` (string or enum), examples:
+  - `BUILDING`
+  - `FLOOR`
+  - `FLAT`
+  - `VILLA`
+  - `ROOM`
+  - `BED`
+  - `SECTION`
+  - `CUSTOM`
+- `sort_order` (integer) → for ordering siblings
+- `metadata` (JSON / JSONB) → extra info such as:
+  - `area_sq_ft`
+  - `beds`
+  - `is_occupiable` (true/false)
+  - any other custom attributes
+
+Use `parent_id` for adjacency-list style hierarchy.
+
+### 1.2 Relation with Property Type
+
+`Property.property_type` already exists (APARTMENT, VILLA, PLOT, OFFICE, SHOP, etc.).
+
+Enhance:
+
+- When creating a new property, optionally apply a **template tree** based on `property_type`:
+  - APARTMENT:
+    - BUILDING → FLOOR → FLAT → ROOM/BED
+  - VILLA:
+    - VILLA (root) → FLOOR → ROOM
+  - PLOT:
+    - PLOT (root) → SECTION
+
+- User must still be able to:
+  - Add, rename, move, and delete nodes.
+  - Use any node_type under any node.
+
+### 1.3 API Endpoints for Tree Management
+
+Create REST endpoints:
+
+- `GET /api/properties/:propertyId/tree`
+  - Return full nested tree with `children`.
+
+- `POST /api/properties/:propertyId/nodes`
+  - Body: `parent_id` (nullable), `label`, `node_type`, optional `metadata`.
+
+- `PUT /api/nodes/:nodeId`
+  - Update `label`, `node_type`, `metadata`, `sort_order`.
+
+- `PATCH /api/nodes/:nodeId/move`
+  - Change `parent_id` and `sort_order`.
+
+- `DELETE /api/nodes/:nodeId`
+  - Delete node and its descendants (soft or cascade).
+
+All routes must:
+- Be auth protected.
+- Only allow access to properties owned by the logged-in user.
+
+### 1.4 Frontend Tree View UI
+
+On **Property Details** page, add a **Tree View**:
+
+- Collapsible tree layout:
+  - Display `label`
+  - Small chip/tag with `node_type` (e.g. [FLAT], [ROOM]).
+- Allow:
+  - Add child node under any node.
+  - Edit node label/type/metadata.
+  - Delete node.
+  - (Optional) Drag-and-drop to reorder/move nodes.
+
+Example for an apartment:
+
+- Building A  
+  - Floor 1  
+    - Flat 101  
+      - Bedroom 1  
+      - Bedroom 2  
+  - Floor 2  
+    - Flat 201  
+
+Backend `GET /tree` example response:
+
+```json
+[
+  {
+    "id": 1,
+    "label": "Building A",
+    "node_type": "BUILDING",
+    "metadata": {},
+    "children": [
+      {
+        "id": 2,
+        "label": "Floor 1",
+        "node_type": "FLOOR",
+        "metadata": {},
+        "children": [
+          {
+            "id": 3,
+            "label": "Flat 101",
+            "node_type": "FLAT",
+            "metadata": { "beds": 2 },
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+]

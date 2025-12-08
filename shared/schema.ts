@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, pgEnum, index, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { z } from "zod";
 export const accountTypeEnum = pgEnum("account_type", ["INDIVIDUAL", "ORGANIZATION"]);
 export const propertyTypeEnum = pgEnum("property_type", ["APARTMENT", "VILLA", "PLOT", "OFFICE", "SHOP"]);
 export const unitStatusEnum = pgEnum("unit_status", ["VACANT", "OCCUPIED"]);
+export const nodeTypeEnum = pgEnum("node_type", ["BUILDING", "FLOOR", "FLAT", "VILLA", "ROOM", "BED", "SECTION", "PLOT", "CUSTOM"]);
 
 // Users table
 export const users = pgTable("users", {
@@ -80,6 +81,22 @@ export const propertyCollaborators = pgTable("property_collaborators", {
   index("collaborators_user_idx").on(table.userId),
 ]);
 
+// Property Nodes table (hierarchical tree structure)
+export const propertyNodes = pgTable("property_nodes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  parentId: integer("parent_id"),
+  label: text("label").notNull(),
+  nodeType: nodeTypeEnum("node_type").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  metadata: jsonb("metadata").default({}).$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("nodes_property_idx").on(table.propertyId),
+  index("nodes_parent_idx").on(table.parentId),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   properties: many(properties),
@@ -108,6 +125,21 @@ export const propertyCollaboratorsRelations = relations(propertyCollaborators, (
   user: one(users, {
     fields: [propertyCollaborators.userId],
     references: [users.id],
+  }),
+}));
+
+export const propertyNodesRelations = relations(propertyNodes, ({ one, many }) => ({
+  property: one(properties, {
+    fields: [propertyNodes.propertyId],
+    references: [properties.id],
+  }),
+  parent: one(propertyNodes, {
+    fields: [propertyNodes.parentId],
+    references: [propertyNodes.id],
+    relationName: "parentChild",
+  }),
+  children: many(propertyNodes, {
+    relationName: "parentChild",
   }),
 }));
 
@@ -158,6 +190,27 @@ export const sharePropertySchema = z.object({
   role: z.enum(["VIEWER", "EDITOR"]),
 });
 
+// Property node schema
+export const insertPropertyNodeSchema = createInsertSchema(propertyNodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  label: z.string().min(1, "Label is required"),
+  parentId: z.number().nullable().optional(),
+  sortOrder: z.number().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export const updatePropertyNodeSchema = insertPropertyNodeSchema.partial().extend({
+  label: z.string().min(1, "Label is required").optional(),
+});
+
+export const movePropertyNodeSchema = z.object({
+  parentId: z.number().nullable(),
+  sortOrder: z.number().optional(),
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -168,6 +221,15 @@ export type Unit = typeof units.$inferSelect;
 export type InsertCollaborator = z.infer<typeof insertCollaboratorSchema>;
 export type PropertyCollaborator = typeof propertyCollaborators.$inferSelect;
 export type SharePropertyData = z.infer<typeof sharePropertySchema>;
+export type InsertPropertyNode = z.infer<typeof insertPropertyNodeSchema>;
+export type PropertyNode = typeof propertyNodes.$inferSelect;
+export type UpdatePropertyNode = z.infer<typeof updatePropertyNodeSchema>;
+export type MovePropertyNode = z.infer<typeof movePropertyNodeSchema>;
+
+// Tree node with children for frontend
+export type PropertyNodeWithChildren = PropertyNode & {
+  children: PropertyNodeWithChildren[];
+};
 
 // Property with units type
 export type PropertyWithUnits = Property & { units: Unit[] };

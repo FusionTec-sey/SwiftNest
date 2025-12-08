@@ -18,6 +18,15 @@ Preferred communication style: Simple, everyday language.
 -   **State Management:** TanStack Query for server state; local state with React Hook Form.
 -   **UI:** shadcn/ui (Radix UI primitives) with Tailwind CSS, "New York" style, and light/dark theme support.
 -   **Design:** Utility-focused, responsive grid layouts, inspired by platforms like Zillow and Stripe.
+-   **Layout Components:**
+    -   `AppLayout`: Wrapper component with sidebar, header (with breadcrumbs), and main content area.
+    -   `AppSidebar`: Collapsible navigation sidebar with grouped menu items (Overview, People, Operations, Finance, System).
+-   **UI/UX Features:**
+    -   Responsive sidebar navigation that collapses to icon-only mode.
+    -   Dashboard with alerts (overdue rent, expiring leases), quick actions, and financial summary cards.
+    -   Form layouts with section headers and responsive grids (2-column on desktop, stacked on mobile).
+    -   Responsive data tables with horizontal scroll and column hiding on smaller screens.
+    -   Accessibility: aria-hidden on decorative icons, aria-labels on toggles, role attributes on landmarks.
 
 ### Backend
 

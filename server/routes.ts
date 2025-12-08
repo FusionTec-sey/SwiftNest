@@ -20,6 +20,8 @@ import {
   insertMaintenanceScheduleSchema,
   insertOwnerSchema,
   insertPropertyOwnerSchema,
+  insertOwnerTeamMemberSchema,
+  insertOwnerInvitationSchema,
   insertTenantSchema,
   insertLeaseSchema,
   insertRentInvoiceSchema,
@@ -1744,6 +1746,263 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid ID" });
       }
       await storage.removePropertyOwner(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // OWNER TEAM MANAGEMENT MODULE
+  // =====================================================
+
+  // Get all owners accessible by the current user (owned + team memberships)
+  app.get("/api/accessible-owners", requireAuth, async (req, res, next) => {
+    try {
+      const accessibleOwners = await storage.getOwnersAccessibleByUser(req.user!.id);
+      res.json(accessibleOwners);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get team members for an owner
+  app.get("/api/owners/:ownerId/team", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const access = await storage.canUserAccessOwner(ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can view team members." });
+      }
+      const teamMembers = await storage.getTeamMembersByOwnerId(ownerId);
+      res.json(teamMembers);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Add a team member directly (skip invitation if user already exists)
+  app.post("/api/owners/:ownerId/team", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const access = await storage.canUserAccessOwner(ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can add team members." });
+      }
+      if (req.body.role === "OWNER") {
+        return res.status(400).json({ message: "Cannot assign OWNER role. OWNER role is reserved for the entity creator." });
+      }
+      const validation = insertOwnerTeamMemberSchema.safeParse({ ...req.body, ownerId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const existingMember = await storage.getTeamMemberByOwnerAndUser(ownerId, validation.data.userId);
+      if (existingMember) {
+        return res.status(400).json({ message: "User is already a team member" });
+      }
+      const teamMember = await storage.addOwnerTeamMember({
+        ...validation.data,
+        addedByUserId: req.user!.id
+      });
+      res.status(201).json(teamMember);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update a team member's role or status
+  app.patch("/api/owner-team/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid ID" });
+      }
+      const member = await storage.getTeamMemberById(id);
+      if (!member) {
+        return res.status(404).json({ message: "Team member not found" });
+      }
+      const access = await storage.canUserAccessOwner(member.ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can update team members." });
+      }
+      if (req.body.ownerId !== undefined || req.body.userId !== undefined) {
+        return res.status(400).json({ message: "Cannot change ownerId or userId" });
+      }
+      if (req.body.role === "OWNER") {
+        return res.status(400).json({ message: "Cannot assign OWNER role. OWNER role is reserved for the entity creator." });
+      }
+      const allowedUpdates: { role?: string; isActive?: number } = {};
+      if (req.body.role !== undefined) allowedUpdates.role = req.body.role;
+      if (req.body.isActive !== undefined) allowedUpdates.isActive = req.body.isActive;
+      const updated = await storage.updateOwnerTeamMember(id, allowedUpdates);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Remove a team member
+  app.delete("/api/owner-team/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid ID" });
+      }
+      const member = await storage.getTeamMemberById(id);
+      if (!member) {
+        return res.status(404).json({ message: "Team member not found" });
+      }
+      const access = await storage.canUserAccessOwner(member.ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can remove team members." });
+      }
+      await storage.removeOwnerTeamMember(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get invitations for an owner
+  app.get("/api/owners/:ownerId/invitations", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const access = await storage.canUserAccessOwner(ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can view invitations." });
+      }
+      const invitations = await storage.getInvitationsByOwnerId(ownerId);
+      res.json(invitations);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create a new invitation
+  app.post("/api/owners/:ownerId/invitations", requireAuth, async (req, res, next) => {
+    try {
+      const ownerId = parseInt(req.params.ownerId);
+      if (isNaN(ownerId)) {
+        return res.status(400).json({ message: "Invalid owner ID" });
+      }
+      const access = await storage.canUserAccessOwner(ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can send invitations." });
+      }
+      if (req.body.role === "OWNER") {
+        return res.status(400).json({ message: "Cannot invite with OWNER role. OWNER role is reserved for the entity creator." });
+      }
+      const validation = insertOwnerInvitationSchema.safeParse({ ...req.body, ownerId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const existingInvitation = await storage.getPendingInvitationByEmail(ownerId, validation.data.email);
+      if (existingInvitation) {
+        return res.status(400).json({ message: "An invitation has already been sent to this email" });
+      }
+      const existingUser = await storage.getUserByEmail(validation.data.email.toLowerCase());
+      if (existingUser) {
+        const existingMember = await storage.getTeamMemberByOwnerAndUser(ownerId, existingUser.id);
+        if (existingMember) {
+          return res.status(400).json({ message: "This user is already a team member" });
+        }
+      }
+      const inviteToken = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      const invitation = await storage.createInvitation({
+        ...validation.data,
+        invitedByUserId: req.user!.id,
+        inviteToken,
+        expiresAt
+      });
+      res.status(201).json(invitation);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get invitation by token (public endpoint for invite links)
+  app.get("/api/invitations/:token", async (req, res, next) => {
+    try {
+      const invitation = await storage.getInvitationByToken(req.params.token);
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      if (invitation.status !== "PENDING") {
+        return res.status(400).json({ message: "This invitation is no longer valid", status: invitation.status });
+      }
+      if (new Date() > invitation.expiresAt) {
+        return res.status(400).json({ message: "This invitation has expired", status: "EXPIRED" });
+      }
+      res.json({
+        id: invitation.id,
+        email: invitation.email,
+        role: invitation.role,
+        ownerName: invitation.owner.legalName,
+        ownerTradingName: invitation.owner.tradingName,
+        expiresAt: invitation.expiresAt
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Accept an invitation
+  app.post("/api/invitations/:token/accept", requireAuth, async (req, res, next) => {
+    try {
+      const invitation = await storage.getInvitationByToken(req.params.token);
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      if (invitation.email.toLowerCase() !== req.user!.email.toLowerCase()) {
+        return res.status(403).json({ message: "This invitation was sent to a different email address" });
+      }
+      const teamMember = await storage.acceptInvitation(req.params.token, req.user!.id);
+      res.json(teamMember);
+    } catch (error: any) {
+      if (error.message) {
+        return res.status(400).json({ message: error.message });
+      }
+      next(error);
+    }
+  });
+
+  // Decline an invitation
+  app.post("/api/invitations/:token/decline", async (req, res, next) => {
+    try {
+      await storage.declineInvitation(req.params.token);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete an invitation (cancel it)
+  app.delete("/api/invitations/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid ID" });
+      }
+      const invitation = await storage.getInvitationById(id);
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      const access = await storage.canUserAccessOwner(invitation.ownerId, req.user!.id);
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Access denied. Only the owner can cancel invitations." });
+      }
+      await storage.deleteInvitation(id);
       res.sendStatus(204);
     } catch (error) {
       next(error);

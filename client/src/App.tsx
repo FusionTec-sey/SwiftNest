@@ -23,6 +23,7 @@ import UtilitiesPage from "@/pages/utilities-page";
 import LoansPage from "@/pages/loans-page";
 import AssetsPage from "@/pages/assets-page";
 import ReportsPage from "@/pages/reports-page";
+import InvitePage from "@/pages/invite-page";
 
 function Router() {
   return (
@@ -43,6 +44,7 @@ function Router() {
       <ProtectedRoute path="/assets" component={AssetsPage} />
       <ProtectedRoute path="/reports" component={ReportsPage} />
       <Route path="/auth" component={AuthPage} />
+      <Route path="/invite/:token" component={InvitePage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -673,6 +673,56 @@ export const propertyOwners = pgTable("property_owners", {
 ]);
 
 // =====================================================
+// OWNER TEAM MANAGEMENT
+// =====================================================
+
+// Team member role enum - defines access levels for team members
+export const ownerTeamRoleEnum = pgEnum("owner_team_role", [
+  "ADMIN",              // Full access to owner's data
+  "ACCOUNTANT",         // Access to accounting, assets, loans, payments
+  "MAINTENANCE_MANAGER", // Access to all maintenance modules
+  "MAINTENANCE_STAFF",  // Can create issues, update assigned tasks
+  "VIEWER"              // Read-only access to all data
+]);
+
+// Invitation status enum
+export const invitationStatusEnum = pgEnum("invitation_status", ["PENDING", "ACCEPTED", "DECLINED", "EXPIRED"]);
+
+// Owner Team Members table - links users to owners with specific roles
+export const ownerTeamMembers = pgTable("owner_team_members", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerId: integer("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: ownerTeamRoleEnum("role").notNull(),
+  isActive: integer("is_active").default(1).notNull(),
+  addedByUserId: integer("added_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("owner_team_owner_idx").on(table.ownerId),
+  index("owner_team_user_idx").on(table.userId),
+]);
+
+// Owner Invitations table - pending invitations to join an owner's team
+export const ownerInvitations = pgTable("owner_invitations", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerId: integer("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: ownerTeamRoleEnum("role").notNull(),
+  inviteToken: text("invite_token").notNull().unique(),
+  status: invitationStatusEnum("status").notNull().default("PENDING"),
+  invitedByUserId: integer("invited_by_user_id").notNull().references(() => users.id),
+  acceptedByUserId: integer("accepted_by_user_id").references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("owner_invitations_owner_idx").on(table.ownerId),
+  index("owner_invitations_email_idx").on(table.email),
+  index("owner_invitations_token_idx").on(table.inviteToken),
+]);
+
+// =====================================================
 // TENANTS TABLE
 // =====================================================
 
@@ -1152,6 +1202,27 @@ export const insertPropertyOwnerSchema = createInsertSchema(propertyOwners).omit
   createdAt: true,
 });
 
+// Owner team member schemas
+export const insertOwnerTeamMemberSchema = createInsertSchema(ownerTeamMembers).omit({
+  id: true,
+  addedByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Owner invitation schemas
+export const insertOwnerInvitationSchema = createInsertSchema(ownerInvitations).omit({
+  id: true,
+  inviteToken: true,
+  invitedByUserId: true,
+  acceptedByUserId: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  email: z.string().email("Valid email required"),
+});
+
 // Tenant schemas
 export const insertTenantSchema = createInsertSchema(tenants).omit({
   id: true,
@@ -1337,6 +1408,10 @@ export type Owner = typeof owners.$inferSelect;
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
 export type PropertyOwner = typeof propertyOwners.$inferSelect;
 export type InsertPropertyOwner = z.infer<typeof insertPropertyOwnerSchema>;
+export type OwnerTeamMember = typeof ownerTeamMembers.$inferSelect;
+export type InsertOwnerTeamMember = z.infer<typeof insertOwnerTeamMemberSchema>;
+export type OwnerInvitation = typeof ownerInvitations.$inferSelect;
+export type InsertOwnerInvitation = z.infer<typeof insertOwnerInvitationSchema>;
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
 export type Lease = typeof leases.$inferSelect;

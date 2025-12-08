@@ -14,6 +14,8 @@ import {
   maintenanceSchedules,
   owners,
   propertyOwners,
+  ownerTeamMembers,
+  ownerInvitations,
   tenants,
   leases,
   rentInvoices,
@@ -61,6 +63,10 @@ import {
   type InsertOwner,
   type PropertyOwner,
   type InsertPropertyOwner,
+  type OwnerTeamMember,
+  type InsertOwnerTeamMember,
+  type OwnerInvitation,
+  type InsertOwnerInvitation,
   type Tenant,
   type InsertTenant,
   type Lease,
@@ -338,6 +344,30 @@ export interface IStorage {
   addPropertyOwner(data: InsertPropertyOwner): Promise<PropertyOwner>;
   updatePropertyOwner(id: number, data: Partial<InsertPropertyOwner>): Promise<PropertyOwner | undefined>;
   removePropertyOwner(id: number): Promise<void>;
+
+  // =====================================================
+  // OWNER TEAM MANAGEMENT MODULE
+  // =====================================================
+  
+  // Team Members
+  getTeamMembersByOwnerId(ownerId: number): Promise<(OwnerTeamMember & { user: User })[]>;
+  getTeamMemberById(id: number): Promise<OwnerTeamMember | undefined>;
+  getTeamMemberByOwnerAndUser(ownerId: number, userId: number): Promise<OwnerTeamMember | undefined>;
+  getOwnersAccessibleByUser(userId: number): Promise<(Owner & { role: string })[]>;
+  addOwnerTeamMember(member: InsertOwnerTeamMember & { addedByUserId: number }): Promise<OwnerTeamMember>;
+  updateOwnerTeamMember(id: number, data: Partial<InsertOwnerTeamMember>): Promise<OwnerTeamMember | undefined>;
+  removeOwnerTeamMember(id: number): Promise<void>;
+  canUserAccessOwner(ownerId: number, userId: number): Promise<{ canAccess: boolean; role: string | null; isOwner: boolean }>;
+  
+  // Invitations
+  getInvitationsByOwnerId(ownerId: number): Promise<OwnerInvitation[]>;
+  getInvitationById(id: number): Promise<OwnerInvitation | undefined>;
+  getInvitationByToken(token: string): Promise<(OwnerInvitation & { owner: Owner }) | undefined>;
+  getPendingInvitationByEmail(ownerId: number, email: string): Promise<OwnerInvitation | undefined>;
+  createInvitation(invitation: InsertOwnerInvitation & { invitedByUserId: number; inviteToken: string; expiresAt: Date }): Promise<OwnerInvitation>;
+  acceptInvitation(token: string, userId: number): Promise<OwnerTeamMember>;
+  declineInvitation(token: string): Promise<void>;
+  deleteInvitation(id: number): Promise<void>;
 
   // =====================================================
   // TENANTS MODULE
@@ -1509,6 +1539,221 @@ export class DatabaseStorage implements IStorage {
 
   async removePropertyOwner(id: number): Promise<void> {
     await db.delete(propertyOwners).where(eq(propertyOwners.id, id));
+  }
+
+  // =====================================================
+  // OWNER TEAM MANAGEMENT MODULE
+  // =====================================================
+
+  async getTeamMembersByOwnerId(ownerId: number): Promise<(OwnerTeamMember & { user: User })[]> {
+    const results = await db
+      .select()
+      .from(ownerTeamMembers)
+      .innerJoin(users, eq(ownerTeamMembers.userId, users.id))
+      .where(eq(ownerTeamMembers.ownerId, ownerId))
+      .orderBy(desc(ownerTeamMembers.createdAt));
+    
+    return results.map(r => ({
+      ...r.owner_team_members,
+      user: r.users
+    }));
+  }
+
+  async getTeamMemberById(id: number): Promise<OwnerTeamMember | undefined> {
+    const [result] = await db
+      .select()
+      .from(ownerTeamMembers)
+      .where(eq(ownerTeamMembers.id, id));
+    return result;
+  }
+
+  async getTeamMemberByOwnerAndUser(ownerId: number, userId: number): Promise<OwnerTeamMember | undefined> {
+    const [result] = await db
+      .select()
+      .from(ownerTeamMembers)
+      .where(and(
+        eq(ownerTeamMembers.ownerId, ownerId),
+        eq(ownerTeamMembers.userId, userId)
+      ));
+    return result;
+  }
+
+  async getOwnersAccessibleByUser(userId: number): Promise<(Owner & { role: string })[]> {
+    const ownedByUser = await db
+      .select()
+      .from(owners)
+      .where(eq(owners.userId, userId));
+    
+    const ownedResults = ownedByUser.map(o => ({ ...o, role: "OWNER" as string }));
+    
+    const teamMemberships = await db
+      .select()
+      .from(ownerTeamMembers)
+      .innerJoin(owners, eq(ownerTeamMembers.ownerId, owners.id))
+      .where(and(
+        eq(ownerTeamMembers.userId, userId),
+        eq(ownerTeamMembers.isActive, 1)
+      ));
+    
+    const teamResults = teamMemberships.map(r => ({
+      ...r.owners,
+      role: r.owner_team_members.role
+    }));
+    
+    const ownedOwnerIds = new Set(ownedResults.map(o => o.id));
+    const filteredTeamResults = teamResults.filter(r => !ownedOwnerIds.has(r.id));
+    
+    return [...ownedResults, ...filteredTeamResults];
+  }
+
+  async addOwnerTeamMember(member: InsertOwnerTeamMember & { addedByUserId: number }): Promise<OwnerTeamMember> {
+    const [result] = await db
+      .insert(ownerTeamMembers)
+      .values(member)
+      .returning();
+    return result;
+  }
+
+  async updateOwnerTeamMember(id: number, data: Partial<InsertOwnerTeamMember>): Promise<OwnerTeamMember | undefined> {
+    const [result] = await db
+      .update(ownerTeamMembers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(ownerTeamMembers.id, id))
+      .returning();
+    return result;
+  }
+
+  async removeOwnerTeamMember(id: number): Promise<void> {
+    await db.delete(ownerTeamMembers).where(eq(ownerTeamMembers.id, id));
+  }
+
+  async canUserAccessOwner(ownerId: number, userId: number): Promise<{ canAccess: boolean; role: string | null; isOwner: boolean }> {
+    const owner = await this.getOwnerById(ownerId);
+    if (!owner) {
+      return { canAccess: false, role: null, isOwner: false };
+    }
+    
+    if (owner.userId === userId) {
+      return { canAccess: true, role: "OWNER", isOwner: true };
+    }
+    
+    const teamMember = await this.getTeamMemberByOwnerAndUser(ownerId, userId);
+    if (teamMember && teamMember.isActive === 1) {
+      return { canAccess: true, role: teamMember.role, isOwner: false };
+    }
+    
+    return { canAccess: false, role: null, isOwner: false };
+  }
+
+  // Invitations
+  async getInvitationsByOwnerId(ownerId: number): Promise<OwnerInvitation[]> {
+    return db
+      .select()
+      .from(ownerInvitations)
+      .where(eq(ownerInvitations.ownerId, ownerId))
+      .orderBy(desc(ownerInvitations.createdAt));
+  }
+
+  async getInvitationById(id: number): Promise<OwnerInvitation | undefined> {
+    const [result] = await db
+      .select()
+      .from(ownerInvitations)
+      .where(eq(ownerInvitations.id, id));
+    return result;
+  }
+
+  async getInvitationByToken(token: string): Promise<(OwnerInvitation & { owner: Owner }) | undefined> {
+    const [result] = await db
+      .select()
+      .from(ownerInvitations)
+      .innerJoin(owners, eq(ownerInvitations.ownerId, owners.id))
+      .where(eq(ownerInvitations.inviteToken, token));
+    
+    if (!result) return undefined;
+    
+    return {
+      ...result.owner_invitations,
+      owner: result.owners
+    };
+  }
+
+  async getPendingInvitationByEmail(ownerId: number, email: string): Promise<OwnerInvitation | undefined> {
+    const [result] = await db
+      .select()
+      .from(ownerInvitations)
+      .where(and(
+        eq(ownerInvitations.ownerId, ownerId),
+        eq(ownerInvitations.email, email.toLowerCase()),
+        eq(ownerInvitations.status, "PENDING")
+      ));
+    return result;
+  }
+
+  async createInvitation(invitation: InsertOwnerInvitation & { invitedByUserId: number; inviteToken: string; expiresAt: Date }): Promise<OwnerInvitation> {
+    const [result] = await db
+      .insert(ownerInvitations)
+      .values({
+        ...invitation,
+        email: invitation.email.toLowerCase(),
+        status: "PENDING"
+      })
+      .returning();
+    return result;
+  }
+
+  async acceptInvitation(token: string, userId: number): Promise<OwnerTeamMember> {
+    const invitation = await this.getInvitationByToken(token);
+    if (!invitation) {
+      throw new Error("Invitation not found");
+    }
+    if (invitation.status !== "PENDING") {
+      throw new Error("Invitation is no longer valid");
+    }
+    if (new Date() > invitation.expiresAt) {
+      await db
+        .update(ownerInvitations)
+        .set({ status: "EXPIRED", updatedAt: new Date() })
+        .where(eq(ownerInvitations.id, invitation.id));
+      throw new Error("Invitation has expired");
+    }
+    
+    const existingMember = await this.getTeamMemberByOwnerAndUser(invitation.ownerId, userId);
+    if (existingMember) {
+      throw new Error("You are already a team member for this owner");
+    }
+    
+    const [teamMember] = await db
+      .insert(ownerTeamMembers)
+      .values({
+        ownerId: invitation.ownerId,
+        userId: userId,
+        role: invitation.role,
+        isActive: 1,
+        addedByUserId: invitation.invitedByUserId
+      })
+      .returning();
+    
+    await db
+      .update(ownerInvitations)
+      .set({ 
+        status: "ACCEPTED", 
+        acceptedByUserId: userId,
+        updatedAt: new Date() 
+      })
+      .where(eq(ownerInvitations.id, invitation.id));
+    
+    return teamMember;
+  }
+
+  async declineInvitation(token: string): Promise<void> {
+    await db
+      .update(ownerInvitations)
+      .set({ status: "DECLINED", updatedAt: new Date() })
+      .where(eq(ownerInvitations.inviteToken, token));
+  }
+
+  async deleteInvitation(id: number): Promise<void> {
+    await db.delete(ownerInvitations).where(eq(ownerInvitations.id, id));
   }
 
   // =====================================================

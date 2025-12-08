@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star } from "lucide-react";
+import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Header } from "@/components/header";
 import { EmptyState } from "@/components/empty-state";
+import { OwnerTeamManager } from "@/components/owner-team-manager";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -74,6 +75,7 @@ export default function OwnersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null);
   const [deletingOwner, setDeletingOwner] = useState<Owner | null>(null);
+  const [teamManagingOwner, setTeamManagingOwner] = useState<Owner | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data: owners, isLoading } = useQuery<Owner[]>({
@@ -272,6 +274,15 @@ export default function OwnersPage() {
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setTeamManagingOwner(owner)}
+                        data-testid={`button-manage-team-${owner.id}`}
+                        title="Manage Team"
+                      >
+                        <Users className="h-4 w-4" />
+                      </Button>
                       <Button
                         size="icon"
                         variant="ghost"
@@ -576,6 +587,14 @@ export default function OwnersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {teamManagingOwner && (
+        <OwnerTeamManager
+          owner={teamManagingOwner}
+          isOpen={!!teamManagingOwner}
+          onClose={() => setTeamManagingOwner(null)}
+        />
+      )}
     </div>
   );
 }

@@ -71,6 +71,13 @@ Preferred communication style: Simple, everyday language.
 - **Properties Table**: Property details with foreign key to owner user, supports images array and soft delete
 - **Units Table**: Sub-properties within a property (apartments, offices, etc.)
 - **Property Collaborators Table**: Enables property sharing with role-based permissions (VIEWER/EDITOR)
+- **Owner Team Members Table**: Multi-user team management - allows owners to invite team members with different roles
+  - Links users to owners with specific roles
+  - Roles: ADMIN (full access), ACCOUNTANT (financials), MAINTENANCE_MANAGER (maintenance), MAINTENANCE_STAFF (limited maintenance), VIEWER (read-only)
+  - isActive flag for enable/disable without deletion
+- **Owner Invitations Table**: Pending team member invitations with email-based invite workflow
+  - Invite tokens with 7-day expiration
+  - Status tracking: PENDING, ACCEPTED, DECLINED, EXPIRED
 - **Property Owners Table**: Junction table linking properties to owner entities with ownership percentages
 - **Property Nodes Table**: Hierarchical tree structure for organizing property components (buildings, floors, flats, rooms, etc.)
   - Uses adjacency list pattern with parentId for tree relationships

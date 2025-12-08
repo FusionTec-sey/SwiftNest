@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
-import { insertPropertySchema, insertUnitSchema, sharePropertySchema } from "@shared/schema";
+import { insertPropertySchema, insertUnitSchema, sharePropertySchema, insertPropertyNodeSchema, updatePropertyNodeSchema, movePropertyNodeSchema } from "@shared/schema";
 
 const uploadDir = path.join(process.cwd(), "uploads", "properties");
 if (!fs.existsSync(uploadDir)) {
@@ -467,6 +467,151 @@ export async function registerRoutes(
       }
 
       await storage.removeCollaborator(propertyId, userId);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Tree management routes
+  app.get("/api/properties/:propertyId/tree", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const tree = await storage.getPropertyTree(propertyId);
+      res.json(tree);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/nodes", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can add nodes" });
+      }
+
+      const validation = insertPropertyNodeSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const node = await storage.createPropertyNode(validation.data);
+      res.status(201).json(node);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/nodes/:nodeId", requireAuth, async (req, res, next) => {
+    try {
+      const nodeId = parseInt(req.params.nodeId);
+      if (isNaN(nodeId)) {
+        return res.status(400).json({ message: "Invalid node ID" });
+      }
+
+      const existingNode = await storage.getNodeById(nodeId);
+      if (!existingNode) {
+        return res.status(404).json({ message: "Node not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existingNode.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update nodes" });
+      }
+
+      const validation = updatePropertyNodeSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const updated = await storage.updatePropertyNode(nodeId, validation.data);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/nodes/:nodeId/move", requireAuth, async (req, res, next) => {
+    try {
+      const nodeId = parseInt(req.params.nodeId);
+      if (isNaN(nodeId)) {
+        return res.status(400).json({ message: "Invalid node ID" });
+      }
+
+      const existingNode = await storage.getNodeById(nodeId);
+      if (!existingNode) {
+        return res.status(404).json({ message: "Node not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existingNode.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can move nodes" });
+      }
+
+      const validation = movePropertyNodeSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const { parentId, sortOrder } = validation.data;
+      const updated = await storage.movePropertyNode(nodeId, parentId, sortOrder);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/nodes/:nodeId", requireAuth, async (req, res, next) => {
+    try {
+      const nodeId = parseInt(req.params.nodeId);
+      if (isNaN(nodeId)) {
+        return res.status(400).json({ message: "Invalid node ID" });
+      }
+
+      const existingNode = await storage.getNodeById(nodeId);
+      if (!existingNode) {
+        return res.status(404).json({ message: "Node not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existingNode.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can delete nodes" });
+      }
+
+      await storage.deletePropertyNode(nodeId);
       res.sendStatus(204);
     } catch (error) {
       next(error);

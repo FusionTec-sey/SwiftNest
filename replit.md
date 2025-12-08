@@ -116,6 +116,23 @@ Preferred communication style: Simple, everyday language.
     - Traverses module hierarchy to verify user access (e.g., UTILITY_BILL -> UTILITY_METER -> PROPERTY -> user ownership)
     - Handles polymorphic PAYMENT associations (RENT_INVOICE, UTILITY_BILL, LOAN types)
 
+**Accounting Module (Double-Entry Bookkeeping)**
+- **chart_of_accounts**: Standard chart of accounts with account types (ASSET, LIABILITY, EQUITY, INCOME, EXPENSE)
+  - System accounts seeded on first login: Cash (1000), Bank Account (1100), Accounts Receivable (1200), Rental Income (4000), Utilities Expense (5100), Interest Expense (5500), Loans Payable (2200), etc.
+  - User can add custom accounts
+- **ledger_entries**: Journal entries with module categorization (RENT, UTILITY, MAINTENANCE, LOAN, DEPRECIATION, MANUAL, OTHER)
+  - Each entry has propertyId, ownerId for property/owner-level reporting
+  - isReversed flag for reversed entries
+- **ledger_lines**: Individual debit/credit lines linked to ledger entries and accounts
+  - Follows double-entry principle: sum of debits must equal sum of credits
+- **Automatic Ledger Posting**: Transactions automatically create journal entries:
+  - Rent payments: Debit Cash (1000), Credit Rental Income (4000)
+  - Utility bill payments: Debit Utilities Expense (5100), Credit Cash (1000)
+  - Loan payments: Debit Loans Payable (2200) + Interest Expense (5500), Credit Cash (1000)
+- **Manual Journal Entries**: Users can create manual entries with multiple lines
+- **Entry Reversal**: Reversing entries creates a new entry with opposite debits/credits
+- **Reports**: Trial Balance, Account Summary by account type
+
 **Data Validation**
 - Zod schemas for runtime validation
 - Drizzle-Zod integration for automatic schema generation from database schema

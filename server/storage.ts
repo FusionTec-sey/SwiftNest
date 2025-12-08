@@ -1965,6 +1965,35 @@ export class DatabaseStorage implements IStorage {
 
   async createPayment(payment: InsertPayment & { recordedByUserId: number }): Promise<Payment> {
     const [newPayment] = await db.insert(payments).values(payment).returning();
+
+    if (payment.appliedToType === "RENT_INVOICE") {
+      const [invoice] = await db.select().from(rentInvoices).where(eq(rentInvoices.id, payment.appliedToId));
+      if (invoice) {
+        const [lease] = await db.select().from(leases).where(eq(leases.id, invoice.leaseId));
+        if (lease) {
+          const rentalIncomeAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "4000")).limit(1);
+          const cashAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "1000")).limit(1);
+          
+          if (rentalIncomeAccount.length > 0 && cashAccount.length > 0) {
+            await this.createLedgerEntry(
+              {
+                entryDate: new Date(payment.paymentDate),
+                propertyId: lease.propertyId,
+                module: "RENT",
+                referenceId: newPayment.id,
+                memo: `Rent payment - Invoice #${invoice.invoiceNumber}`,
+                createdByUserId: payment.recordedByUserId,
+              },
+              [
+                { accountId: cashAccount[0].id, debit: payment.amount, credit: "0", memo: "Cash received" },
+                { accountId: rentalIncomeAccount[0].id, debit: "0", credit: payment.amount, memo: "Rental income" },
+              ]
+            );
+          }
+        }
+      }
+    }
+
     return newPayment;
   }
 
@@ -2422,7 +2451,7 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  async markBillAsPaid(id: number, amountPaid: string, paymentReference?: string): Promise<UtilityBill | undefined> {
+  async markBillAsPaid(id: number, amountPaid: string, paymentReference?: string, userId?: number): Promise<UtilityBill | undefined> {
     const bill = await this.getUtilityBillById(id);
     if (!bill) return undefined;
 
@@ -2441,6 +2470,29 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(utilityBills.id, id))
       .returning();
+
+    if (updated && userId) {
+      const utilitiesExpenseAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "5100")).limit(1);
+      const cashAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "1000")).limit(1);
+      
+      if (utilitiesExpenseAccount.length > 0 && cashAccount.length > 0) {
+        await this.createLedgerEntry(
+          {
+            entryDate: new Date(),
+            propertyId: bill.propertyId,
+            module: "UTILITY",
+            referenceId: bill.id,
+            memo: `Utility bill payment - ${bill.utilityType}${paymentReference ? ` (Ref: ${paymentReference})` : ""}`,
+            createdByUserId: userId,
+          },
+          [
+            { accountId: utilitiesExpenseAccount[0].id, debit: amountPaid, credit: "0", memo: "Utility expense" },
+            { accountId: cashAccount[0].id, debit: "0", credit: amountPaid, memo: "Cash payment" },
+          ]
+        );
+      }
+    }
+
     return updated || undefined;
   }
 
@@ -2611,6 +2663,51 @@ export class DatabaseStorage implements IStorage {
           .update(loanSchedule)
           .set({ isPaid: 1, paidDate: payment.paymentDate })
           .where(eq(loanSchedule.id, payment.scheduleId));
+      }
+
+      const loansPayableAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "2200")).limit(1);
+      const interestExpenseAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "5500")).limit(1);
+      const cashAccount = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "1000")).limit(1);
+
+      if (loansPayableAccount.length > 0 && interestExpenseAccount.length > 0 && cashAccount.length > 0) {
+        const totalPayment = parseFloat(payment.principalComponent) + parseFloat(payment.interestComponent);
+        const lines: { accountId: number; debit: string; credit: string; memo?: string }[] = [];
+
+        if (parseFloat(payment.principalComponent) > 0) {
+          lines.push({ 
+            accountId: loansPayableAccount[0].id, 
+            debit: payment.principalComponent, 
+            credit: "0", 
+            memo: "Loan principal payment" 
+          });
+        }
+        if (parseFloat(payment.interestComponent) > 0) {
+          lines.push({ 
+            accountId: interestExpenseAccount[0].id, 
+            debit: payment.interestComponent, 
+            credit: "0", 
+            memo: "Loan interest payment" 
+          });
+        }
+        lines.push({ 
+          accountId: cashAccount[0].id, 
+          debit: "0", 
+          credit: String(totalPayment), 
+          memo: "Cash payment" 
+        });
+
+        await this.createLedgerEntry(
+          {
+            entryDate: new Date(payment.paymentDate),
+            propertyId: loan.propertyId,
+            ownerId: loan.ownerId,
+            module: "LOAN",
+            referenceId: newPayment.id,
+            memo: `Loan payment - ${loan.lenderName}`,
+            createdByUserId: payment.recordedByUserId,
+          },
+          lines
+        );
       }
     }
 

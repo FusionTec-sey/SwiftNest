@@ -10,10 +10,17 @@ import {
   Search,
   ArrowUpRight,
   ArrowDownRight,
+  FileText,
+  RotateCcw,
+  Trash2,
+  Eye,
+  PieChart,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,7 +58,7 @@ import { Header } from "@/components/header";
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { ChartOfAccount, LedgerEntryWithLines } from "@shared/schema";
@@ -61,10 +68,29 @@ const accountFormSchema = z.object({
   name: z.string().min(1, "Account name is required"),
   accountType: z.enum(["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"]),
   description: z.string().optional(),
-  parentAccountId: z.number().optional(),
 });
 
 type AccountFormData = z.infer<typeof accountFormSchema>;
+
+const journalLineSchema = z.object({
+  accountId: z.number().min(1, "Account is required"),
+  debit: z.string().optional(),
+  credit: z.string().optional(),
+  memo: z.string().optional(),
+});
+
+const journalEntryFormSchema = z.object({
+  entryDate: z.string().min(1, "Date is required"),
+  module: z.enum(["RENT", "UTILITY", "MAINTENANCE", "LOAN", "DEPRECIATION", "MANUAL", "OTHER"]),
+  memo: z.string().optional(),
+  lines: z.array(journalLineSchema).min(2, "At least 2 lines required"),
+}).refine((data) => {
+  const totalDebit = data.lines.reduce((sum, line) => sum + parseFloat(line.debit || "0"), 0);
+  const totalCredit = data.lines.reduce((sum, line) => sum + parseFloat(line.credit || "0"), 0);
+  return Math.abs(totalDebit - totalCredit) < 0.01;
+}, { message: "Total debits must equal total credits" });
+
+type JournalEntryFormData = z.infer<typeof journalEntryFormSchema>;
 
 const formatCurrency = (amount: string | number) => {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -74,11 +100,23 @@ const formatCurrency = (amount: string | number) => {
   }).format(num || 0);
 };
 
+interface TrialBalanceEntry {
+  accountId: number;
+  code: string;
+  name: string;
+  accountType: string;
+  debit: number;
+  credit: number;
+}
+
 export default function AccountingPage() {
   const { toast } = useToast();
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isAccountFormOpen, setIsAccountFormOpen] = useState(false);
+  const [isJournalFormOpen, setIsJournalFormOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedModule, setSelectedModule] = useState("RENT");
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const [viewingEntry, setViewingEntry] = useState<LedgerEntryWithLines | null>(null);
 
   const { data: accounts, isLoading: accountsLoading } = useQuery<ChartOfAccount[]>({
     queryKey: ["/api/accounts"],
@@ -93,7 +131,17 @@ export default function AccountingPage() {
     },
   });
 
-  const form = useForm<AccountFormData>({
+  const { data: accountBalance } = useQuery<{ debit: number; credit: number; balance: number }>({
+    queryKey: ["/api/accounts", selectedAccountId, "balance"],
+    queryFn: async () => {
+      const res = await fetch(`/api/accounts/${selectedAccountId}/balance`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch balance");
+      return res.json();
+    },
+    enabled: !!selectedAccountId,
+  });
+
+  const accountForm = useForm<AccountFormData>({
     resolver: zodResolver(accountFormSchema),
     defaultValues: {
       code: "",
@@ -103,17 +151,96 @@ export default function AccountingPage() {
     },
   });
 
+  const journalForm = useForm<JournalEntryFormData>({
+    resolver: zodResolver(journalEntryFormSchema),
+    defaultValues: {
+      entryDate: new Date().toISOString().split("T")[0],
+      module: "MANUAL",
+      memo: "",
+      lines: [
+        { accountId: 0, debit: "", credit: "", memo: "" },
+        { accountId: 0, debit: "", credit: "", memo: "" },
+      ],
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: journalForm.control,
+    name: "lines",
+  });
+
   const createAccountMutation = useMutation({
     mutationFn: async (data: AccountFormData) => {
       return apiRequest("POST", "/api/accounts", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
-      setIsFormOpen(false);
-      form.reset();
+      setIsAccountFormOpen(false);
+      accountForm.reset();
       toast({
         title: "Account created",
         description: "The account has been created successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createJournalEntryMutation = useMutation({
+    mutationFn: async (data: JournalEntryFormData) => {
+      const entry = {
+        entryDate: new Date(data.entryDate).toISOString(),
+        module: data.module,
+        memo: data.memo,
+      };
+      const lines = data.lines.map((line) => ({
+        accountId: line.accountId,
+        debit: line.debit || "0",
+        credit: line.credit || "0",
+        memo: line.memo,
+      }));
+      return apiRequest("POST", "/api/ledger", { entry, lines });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ledger"] });
+      setIsJournalFormOpen(false);
+      journalForm.reset({
+        entryDate: new Date().toISOString().split("T")[0],
+        module: "MANUAL",
+        memo: "",
+        lines: [
+          { accountId: 0, debit: "", credit: "", memo: "" },
+          { accountId: 0, debit: "", credit: "", memo: "" },
+        ],
+      });
+      toast({
+        title: "Journal entry created",
+        description: "The journal entry has been posted successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reverseEntryMutation = useMutation({
+    mutationFn: async (entryId: number) => {
+      return apiRequest("POST", `/api/ledger/${entryId}/reverse`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ledger"] });
+      toast({
+        title: "Entry reversed",
+        description: "The journal entry has been reversed successfully.",
       });
     },
     onError: (error: Error) => {
@@ -170,6 +297,27 @@ export default function AccountingPage() {
       account.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const trialBalance: TrialBalanceEntry[] = accounts?.map((account) => {
+    return {
+      accountId: account.id,
+      code: account.code,
+      name: account.name,
+      accountType: account.accountType,
+      debit: 0,
+      credit: 0,
+    };
+  }) || [];
+
+  const totalDebits = journalForm.watch("lines")?.reduce(
+    (sum, line) => sum + parseFloat(line.debit || "0"),
+    0
+  ) || 0;
+  const totalCredits = journalForm.watch("lines")?.reduce(
+    (sum, line) => sum + parseFloat(line.credit || "0"),
+    0
+  ) || 0;
+  const isBalanced = Math.abs(totalDebits - totalCredits) < 0.01;
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -181,10 +329,10 @@ export default function AccountingPage() {
               Accounting
             </h1>
             <p className="text-muted-foreground mt-1">
-              Manage your chart of accounts and journal entries
+              Manage your chart of accounts, journal entries, and financial reports
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(!accounts || accounts.length === 0) && (
               <Button
                 variant="outline"
@@ -195,17 +343,31 @@ export default function AccountingPage() {
                 {seedAccountsMutation.isPending ? "Setting up..." : "Setup Default Accounts"}
               </Button>
             )}
-            <Button className="gap-2" onClick={() => setIsFormOpen(true)} data-testid="button-add-account">
-              <Plus className="h-4 w-4" />
+            <Button variant="outline" onClick={() => setIsAccountFormOpen(true)} data-testid="button-add-account">
+              <Plus className="h-4 w-4 mr-2" />
               Add Account
+            </Button>
+            <Button onClick={() => setIsJournalFormOpen(true)} data-testid="button-add-journal">
+              <FileText className="h-4 w-4 mr-2" />
+              New Journal Entry
             </Button>
           </div>
         </div>
 
         <Tabs defaultValue="accounts" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="accounts" data-testid="tab-accounts">Chart of Accounts</TabsTrigger>
-            <TabsTrigger value="ledger" data-testid="tab-ledger">Ledger Entries</TabsTrigger>
+            <TabsTrigger value="accounts" data-testid="tab-accounts">
+              <Calculator className="h-4 w-4 mr-2" />
+              Chart of Accounts
+            </TabsTrigger>
+            <TabsTrigger value="ledger" data-testid="tab-ledger">
+              <BookOpen className="h-4 w-4 mr-2" />
+              Ledger Entries
+            </TabsTrigger>
+            <TabsTrigger value="reports" data-testid="tab-reports">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Reports
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="accounts" className="space-y-6">
@@ -254,12 +416,17 @@ export default function AccountingPage() {
                               <TableHead className="w-24">Code</TableHead>
                               <TableHead>Account Name</TableHead>
                               <TableHead>Description</TableHead>
-                              <TableHead className="text-right">System</TableHead>
+                              <TableHead className="text-right">Type</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {typeAccounts.map((account) => (
-                              <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
+                              <TableRow 
+                                key={account.id} 
+                                data-testid={`row-account-${account.id}`}
+                                className="cursor-pointer hover-elevate"
+                                onClick={() => setSelectedAccountId(account.id)}
+                              >
                                 <TableCell className="font-mono text-sm">{account.code}</TableCell>
                                 <TableCell className="font-medium">{account.name}</TableCell>
                                 <TableCell className="text-muted-foreground">
@@ -304,7 +471,8 @@ export default function AccountingPage() {
                   <SelectItem value="UTILITY">Utility</SelectItem>
                   <SelectItem value="LOAN">Loans</SelectItem>
                   <SelectItem value="DEPRECIATION">Depreciation</SelectItem>
-                  <SelectItem value="GENERAL">General</SelectItem>
+                  <SelectItem value="MANUAL">Manual Entries</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -333,6 +501,7 @@ export default function AccountingPage() {
                         <TableHead className="text-right">Debit</TableHead>
                         <TableHead className="text-right">Credit</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -368,6 +537,29 @@ export default function AccountingPage() {
                                 <Badge variant="secondary">Active</Badge>
                               )}
                             </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => setViewingEntry(entry)}
+                                  data-testid={`button-view-entry-${entry.id}`}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                {!entry.isReversed && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => reverseEntryMutation.mutate(entry.id)}
+                                    disabled={reverseEntryMutation.isPending}
+                                    data-testid={`button-reverse-entry-${entry.id}`}
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
                           </TableRow>
                         );
                       })}
@@ -379,14 +571,108 @@ export default function AccountingPage() {
               <EmptyState
                 icon={BookOpen}
                 title="No journal entries"
-                description={`No journal entries found for the ${selectedModule.toLowerCase()} module.`}
+                description={`No journal entries found for the ${selectedModule.toLowerCase()} module. Create a new journal entry to get started.`}
+                actionLabel="New Journal Entry"
+                onAction={() => setIsJournalFormOpen(true)}
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="reports" className="space-y-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PieChart className="h-5 w-5" />
+                    Trial Balance
+                  </CardTitle>
+                  <CardDescription>
+                    Summary of all account balances
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {accounts && accounts.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Code</TableHead>
+                          <TableHead>Account</TableHead>
+                          <TableHead className="text-right">Debit</TableHead>
+                          <TableHead className="text-right">Credit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {trialBalance.map((entry) => (
+                          <TableRow key={entry.accountId}>
+                            <TableCell className="font-mono text-sm">{entry.code}</TableCell>
+                            <TableCell>{entry.name}</TableCell>
+                            <TableCell className="text-right">
+                              {entry.debit > 0 ? formatCurrency(entry.debit) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {entry.credit > 0 ? formatCurrency(entry.credit) : "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="font-semibold border-t-2">
+                          <TableCell colSpan={2}>Total</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(trialBalance.reduce((sum, e) => sum + e.debit, 0))}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(trialBalance.reduce((sum, e) => sum + e.credit, 0))}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-8">
+                      No accounts to display. Set up your chart of accounts first.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Account Summary
+                  </CardTitle>
+                  <CardDescription>
+                    Overview by account type
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {accounts && accounts.length > 0 ? (
+                    <div className="space-y-4">
+                      {Object.entries(accountTypeLabels).map(([type, config]) => {
+                        const count = groupedAccounts?.[type]?.length || 0;
+                        const TypeIcon = config.icon;
+                        return (
+                          <div key={type} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                            <div className="flex items-center gap-3">
+                              <TypeIcon className={`h-5 w-5 ${config.color}`} />
+                              <span className="font-medium">{config.label}</span>
+                            </div>
+                            <Badge variant="secondary">{count} accounts</Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-8">
+                      No accounts to display.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </main>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog open={isAccountFormOpen} onOpenChange={setIsAccountFormOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add New Account</DialogTitle>
@@ -394,10 +680,10 @@ export default function AccountingPage() {
               Create a new account in your chart of accounts.
             </DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit((data) => createAccountMutation.mutate(data))} className="space-y-4">
+          <Form {...accountForm}>
+            <form onSubmit={accountForm.handleSubmit((data) => createAccountMutation.mutate(data))} className="space-y-4">
               <FormField
-                control={form.control}
+                control={accountForm.control}
                 name="accountType"
                 render={({ field }) => (
                   <FormItem>
@@ -422,7 +708,7 @@ export default function AccountingPage() {
               />
 
               <FormField
-                control={form.control}
+                control={accountForm.control}
                 name="code"
                 render={({ field }) => (
                   <FormItem>
@@ -436,7 +722,7 @@ export default function AccountingPage() {
               />
 
               <FormField
-                control={form.control}
+                control={accountForm.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -450,7 +736,7 @@ export default function AccountingPage() {
               />
 
               <FormField
-                control={form.control}
+                control={accountForm.control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
@@ -464,7 +750,7 @@ export default function AccountingPage() {
               />
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setIsAccountFormOpen(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createAccountMutation.isPending} data-testid="button-submit-account">
@@ -473,6 +759,313 @@ export default function AccountingPage() {
               </div>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isJournalFormOpen} onOpenChange={setIsJournalFormOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New Journal Entry</DialogTitle>
+            <DialogDescription>
+              Create a double-entry journal entry. Debits must equal credits.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...journalForm}>
+            <form onSubmit={journalForm.handleSubmit((data) => createJournalEntryMutation.mutate(data))} className="space-y-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  control={journalForm.control}
+                  name="entryDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="date" data-testid="input-journal-date" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={journalForm.control}
+                  name="module"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Module</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-journal-module">
+                            <SelectValue placeholder="Select module" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="RENT">Rent</SelectItem>
+                          <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                          <SelectItem value="UTILITY">Utility</SelectItem>
+                          <SelectItem value="LOAN">Loans</SelectItem>
+                          <SelectItem value="DEPRECIATION">Depreciation</SelectItem>
+                          <SelectItem value="MANUAL">Manual</SelectItem>
+                          <SelectItem value="OTHER">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={journalForm.control}
+                name="memo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Memo (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} placeholder="Description of this journal entry" data-testid="input-journal-memo" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">Journal Lines</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => append({ accountId: 0, debit: "", credit: "", memo: "" })}
+                    data-testid="button-add-line"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Line
+                  </Button>
+                </div>
+
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40%]">Account</TableHead>
+                        <TableHead className="w-[20%]">Debit</TableHead>
+                        <TableHead className="w-[20%]">Credit</TableHead>
+                        <TableHead className="w-[15%]">Memo</TableHead>
+                        <TableHead className="w-[5%]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fields.map((field, index) => (
+                        <TableRow key={field.id}>
+                          <TableCell>
+                            <FormField
+                              control={journalForm.control}
+                              name={`lines.${index}.accountId`}
+                              render={({ field }) => (
+                                <Select 
+                                  onValueChange={(v) => field.onChange(parseInt(v))} 
+                                  value={field.value ? String(field.value) : ""}
+                                >
+                                  <SelectTrigger data-testid={`select-line-account-${index}`}>
+                                    <SelectValue placeholder="Select account" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {accounts?.map((account) => (
+                                      <SelectItem key={account.id} value={String(account.id)}>
+                                        {account.code} - {account.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={journalForm.control}
+                              name={`lines.${index}.debit`}
+                              render={({ field }) => (
+                                <Input 
+                                  {...field} 
+                                  type="number" 
+                                  step="0.01" 
+                                  placeholder="0.00"
+                                  data-testid={`input-line-debit-${index}`}
+                                />
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={journalForm.control}
+                              name={`lines.${index}.credit`}
+                              render={({ field }) => (
+                                <Input 
+                                  {...field} 
+                                  type="number" 
+                                  step="0.01" 
+                                  placeholder="0.00"
+                                  data-testid={`input-line-credit-${index}`}
+                                />
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={journalForm.control}
+                              name={`lines.${index}.memo`}
+                              render={({ field }) => (
+                                <Input {...field} placeholder="Note" data-testid={`input-line-memo-${index}`} />
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {fields.length > 2 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => remove(index)}
+                                data-testid={`button-remove-line-${index}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="bg-muted/50 font-semibold">
+                        <TableCell>Totals</TableCell>
+                        <TableCell className={!isBalanced ? "text-destructive" : ""}>
+                          {formatCurrency(totalDebits)}
+                        </TableCell>
+                        <TableCell className={!isBalanced ? "text-destructive" : ""}>
+                          {formatCurrency(totalCredits)}
+                        </TableCell>
+                        <TableCell colSpan={2}>
+                          {isBalanced ? (
+                            <Badge variant="secondary">Balanced</Badge>
+                          ) : (
+                            <Badge variant="destructive">Unbalanced</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsJournalFormOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={createJournalEntryMutation.isPending || !isBalanced}
+                  data-testid="button-submit-journal"
+                >
+                  {createJournalEntryMutation.isPending ? "Posting..." : "Post Entry"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewingEntry} onOpenChange={() => setViewingEntry(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Journal Entry Details</DialogTitle>
+            <DialogDescription>
+              {viewingEntry?.entryNumber} - {viewingEntry && new Date(viewingEntry.entryDate).toLocaleDateString()}
+            </DialogDescription>
+          </DialogHeader>
+          {viewingEntry && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Module:</span>
+                  <span className="ml-2 font-medium">{viewingEntry.module}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Status:</span>
+                  <span className="ml-2">
+                    {viewingEntry.isReversed ? (
+                      <Badge variant="destructive">Reversed</Badge>
+                    ) : (
+                      <Badge variant="secondary">Active</Badge>
+                    )}
+                  </span>
+                </div>
+              </div>
+              {viewingEntry.memo && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Memo:</span>
+                  <span className="ml-2">{viewingEntry.memo}</span>
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Account</TableHead>
+                    <TableHead className="text-right">Debit</TableHead>
+                    <TableHead className="text-right">Credit</TableHead>
+                    <TableHead>Memo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewingEntry.lines?.map((line, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>
+                        {line.account ? `${line.account.code} - ${line.account.name}` : `Account #${line.accountId}`}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {parseFloat(line.debit || "0") > 0 ? formatCurrency(line.debit || 0) : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {parseFloat(line.credit || "0") > 0 ? formatCurrency(line.credit || 0) : "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{line.memo || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedAccountId} onOpenChange={() => setSelectedAccountId(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Account Details</DialogTitle>
+            <DialogDescription>
+              {accounts?.find(a => a.id === selectedAccountId)?.code} - {accounts?.find(a => a.id === selectedAccountId)?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAccountId && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="p-4 bg-muted rounded-md">
+                  <p className="text-sm text-muted-foreground">Total Debits</p>
+                  <p className="text-lg font-semibold">{formatCurrency(accountBalance?.debit || 0)}</p>
+                </div>
+                <div className="p-4 bg-muted rounded-md">
+                  <p className="text-sm text-muted-foreground">Total Credits</p>
+                  <p className="text-lg font-semibold">{formatCurrency(accountBalance?.credit || 0)}</p>
+                </div>
+                <div className="p-4 bg-muted rounded-md">
+                  <p className="text-sm text-muted-foreground">Balance</p>
+                  <p className="text-lg font-semibold">{formatCurrency(accountBalance?.balance || 0)}</p>
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p>Type: {accounts?.find(a => a.id === selectedAccountId)?.accountType}</p>
+                <p>Description: {accounts?.find(a => a.id === selectedAccountId)?.description || "None"}</p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

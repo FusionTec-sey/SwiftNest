@@ -2869,7 +2869,7 @@ export async function registerRoutes(
       if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const bill = await storage.markBillAsPaid(id, amountPaid, paymentReference);
+      const bill = await storage.markBillAsPaid(id, amountPaid, paymentReference, req.user!.id);
       res.json(bill);
     } catch (error) {
       next(error);

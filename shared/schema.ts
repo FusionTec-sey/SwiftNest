@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, pgEnum, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, date, pgEnum, index, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -355,6 +355,56 @@ export const documentsRelations = relations(documents, ({ one }) => ({
   }),
   uploadedBy: one(users, {
     fields: [documents.uploadedByUserId],
+    references: [users.id],
+  }),
+}));
+
+// =====================================================
+// COMPLIANCE DOCUMENTS MODULE (Licenses, Permits, etc.)
+// =====================================================
+
+export const complianceDocTypeEnum = pgEnum("compliance_doc_type", [
+  "LICENSE", "PERMIT", "CERTIFICATE", "INSURANCE", "REGISTRATION",
+  "TAX_DOCUMENT", "LEGAL_AGREEMENT", "WARRANTY", "INSPECTION", "OTHER"
+]);
+
+export const complianceEntityTypeEnum = pgEnum("compliance_entity_type", [
+  "OWNER", "PROPERTY"
+]);
+
+export const complianceStatusEnum = pgEnum("compliance_status", [
+  "ACTIVE", "EXPIRING_SOON", "EXPIRED", "NOT_APPLICABLE"
+]);
+
+export const complianceDocuments = pgTable("compliance_documents", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  entityType: complianceEntityTypeEnum("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  documentType: complianceDocTypeEnum("document_type").notNull(),
+  documentName: text("document_name").notNull(),
+  documentNumber: text("document_number"),
+  issuingAuthority: text("issuing_authority"),
+  issueDate: date("issue_date"),
+  expiryDate: date("expiry_date"),
+  reminderDays: integer("reminder_days").default(30),
+  notes: text("notes"),
+  fileDocumentId: integer("file_document_id").references(() => documents.id, { onDelete: "set null" }),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("compliance_docs_entity_idx").on(table.entityType, table.entityId),
+  index("compliance_docs_expiry_idx").on(table.expiryDate),
+  index("compliance_docs_type_idx").on(table.documentType),
+]);
+
+export const complianceDocumentsRelations = relations(complianceDocuments, ({ one }) => ({
+  fileDocument: one(documents, {
+    fields: [complianceDocuments.fileDocumentId],
+    references: [documents.id],
+  }),
+  createdBy: one(users, {
+    fields: [complianceDocuments.createdByUserId],
     references: [users.id],
   }),
 }));
@@ -1473,4 +1523,25 @@ export type AssetWithDepreciation = Asset & {
 
 export type LedgerEntryWithLines = LedgerEntry & {
   lines: (LedgerLine & { account: ChartOfAccount })[];
+};
+
+// Compliance document schemas
+export const insertComplianceDocumentSchema = createInsertSchema(complianceDocuments).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  documentName: z.string().min(2, "Document name is required"),
+  entityId: z.number().min(1, "Entity is required"),
+});
+
+export type InsertComplianceDocument = z.infer<typeof insertComplianceDocumentSchema>;
+export type ComplianceDocument = typeof complianceDocuments.$inferSelect;
+
+export type ComplianceDocumentWithEntity = ComplianceDocument & {
+  ownerName?: string;
+  propertyName?: string;
+  status: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
+  daysUntilExpiry?: number;
 };

@@ -401,6 +401,7 @@ export interface IStorage {
   // =====================================================
   // UTILITY METERS MODULE
   // =====================================================
+  getAllMetersForUser(userId: number): Promise<(UtilityMeter & { propertyName?: string; assignedOwner?: Owner | null; assignedTenant?: Tenant | null })[]>;
   getMetersByPropertyId(propertyId: number): Promise<UtilityMeter[]>;
   getMeterById(id: number): Promise<UtilityMeter | undefined>;
   createMeter(meter: InsertUtilityMeter): Promise<UtilityMeter>;
@@ -1895,6 +1896,57 @@ export class DatabaseStorage implements IStorage {
   // =====================================================
   // UTILITY METERS MODULE
   // =====================================================
+
+  async getAllMetersForUser(userId: number): Promise<(UtilityMeter & { propertyName?: string; assignedOwner?: Owner | null; assignedTenant?: Tenant | null })[]> {
+    const userProperties = await db
+      .select({ id: properties.id })
+      .from(properties)
+      .where(and(eq(properties.ownerUserId, userId), eq(properties.isDeleted, 0)));
+    
+    const collaboratedPropertyIds = await db
+      .select({ propertyId: propertyCollaborators.propertyId })
+      .from(propertyCollaborators)
+      .where(eq(propertyCollaborators.userId, userId));
+    
+    const allPropertyIds = [
+      ...userProperties.map(p => p.id),
+      ...collaboratedPropertyIds.map(c => c.propertyId)
+    ];
+    
+    if (allPropertyIds.length === 0) {
+      return [];
+    }
+    
+    const meters = await db
+      .select()
+      .from(utilityMeters)
+      .where(inArray(utilityMeters.propertyId, allPropertyIds));
+    
+    const result: (UtilityMeter & { propertyName?: string; assignedOwner?: Owner | null; assignedTenant?: Tenant | null })[] = [];
+    
+    for (const meter of meters) {
+      const [property] = await db.select({ name: properties.name }).from(properties).where(eq(properties.id, meter.propertyId));
+      let assignedOwner: Owner | null = null;
+      let assignedTenant: Tenant | null = null;
+      
+      if (meter.assignedToType === "OWNER" && meter.assignedToOwnerId) {
+        const [owner] = await db.select().from(owners).where(eq(owners.id, meter.assignedToOwnerId));
+        assignedOwner = owner || null;
+      } else if (meter.assignedToType === "TENANT" && meter.assignedToTenantId) {
+        const [tenant] = await db.select().from(tenants).where(eq(tenants.id, meter.assignedToTenantId));
+        assignedTenant = tenant || null;
+      }
+      
+      result.push({
+        ...meter,
+        propertyName: property?.name,
+        assignedOwner,
+        assignedTenant,
+      });
+    }
+    
+    return result;
+  }
 
   async getMetersByPropertyId(propertyId: number): Promise<UtilityMeter[]> {
     return db.select().from(utilityMeters).where(eq(utilityMeters.propertyId, propertyId));

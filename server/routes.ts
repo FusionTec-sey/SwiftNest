@@ -2223,6 +2223,15 @@ export async function registerRoutes(
   // UTILITY METERS MODULE
   // =====================================================
 
+  app.get("/api/utility-meters", requireAuth, async (req, res, next) => {
+    try {
+      const meters = await storage.getAllMetersForUser(req.user!.id);
+      res.json(meters);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/properties/:propertyId/meters", requireAuth, async (req, res, next) => {
     try {
       const propertyId = parseInt(req.params.propertyId);

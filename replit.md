@@ -138,3 +138,32 @@ Preferred communication style: Simple, everyday language.
 - Drizzle ORM over Prisma - lighter weight, better TypeScript integration
 - Soft deletes for data retention and audit trails
 - Owner-based multi-tenancy (data isolation at application level)
+
+## Standard Test Data
+
+**Test User Credentials**
+- Email: parthvekaria123@gmail.com
+- Password: 123456789
+- User ID: 1
+
+**Test Data Summary (for User ID 1)**
+- 3 Owners (1 company: SwiftNest Holdings Ltd, 2 individuals: John Smith, Marie Claire)
+- 7 Properties (various types: APARTMENT, VILLA, OFFICE, SHOP, WAREHOUSE, LAND)
+  - Property IDs: 3, 11, 12, 13, 14, 15, 16
+  - Oceanview Apartments (11), Palm Villa Estate (12), Downtown Office Building (13), Market Square Shops (14), Industrial Warehouse (15), Hillside Development Land (16)
+- 6 Tenants (4 individual, 2 company)
+  - Sarah Johnson (2), Robert Brown (3), TechStart Ltd (4), Island Retail Co (5), Emma Wilson (6)
+- 6 Leases (4 ACTIVE, 1 DRAFT, 1 EXPIRED)
+- 14 Utility Meters (ELECTRICITY, WATER, INTERNET) with OWNER and TENANT assignments
+  - Meters with assignment history: IDs 12, 14, 15, 17, 20
+- 9 Utility Bills (PAID, PENDING, OVERDUE, PARTIALLY_PAID, FORWARDED statuses)
+- 5 Meter Assignment History records
+
+**Key Property IDs for Testing**
+- Property 3: Original test property (Parthiv Lalji Vekaria)
+- Property 11: Oceanview Apartments - has 2 meters assigned to owner
+- Property 12: Palm Villa Estate - has 3 meters (2 tenant-assigned, 1 owner-assigned)
+- Property 13: Downtown Office Building - has 3 meters for company tenant
+- Property 14: Market Square Shops - retail property with active lease
+- Property 15: Industrial Warehouse - owner-managed
+- Property 16: Hillside Development Land - land for development

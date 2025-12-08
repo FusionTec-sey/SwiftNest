@@ -38,6 +38,8 @@ Preferred communication style: Simple, everyday language.
     -   **Property Scoping:** Role assignments can be global (all properties) or scoped to specific properties
     -   **RBAC Module:** `server/rbac.ts` provides middleware and helper functions for permission checking
     -   **Admin UI:** `/admin` page for super admins to create users and assign roles
+    -   **Access Precedence:** Super Admin > Owner > Property-scoped RBAC > Global RBAC > Legacy Collaborator
+    -   **Storage Integration:** `canUserAccessProperty`, `getAccessiblePropertyIds`, and `getPropertiesByUserId` enforce RBAC permissions with isDeleted filtering
 -   **Database:** PostgreSQL with Drizzle ORM for type-safe operations.
 -   **Schema Design:**
     -   **Multi-entity Ownership:** `Owners` table allows a single user to manage properties under multiple legal entities (Individual, Company, Trust).

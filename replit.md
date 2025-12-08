@@ -51,7 +51,14 @@ Preferred communication style: Simple, everyday language.
 - Scrypt-based password hashing with salts
 - Session cookies (secure in production, HttpOnly)
 - User context attached to requests via middleware
-- Owner-based authorization (users can only access their own properties)
+- **Centralized Collaborator Access Pattern**:
+  - `getAccessiblePropertyIds(userId)`: Returns all property IDs user can access (owned + shared)
+  - `getPropertiesByUserId(userId)`: Returns properties with `role` metadata ("OWNER", "VIEWER", or "EDITOR")
+  - All data-fetching functions (leases, invoices, tenants, utilities) use this pattern for consistent access
+  - Permission guards: `requirePropertyEditAccess` (OWNER/EDITOR) and `requirePropertyOwnerAccess` (OWNER only)
+  - VIEWER role: Read-only access to shared properties
+  - EDITOR role: Can modify property data, create units, manage maintenance, etc.
+  - OWNER role: Full access including delete, share, and manage collaborators
 
 **Database Layer**
 - Drizzle ORM for type-safe database operations

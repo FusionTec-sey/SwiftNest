@@ -92,12 +92,15 @@ Preferred communication style: Simple, everyday language.
 
 **Document Management Module**
 - **documents**: Centralized document storage for all modules
-  - Document types: INVOICE, RECEIPT, PAYMENT_PROOF, CONTRACT, PHOTO, REPORT, OTHER
-  - Source modules: PROPERTY, UNIT, LEASE, TENANT, METER, BILL, INVOICE, PAYMENT, MAINTENANCE_ISSUE, MAINTENANCE_TASK, LOAN, ASSET, OWNER
-  - Features: File upload (PDFs, images), shareable links with expiration, download support
+  - Document types: INVOICE, RECEIPT, PAYMENT_PROOF, CONTRACT, LEASE_AGREEMENT, UTILITY_BILL_IMAGE, MAINTENANCE_PHOTO, ID_DOCUMENT, PROPERTY_IMAGE, WORK_ORDER, QUOTE, COMPLETION_CERTIFICATE, REPORT, OTHER
+  - Source modules: PROPERTY, UNIT, LEASE, TENANT, UTILITY_METER, UTILITY_BILL, PAYMENT, MAINTENANCE_ISSUE, MAINTENANCE_TASK, LOAN, ASSET, OWNER
+  - Features: File upload (PDFs, images up to 10MB), shareable links with 24-hour expiration, download support
   - Files stored in /uploads/documents directory
   - Reusable DocumentManager component for integration across modules
   - Share links work on mobile via native share API, desktop via copy/download
+  - **Authorization**: verifyModuleAccess helper enforces property-scoped ownership across all document endpoints
+    - Traverses module hierarchy to verify user access (e.g., UTILITY_BILL -> UTILITY_METER -> PROPERTY -> user ownership)
+    - Handles polymorphic PAYMENT associations (RENT_INVOICE, UTILITY_BILL, LOAN types)
 
 **Data Validation**
 - Zod schemas for runtime validation

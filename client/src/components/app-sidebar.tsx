@@ -16,6 +16,7 @@ import {
   Trash2,
   FileCheck,
   ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,7 @@ const operationsNavItems = [
 
 const financeNavItems = [
   { href: "/accounting", label: "Accounting", icon: Calculator },
+  { href: "/expenses", label: "Expenses", icon: Wallet },
   { href: "/loans", label: "Loans", icon: Landmark },
   { href: "/assets", label: "Assets", icon: Package },
   { href: "/reports", label: "Reports", icon: BarChart3 },

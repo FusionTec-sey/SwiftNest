@@ -30,6 +30,7 @@ import InvitePage from "@/pages/invite-page";
 import RentCollectionPage from "@/pages/rent-collection-page";
 import SettingsPage from "@/pages/settings-page";
 import CompliancePage from "@/pages/compliance-page";
+import ExpensesPage from "@/pages/expenses-page";
 import AdminPage from "@/pages/admin-page";
 
 function ProtectedRoutes() {
@@ -53,6 +54,7 @@ function ProtectedRoutes() {
       <Route path="/loans" component={LoansPage} />
       <Route path="/assets" component={AssetsPage} />
       <Route path="/reports" component={ReportsPage} />
+      <Route path="/expenses" component={ExpensesPage} />
       <Route path="/compliance" component={CompliancePage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/admin" component={AdminPage} />

@@ -14,6 +14,7 @@ import PropertyNewPage from "@/pages/property-new-page";
 import PropertyEditPage from "@/pages/property-edit-page";
 import PropertyDetailPage from "@/pages/property-detail-page";
 import DeletedPropertiesPage from "@/pages/deleted-properties-page";
+import MaintenancePage from "@/pages/maintenance-page";
 
 function Router() {
   return (
@@ -23,6 +24,7 @@ function Router() {
       <ProtectedRoute path="/properties/deleted" component={DeletedPropertiesPage} />
       <ProtectedRoute path="/properties/new" component={PropertyNewPage} />
       <ProtectedRoute path="/properties/:id/edit" component={PropertyEditPage} />
+      <ProtectedRoute path="/properties/:id/maintenance" component={MaintenancePage} />
       <ProtectedRoute path="/properties/:id" component={PropertyDetailPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />

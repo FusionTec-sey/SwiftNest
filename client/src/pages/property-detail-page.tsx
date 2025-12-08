@@ -14,6 +14,7 @@ import {
   Store,
   Trash2,
   MoreVertical,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -268,6 +269,12 @@ export default function PropertyDetailPage() {
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
+              <Link href={`/properties/${propertyId}/maintenance`}>
+                <Button variant="outline" className="gap-2" data-testid="button-maintenance">
+                  <Wrench className="h-4 w-4" />
+                  Maintenance
+                </Button>
+              </Link>
               {property.isOwner !== false && (
                 <ShareDialog propertyId={propertyId} propertyName={property.name} />
               )}

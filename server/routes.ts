@@ -6,7 +6,19 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
-import { insertPropertySchema, insertUnitSchema, sharePropertySchema, insertPropertyNodeSchema, updatePropertyNodeSchema, movePropertyNodeSchema } from "@shared/schema";
+import { 
+  insertPropertySchema, 
+  insertUnitSchema, 
+  sharePropertySchema, 
+  insertPropertyNodeSchema, 
+  updatePropertyNodeSchema, 
+  movePropertyNodeSchema,
+  insertMaintenanceTeamMemberSchema,
+  insertMaintenanceMaterialSchema,
+  insertMaintenanceIssueSchema,
+  insertMaintenanceTaskSchema,
+  insertMaintenanceScheduleSchema
+} from "@shared/schema";
 
 const uploadDir = path.join(process.cwd(), "uploads", "properties");
 if (!fs.existsSync(uploadDir)) {
@@ -613,6 +625,943 @@ export async function registerRoutes(
 
       await storage.deletePropertyNode(nodeId);
       res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // MAINTENANCE TEAM MEMBERS
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/maintenance/team", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const team = await storage.getTeamMembersByPropertyId(propertyId);
+      res.json(team);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/team/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid team member ID" });
+      }
+
+      const member = await storage.getTeamMemberById(id);
+      if (!member) {
+        return res.status(404).json({ message: "Team member not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(member.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(member);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/maintenance/team", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can add team members" });
+      }
+
+      const { skills, ...memberData } = req.body;
+      const validation = insertMaintenanceTeamMemberSchema.safeParse({ ...memberData, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const member = await storage.createTeamMember(validation.data, skills || []);
+      res.status(201).json(member);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/maintenance/team/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid team member ID" });
+      }
+
+      const existing = await storage.getTeamMemberById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Team member not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update team members" });
+      }
+
+      const { skills, ...memberData } = req.body;
+      const member = await storage.updateTeamMember(id, memberData, skills);
+      res.json(member);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/maintenance/team/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid team member ID" });
+      }
+
+      const existing = await storage.getTeamMemberById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Team member not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can delete team members" });
+      }
+
+      await storage.deleteTeamMember(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // MAINTENANCE MATERIALS
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/maintenance/materials", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const materials = await storage.getMaterialsByPropertyId(propertyId);
+      res.json(materials);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/properties/:propertyId/maintenance/materials/low-stock", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const materials = await storage.getLowStockMaterials(propertyId);
+      res.json(materials);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/materials/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid material ID" });
+      }
+
+      const material = await storage.getMaterialById(id);
+      if (!material) {
+        return res.status(404).json({ message: "Material not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(material.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(material);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/maintenance/materials", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can add materials" });
+      }
+
+      const validation = insertMaintenanceMaterialSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const material = await storage.createMaterial(validation.data);
+      res.status(201).json(material);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/maintenance/materials/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid material ID" });
+      }
+
+      const existing = await storage.getMaterialById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Material not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update materials" });
+      }
+
+      const material = await storage.updateMaterial(id, req.body);
+      res.json(material);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/materials/:id/adjust-stock", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid material ID" });
+      }
+
+      const existing = await storage.getMaterialById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Material not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can adjust stock" });
+      }
+
+      const { quantityChange } = req.body;
+      if (typeof quantityChange !== "number") {
+        return res.status(400).json({ message: "quantityChange must be a number" });
+      }
+
+      const material = await storage.adjustMaterialStock(id, quantityChange);
+      res.json(material);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/maintenance/materials/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid material ID" });
+      }
+
+      const existing = await storage.getMaterialById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Material not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can delete materials" });
+      }
+
+      await storage.deleteMaterial(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // MAINTENANCE ISSUES
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/maintenance/issues", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const issues = await storage.getIssuesByPropertyId(propertyId);
+      res.json(issues);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/issues/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid issue ID" });
+      }
+
+      const issue = await storage.getIssueById(id);
+      if (!issue) {
+        return res.status(404).json({ message: "Issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(issue.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(issue);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/maintenance/issues", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const validation = insertMaintenanceIssueSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const issue = await storage.createIssue({ ...validation.data, reportedByUserId: req.user!.id });
+      res.status(201).json(issue);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/maintenance/issues/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid issue ID" });
+      }
+
+      const existing = await storage.getIssueById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update issues" });
+      }
+
+      const issue = await storage.updateIssue(id, req.body);
+      res.json(issue);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/issues/:id/assign", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid issue ID" });
+      }
+
+      const existing = await storage.getIssueById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can assign issues" });
+      }
+
+      const { memberId } = req.body;
+      const issue = await storage.assignIssue(id, memberId || null);
+      res.json(issue);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/issues/:id/status", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid issue ID" });
+      }
+
+      const existing = await storage.getIssueById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update issue status" });
+      }
+
+      const { status, resolutionNotes } = req.body;
+      if (!status) {
+        return res.status(400).json({ message: "Status is required" });
+      }
+
+      const issue = await storage.updateIssueStatus(id, status, resolutionNotes);
+      res.json(issue);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/maintenance/issues/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid issue ID" });
+      }
+
+      const existing = await storage.getIssueById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Issue not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can delete issues" });
+      }
+
+      await storage.deleteIssue(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // MAINTENANCE TASKS
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/maintenance/tasks", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const tasks = await storage.getTasksByPropertyId(propertyId);
+      res.json(tasks);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/tasks/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const task = await storage.getTaskById(id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(task.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/tasks/:id/activities", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const task = await storage.getTaskById(id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(task.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const activities = await storage.getTaskActivities(id);
+      res.json(activities);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/maintenance/tasks", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can create tasks" });
+      }
+
+      const validation = insertMaintenanceTaskSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const task = await storage.createTask({ ...validation.data, requestedByUserId: req.user!.id });
+      await storage.addTaskActivity(task.id, req.user!.id, "CREATED", { title: task.title });
+      res.status(201).json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/maintenance/tasks/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const existing = await storage.getTaskById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update tasks" });
+      }
+
+      const task = await storage.updateTask(id, req.body);
+      await storage.addTaskActivity(id, req.user!.id, "UPDATED", req.body);
+      res.json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/tasks/:id/assign", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const existing = await storage.getTaskById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can assign tasks" });
+      }
+
+      const { memberId } = req.body;
+      const task = await storage.assignTask(id, memberId || null);
+      await storage.addTaskActivity(id, req.user!.id, "ASSIGNED", { memberId });
+      res.json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/tasks/:id/status", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const existing = await storage.getTaskById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update task status" });
+      }
+
+      const { status } = req.body;
+      if (!status) {
+        return res.status(400).json({ message: "Status is required" });
+      }
+
+      const task = await storage.updateTaskStatus(id, status, req.user!.id);
+      res.json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/tasks/:id/approve", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const existing = await storage.getTaskById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner) {
+        return res.status(403).json({ message: "Only owners can approve tasks" });
+      }
+
+      const task = await storage.approveTask(id, req.user!.id);
+      res.json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/maintenance/tasks/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      const existing = await storage.getTaskById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can delete tasks" });
+      }
+
+      await storage.deleteTask(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // MAINTENANCE SCHEDULES
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/maintenance/schedules", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const schedules = await storage.getSchedulesByPropertyId(propertyId);
+      res.json(schedules);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/schedules/upcoming", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      
+      if (propertyId) {
+        const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+        if (!access.canAccess) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const schedules = await storage.getUpcomingSchedules(propertyId);
+      res.json(schedules);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/maintenance/schedules/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid schedule ID" });
+      }
+
+      const schedule = await storage.getScheduleById(id);
+      if (!schedule) {
+        return res.status(404).json({ message: "Schedule not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(schedule.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/properties/:propertyId/maintenance/schedules", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can create schedules" });
+      }
+
+      const validation = insertMaintenanceScheduleSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({
+          message: validation.error.errors[0]?.message || "Invalid input",
+        });
+      }
+
+      const schedule = await storage.createSchedule(validation.data);
+      res.status(201).json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/maintenance/schedules/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid schedule ID" });
+      }
+
+      const existing = await storage.getScheduleById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Schedule not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can update schedules" });
+      }
+
+      const schedule = await storage.updateSchedule(id, req.body);
+      res.json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/maintenance/schedules/:id/run", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid schedule ID" });
+      }
+
+      const existing = await storage.getScheduleById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Schedule not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can run schedules" });
+      }
+
+      const task = await storage.runSchedule(id, req.user!.id);
+      res.status(201).json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/maintenance/schedules/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid schedule ID" });
+      }
+
+      const existing = await storage.getScheduleById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Schedule not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR") {
+        return res.status(403).json({ message: "Only owners and editors can delete schedules" });
+      }
+
+      await storage.deleteSchedule(id);
+      res.sendStatus(204);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // MAINTENANCE STATS/DASHBOARD
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/maintenance/stats", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const stats = await storage.getMaintenanceStats(propertyId);
+      res.json(stats);
     } catch (error) {
       next(error);
     }

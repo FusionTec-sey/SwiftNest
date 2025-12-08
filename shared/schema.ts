@@ -97,6 +97,171 @@ export const propertyNodes = pgTable("property_nodes", {
   index("nodes_parent_idx").on(table.parentId),
 ]);
 
+// =====================================================
+// MAINTENANCE MANAGEMENT TABLES
+// =====================================================
+
+// Maintenance enums
+export const issueCategoryEnum = pgEnum("issue_category", [
+  "ELECTRICAL", "PLUMBING", "HVAC", "STRUCTURAL", "CLEANING", "PEST_CONTROL", "APPLIANCE", "GENERAL"
+]);
+export const issueSeverityEnum = pgEnum("issue_severity", ["LOW", "MEDIUM", "HIGH", "URGENT"]);
+export const issueStatusEnum = pgEnum("issue_status", ["OPEN", "IN_PROGRESS", "ON_HOLD", "RESOLVED", "CLOSED"]);
+export const taskStatusEnum = pgEnum("task_status", ["TODO", "IN_PROGRESS", "WAITING_APPROVAL", "COMPLETED", "CLOSED"]);
+export const taskPriorityEnum = pgEnum("task_priority", ["LOW", "MEDIUM", "HIGH", "URGENT"]);
+export const teamRoleEnum = pgEnum("team_role", ["SUPERVISOR", "TECHNICIAN", "CLEANER", "INSPECTOR"]);
+export const skillTypeEnum = pgEnum("skill_type", ["HVAC", "PLUMBING", "ELECTRICAL", "CLEANING", "CARPENTRY", "PAINTING", "GENERAL"]);
+export const scheduleCadenceEnum = pgEnum("schedule_cadence", ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]);
+
+// Maintenance Team Members
+export const maintenanceTeamMembers = pgTable("maintenance_team_members", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }),
+  role: teamRoleEnum("role").notNull().default("TECHNICIAN"),
+  isActive: integer("is_active").default(1).notNull(),
+  maxConcurrentJobs: integer("max_concurrent_jobs").default(5),
+  hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("team_user_idx").on(table.userId),
+  index("team_property_idx").on(table.propertyId),
+]);
+
+// Team Member Skills
+export const maintenanceMemberSkills = pgTable("maintenance_member_skills", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  memberId: integer("member_id").notNull().references(() => maintenanceTeamMembers.id, { onDelete: "cascade" }),
+  skill: skillTypeEnum("skill").notNull(),
+}, (table) => [
+  index("skills_member_idx").on(table.memberId),
+]);
+
+// Maintenance Materials/Inventory
+export const maintenanceMaterials = pgTable("maintenance_materials", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sku: text("sku"),
+  unit: text("unit").default("pcs"),
+  quantityOnHand: decimal("quantity_on_hand", { precision: 10, scale: 2 }).default("0"),
+  reorderThreshold: decimal("reorder_threshold", { precision: 10, scale: 2 }).default("5"),
+  costPerUnit: decimal("cost_per_unit", { precision: 10, scale: 2 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("materials_property_idx").on(table.propertyId),
+]);
+
+// Maintenance Issues
+export const maintenanceIssues = pgTable("maintenance_issues", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  nodeId: integer("node_id").references(() => propertyNodes.id, { onDelete: "set null" }),
+  reportedByUserId: integer("reported_by_user_id").notNull().references(() => users.id),
+  assignedToMemberId: integer("assigned_to_member_id").references(() => maintenanceTeamMembers.id, { onDelete: "set null" }),
+  category: issueCategoryEnum("category").notNull(),
+  severity: issueSeverityEnum("severity").notNull().default("MEDIUM"),
+  status: issueStatusEnum("status").notNull().default("OPEN"),
+  title: text("title").notNull(),
+  description: text("description"),
+  resolutionNotes: text("resolution_notes"),
+  attachments: text("attachments").array().default([]),
+  dueAt: timestamp("due_at"),
+  closedAt: timestamp("closed_at"),
+  costLabor: decimal("cost_labor", { precision: 10, scale: 2 }).default("0"),
+  costMaterials: decimal("cost_materials", { precision: 10, scale: 2 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("issues_property_idx").on(table.propertyId),
+  index("issues_status_idx").on(table.status),
+  index("issues_assigned_idx").on(table.assignedToMemberId),
+]);
+
+// Maintenance Tasks
+export const maintenanceTasks = pgTable("maintenance_tasks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  issueId: integer("issue_id").references(() => maintenanceIssues.id, { onDelete: "set null" }),
+  scheduleId: integer("schedule_id"),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  nodeId: integer("node_id").references(() => propertyNodes.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: issueCategoryEnum("category").notNull(),
+  status: taskStatusEnum("status").notNull().default("TODO"),
+  priority: taskPriorityEnum("priority").notNull().default("MEDIUM"),
+  assignedToMemberId: integer("assigned_to_member_id").references(() => maintenanceTeamMembers.id, { onDelete: "set null" }),
+  requestedByUserId: integer("requested_by_user_id").notNull().references(() => users.id),
+  approvalRequired: integer("approval_required").default(0),
+  approvedByUserId: integer("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at"),
+  dueAt: timestamp("due_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  laborHours: decimal("labor_hours", { precision: 6, scale: 2 }).default("0"),
+  totalCost: decimal("total_cost", { precision: 10, scale: 2 }).default("0"),
+  checklist: jsonb("checklist").default([]).$type<{ item: string; completed: boolean }[]>(),
+  attachments: text("attachments").array().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("tasks_property_idx").on(table.propertyId),
+  index("tasks_status_idx").on(table.status),
+  index("tasks_assigned_idx").on(table.assignedToMemberId),
+  index("tasks_issue_idx").on(table.issueId),
+]);
+
+// Task Activity Log (for tracking changes, comments, material usage)
+export const maintenanceTaskActivity = pgTable("maintenance_task_activity", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("task_id").notNull().references(() => maintenanceTasks.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  activityType: text("activity_type").notNull(),
+  payload: jsonb("payload").default({}).$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("activity_task_idx").on(table.taskId),
+]);
+
+// Task Material Usage
+export const maintenanceTaskMaterials = pgTable("maintenance_task_materials", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("task_id").notNull().references(() => maintenanceTasks.id, { onDelete: "cascade" }),
+  materialId: integer("material_id").notNull().references(() => maintenanceMaterials.id, { onDelete: "cascade" }),
+  quantityUsed: decimal("quantity_used", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("task_materials_task_idx").on(table.taskId),
+  index("task_materials_material_idx").on(table.materialId),
+]);
+
+// Recurring Maintenance Schedules
+export const maintenanceSchedules = pgTable("maintenance_schedules", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  nodeId: integer("node_id").references(() => propertyNodes.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: issueCategoryEnum("category").notNull(),
+  priority: taskPriorityEnum("priority").notNull().default("MEDIUM"),
+  cadence: scheduleCadenceEnum("cadence").notNull(),
+  defaultAssignedMemberId: integer("default_assigned_member_id").references(() => maintenanceTeamMembers.id, { onDelete: "set null" }),
+  templateChecklist: jsonb("template_checklist").default([]).$type<{ item: string }[]>(),
+  isActive: integer("is_active").default(1).notNull(),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("schedules_property_idx").on(table.propertyId),
+  index("schedules_next_run_idx").on(table.nextRunAt),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   properties: many(properties),
@@ -242,3 +407,98 @@ export const loginSchema = z.object({
 });
 
 export type LoginData = z.infer<typeof loginSchema>;
+
+// =====================================================
+// MAINTENANCE SCHEMAS AND TYPES
+// =====================================================
+
+// Insert schemas for maintenance entities
+export const insertMaintenanceTeamMemberSchema = createInsertSchema(maintenanceTeamMembers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertMaintenanceMaterialSchema = createInsertSchema(maintenanceMaterials).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(1, "Material name is required"),
+});
+
+export const insertMaintenanceIssueSchema = createInsertSchema(maintenanceIssues).omit({
+  id: true,
+  reportedByUserId: true,
+  status: true,
+  closedAt: true,
+  costLabor: true,
+  costMaterials: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  title: z.string().min(1, "Issue title is required"),
+});
+
+export const insertMaintenanceTaskSchema = createInsertSchema(maintenanceTasks).omit({
+  id: true,
+  requestedByUserId: true,
+  status: true,
+  approvedByUserId: true,
+  approvedAt: true,
+  startedAt: true,
+  completedAt: true,
+  laborHours: true,
+  totalCost: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  title: z.string().min(1, "Task title is required"),
+});
+
+export const insertMaintenanceScheduleSchema = createInsertSchema(maintenanceSchedules).omit({
+  id: true,
+  lastRunAt: true,
+  nextRunAt: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  title: z.string().min(1, "Schedule title is required"),
+});
+
+// Maintenance types
+export type MaintenanceTeamMember = typeof maintenanceTeamMembers.$inferSelect;
+export type InsertMaintenanceTeamMember = z.infer<typeof insertMaintenanceTeamMemberSchema>;
+export type MaintenanceMemberSkill = typeof maintenanceMemberSkills.$inferSelect;
+export type MaintenanceMaterial = typeof maintenanceMaterials.$inferSelect;
+export type InsertMaintenanceMaterial = z.infer<typeof insertMaintenanceMaterialSchema>;
+export type MaintenanceIssue = typeof maintenanceIssues.$inferSelect;
+export type InsertMaintenanceIssue = z.infer<typeof insertMaintenanceIssueSchema>;
+export type MaintenanceTask = typeof maintenanceTasks.$inferSelect;
+export type InsertMaintenanceTask = z.infer<typeof insertMaintenanceTaskSchema>;
+export type MaintenanceTaskActivity = typeof maintenanceTaskActivity.$inferSelect;
+export type MaintenanceTaskMaterial = typeof maintenanceTaskMaterials.$inferSelect;
+export type MaintenanceSchedule = typeof maintenanceSchedules.$inferSelect;
+export type InsertMaintenanceSchedule = z.infer<typeof insertMaintenanceScheduleSchema>;
+
+// Team member with skills for frontend
+export type TeamMemberWithSkills = MaintenanceTeamMember & { 
+  skills: MaintenanceMemberSkill[];
+  user: User;
+};
+
+// Issue with related data
+export type IssueWithDetails = MaintenanceIssue & {
+  property?: Property;
+  assignedMember?: TeamMemberWithSkills | null;
+  reporter?: User;
+};
+
+// Task with related data
+export type TaskWithDetails = MaintenanceTask & {
+  property?: Property;
+  issue?: MaintenanceIssue | null;
+  assignedMember?: TeamMemberWithSkills | null;
+  activities?: MaintenanceTaskActivity[];
+  materials?: (MaintenanceTaskMaterial & { material: MaintenanceMaterial })[];
+};

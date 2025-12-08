@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Home, Plus, Users, TrendingUp, Store, MapPin, Building, AlertTriangle, Calendar, DollarSign, FileText, Wrench, CreditCard, ArrowRight, Clock, CheckCircle, UserPlus, Receipt, PiggyBank } from "lucide-react";
+import { Building2, Home, Plus, Users, TrendingUp, Store, MapPin, Building, AlertTriangle, Calendar, DollarSign, FileText, Wrench, CreditCard, ArrowRight, Clock, CheckCircle, UserPlus, Receipt, PiggyBank, FileCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,9 +12,15 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit } from "@shared/schema";
+import type { Property, Unit, ComplianceDocument } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[] };
+
+interface ComplianceDocumentWithStatus extends ComplianceDocument {
+  computedStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "NOT_APPLICABLE";
+  daysUntilExpiry: number | null;
+  entityName?: string;
+}
 
 interface DashboardSummary {
   properties: { total: number; occupied: number; vacant: number };
@@ -35,6 +41,10 @@ export default function DashboardPage() {
 
   const { data: summary, isLoading: summaryLoading } = useQuery<DashboardSummary>({
     queryKey: ["/api/reports/dashboard-summary"],
+  });
+
+  const { data: complianceDocuments } = useQuery<ComplianceDocumentWithStatus[]>({
+    queryKey: ["/api/compliance-documents"],
   });
 
   const deleteMutation = useMutation({
@@ -79,7 +89,15 @@ export default function DashboardPage() {
     SHOP: { label: "Shops", icon: Store },
   };
 
-  const hasAlerts = summary && (summary.financials.overdueAmount > 0 || summary.leases.expiringSoon > 0);
+  const expiringComplianceDocs = complianceDocuments?.filter(
+    (doc) => doc.computedStatus === "EXPIRING_SOON"
+  ) || [];
+  const expiredComplianceDocs = complianceDocuments?.filter(
+    (doc) => doc.computedStatus === "EXPIRED"
+  ) || [];
+  const complianceAlertCount = expiringComplianceDocs.length + expiredComplianceDocs.length;
+
+  const hasAlerts = summary && (summary.financials.overdueAmount > 0 || summary.leases.expiringSoon > 0 || complianceAlertCount > 0);
 
   const quickActions = [
     { label: "Collect Rent", href: "/rent-collection", icon: Receipt, color: "text-green-600 dark:text-green-400" },
@@ -173,6 +191,38 @@ export default function DashboardPage() {
                             <p className="font-medium">Expiring Leases</p>
                             <p className="text-sm text-muted-foreground">
                               {summary!.leases.expiringSoon} {summary!.leases.expiringSoon === 1 ? "lease expires" : "leases expire"} within 30 days
+                            </p>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </div>
+                      </Link>
+                    )}
+                    {expiredComplianceDocs.length > 0 && (
+                      <Link href="/compliance">
+                        <div className="flex items-center gap-4 p-3 rounded-md bg-white dark:bg-background border hover-elevate active-elevate-2 cursor-pointer" data-testid="alert-expired-compliance">
+                          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                            <FileCheck className="h-5 w-5 text-red-600 dark:text-red-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium">Expired Documents</p>
+                            <p className="text-sm text-muted-foreground">
+                              {expiredComplianceDocs.length} {expiredComplianceDocs.length === 1 ? "document has" : "documents have"} expired
+                            </p>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </div>
+                      </Link>
+                    )}
+                    {expiringComplianceDocs.length > 0 && (
+                      <Link href="/compliance">
+                        <div className="flex items-center gap-4 p-3 rounded-md bg-white dark:bg-background border hover-elevate active-elevate-2 cursor-pointer" data-testid="alert-expiring-compliance">
+                          <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                            <FileCheck className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium">Expiring Soon</p>
+                            <p className="text-sm text-muted-foreground">
+                              {expiringComplianceDocs.length} compliance {expiringComplianceDocs.length === 1 ? "document" : "documents"} expiring soon
                             </p>
                           </div>
                           <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />

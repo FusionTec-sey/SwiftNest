@@ -1,18 +1,139 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Enums
+export const accountTypeEnum = pgEnum("account_type", ["INDIVIDUAL", "ORGANIZATION"]);
+export const propertyTypeEnum = pgEnum("property_type", ["APARTMENT", "VILLA", "PLOT", "OFFICE", "SHOP"]);
+export const unitStatusEnum = pgEnum("unit_status", ["VACANT", "OCCUPIED"]);
+
+// Users table
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  phone: text("phone").notNull(),
   password: text("password").notNull(),
+  accountType: accountTypeEnum("account_type").notNull().default("INDIVIDUAL"),
+  organizationName: text("organization_name"),
+  organizationType: text("organization_type"),
+  gstId: text("gst_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("users_email_idx").on(table.email),
+]);
+
+// Properties table
+export const properties = pgTable("properties", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerUserId: integer("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  ownerOrgName: text("owner_org_name"),
+  name: text("name").notNull(),
+  propertyType: propertyTypeEnum("property_type").notNull(),
+  addressLine1: text("address_line1").notNull(),
+  addressLine2: text("address_line2"),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  country: text("country").notNull(),
+  pincode: text("pincode").notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 8 }),
+  longitude: decimal("longitude", { precision: 11, scale: 8 }),
+  isDeleted: integer("is_deleted").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("properties_owner_idx").on(table.ownerUserId),
+  index("properties_city_idx").on(table.city),
+]);
+
+// Units table
+export const units = pgTable("units", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitName: text("unit_name").notNull(),
+  floor: text("floor"),
+  areaSqFt: decimal("area_sq_ft", { precision: 10, scale: 2 }),
+  status: unitStatusEnum("status").notNull().default("VACANT"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("units_property_idx").on(table.propertyId),
+]);
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  properties: many(properties),
+}));
+
+export const propertiesRelations = relations(properties, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [properties.ownerUserId],
+    references: [users.id],
+  }),
+  units: many(units),
+}));
+
+export const unitsRelations = relations(units, ({ one }) => ({
+  property: one(properties, {
+    fields: [units.propertyId],
+    references: [properties.id],
+  }),
+}));
+
+// Insert schemas
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  name: z.string().min(2, "Name must be at least 2 characters"),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertPropertySchema = createInsertSchema(properties).omit({
+  id: true,
+  ownerUserId: true,
+  ownerOrgName: true,
+  isDeleted: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(2, "Property name must be at least 2 characters"),
+  addressLine1: z.string().min(5, "Address must be at least 5 characters"),
+  city: z.string().min(2, "City must be at least 2 characters"),
+  state: z.string().min(2, "State must be at least 2 characters"),
+  country: z.string().min(2, "Country must be at least 2 characters"),
+  pincode: z.string().min(4, "Pincode must be at least 4 characters"),
 });
 
+export const insertUnitSchema = createInsertSchema(units).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  unitName: z.string().min(1, "Unit name is required"),
+});
+
+// Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type InsertProperty = z.infer<typeof insertPropertySchema>;
+export type Property = typeof properties.$inferSelect;
+export type InsertUnit = z.infer<typeof insertUnitSchema>;
+export type Unit = typeof units.$inferSelect;
+
+// Property with units type
+export type PropertyWithUnits = Property & { units: Unit[] };
+
+// Login schema
+export const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+export type LoginData = z.infer<typeof loginSchema>;

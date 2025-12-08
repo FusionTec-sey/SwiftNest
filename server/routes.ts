@@ -3046,13 +3046,35 @@ export async function registerRoutes(
         case "PAYMENT": {
           const payment = await storage.getPaymentById(moduleId);
           if (!payment) return { hasAccess: false, propertyId: null, message: "Payment not found" };
-          // Get property from invoice -> lease
-          const invoice = await storage.getInvoiceById(payment.rentInvoiceId);
-          if (!invoice) return { hasAccess: false, propertyId: null, message: "Invoice not found" };
-          const lease = await storage.getLeaseById(invoice.leaseId);
-          if (!lease) return { hasAccess: false, propertyId: null, message: "Lease not found" };
-          const access = await storage.canUserAccessProperty(lease.propertyId, userId);
-          return { hasAccess: access.canAccess, propertyId: lease.propertyId };
+          // Payment uses polymorphic association with appliedToType and appliedToId
+          // Check ownership based on what the payment is applied to
+          if (payment.appliedToType === "RENT_INVOICE") {
+            const invoice = await storage.getInvoiceById(payment.appliedToId);
+            if (!invoice) return { hasAccess: false, propertyId: null, message: "Invoice not found" };
+            const lease = await storage.getLeaseById(invoice.leaseId);
+            if (!lease) return { hasAccess: false, propertyId: null, message: "Lease not found" };
+            const access = await storage.canUserAccessProperty(lease.propertyId, userId);
+            return { hasAccess: access.canAccess, propertyId: lease.propertyId };
+          } else if (payment.appliedToType === "UTILITY_BILL") {
+            const bill = await storage.getUtilityBillById(payment.appliedToId);
+            if (!bill) return { hasAccess: false, propertyId: null, message: "Bill not found" };
+            const meter = await storage.getMeterById(bill.meterId);
+            if (!meter) return { hasAccess: false, propertyId: null, message: "Meter not found" };
+            const access = await storage.canUserAccessProperty(meter.propertyId, userId);
+            return { hasAccess: access.canAccess, propertyId: meter.propertyId };
+          } else if (payment.appliedToType === "LOAN") {
+            const loan = await storage.getLoanById(payment.appliedToId);
+            if (!loan) return { hasAccess: false, propertyId: null, message: "Loan not found" };
+            if (loan.propertyId) {
+              const access = await storage.canUserAccessProperty(loan.propertyId, userId);
+              return { hasAccess: access.canAccess, propertyId: loan.propertyId };
+            }
+            if (loan.userId !== userId) return { hasAccess: false, propertyId: null, message: "Access denied" };
+            return { hasAccess: true, propertyId: null };
+          }
+          // For other payment types, check if user recorded the payment
+          if (payment.recordedByUserId !== userId) return { hasAccess: false, propertyId: null, message: "Access denied" };
+          return { hasAccess: true, propertyId: null };
         }
         case "MAINTENANCE_ISSUE": {
           const issue = await storage.getIssueById(moduleId);

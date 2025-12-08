@@ -265,9 +265,11 @@ export default function LeaseDetailPage() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Property</p>
-                <p className="font-medium" data-testid="text-property-name">
-                  {property?.name || "Loading..."}
-                </p>
+                <Link href={`/properties/${property?.id}`}>
+                  <p className="font-medium text-primary hover:underline cursor-pointer" data-testid="link-property">
+                    {property?.name || "Loading..."}
+                  </p>
+                </Link>
               </div>
               <div>
                 <p className="text-muted-foreground">Address</p>

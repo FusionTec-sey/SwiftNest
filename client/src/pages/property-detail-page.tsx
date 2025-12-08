@@ -556,10 +556,12 @@ export default function PropertyDetailPage() {
                           </TableCell>
                           <TableCell data-testid={`text-unit-tenant-${unit.id}`}>
                             {lease?.tenant ? (
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-muted-foreground" />
-                                <span>{lease.tenant.firstName} {lease.tenant.lastName}</span>
-                              </div>
+                              <Link href={`/tenants/${lease.tenant.id}`}>
+                                <div className="flex items-center gap-2 hover:text-primary cursor-pointer">
+                                  <User className="h-4 w-4 text-muted-foreground" />
+                                  <span>{lease.tenant.legalName}</span>
+                                </div>
+                              </Link>
                             ) : (
                               <span className="text-muted-foreground">-</span>
                             )}

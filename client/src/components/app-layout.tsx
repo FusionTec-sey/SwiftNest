@@ -80,22 +80,27 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <SidebarInset className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" data-testid="button-sidebar-toggle" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4" role="banner">
+            <SidebarTrigger className="-ml-1" data-testid="button-sidebar-toggle" aria-label="Toggle sidebar navigation" />
+            <Separator orientation="vertical" className="mr-2 h-4" aria-hidden="true" />
+            <Breadcrumb aria-label="Page navigation">
               <BreadcrumbList>
                 {breadcrumbs.map((crumb, index) => (
                   <BreadcrumbItem key={crumb.href}>
                     {index < breadcrumbs.length - 1 ? (
                       <>
-                        <BreadcrumbLink href={crumb.href} data-testid={`breadcrumb-${crumb.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <BreadcrumbLink 
+                          href={crumb.href} 
+                          data-testid={`breadcrumb-${crumb.label.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
                           {crumb.label}
                         </BreadcrumbLink>
-                        <BreadcrumbSeparator />
+                        <BreadcrumbSeparator aria-hidden="true" />
                       </>
                     ) : (
-                      <BreadcrumbPage data-testid={`breadcrumb-current-${crumb.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <BreadcrumbPage 
+                        data-testid={`breadcrumb-current-${crumb.label.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
                         {crumb.label}
                       </BreadcrumbPage>
                     )}
@@ -107,7 +112,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto" role="main" aria-label="Main content">
             {children}
           </main>
         </SidebarInset>

@@ -305,53 +305,26 @@ export default function TenantsPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="tenantType"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tenant Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-tenant-type">
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="INDIVIDUAL">Individual</SelectItem>
-                        <SelectItem value="COMPANY">Company</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="legalName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name / Company Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} data-testid="input-tenant-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Basic Information</h3>
                 <FormField
                   control={form.control}
-                  name="email"
+                  name="tenantType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="email" data-testid="input-tenant-email" />
-                      </FormControl>
+                      <FormLabel>Tenant Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-tenant-type">
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="INDIVIDUAL">Individual</SelectItem>
+                          <SelectItem value="COMPANY">Company</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -359,129 +332,165 @@ export default function TenantsPage() {
 
                 <FormField
                   control={form.control}
-                  name="phone"
+                  name="legalName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone</FormLabel>
+                      <FormLabel>Name / Company Name</FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-tenant-phone" />
+                        <Input {...field} data-testid="input-tenant-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="email" data-testid="input-tenant-email" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-tenant-phone" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="registrationNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Registration / License No.</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-registration-number" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="idNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ID / Passport Number</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-id-number" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Address</h3>
                 <FormField
                   control={form.control}
-                  name="registrationNumber"
+                  name="addressLine1"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Registration / License No.</FormLabel>
+                      <FormLabel>Address Line 1</FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-registration-number" />
+                        <Input {...field} data-testid="input-address1" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="idNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>ID / Passport Number</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-id-number" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="city"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-city" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="country"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Country</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-country" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
-              <FormField
-                control={form.control}
-                name="addressLine1"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Address Line 1</FormLabel>
-                    <FormControl>
-                      <Input {...field} data-testid="input-address1" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Emergency Contact</h3>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="emergencyContactName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Contact Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-emergency-name" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="city"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>City</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-city" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="country"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Country</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-country" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="emergencyContactPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Contact Phone</FormLabel>
+                        <FormControl>
+                          <Input {...field} data-testid="input-emergency-phone" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="emergencyContactName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Emergency Contact Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-emergency-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="emergencyContactPhone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Emergency Contact Phone</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-emergency-phone" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-tenant">
-                  {createMutation.isPending ? "Saving..." : editingTenant ? "Update" : "Create"}
+                  {createMutation.isPending ? "Saving..." : editingTenant ? "Update Tenant" : "Add Tenant"}
                 </Button>
               </div>
             </form>

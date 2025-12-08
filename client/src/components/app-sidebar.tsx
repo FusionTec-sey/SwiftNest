@@ -81,8 +81,11 @@ export function AppSidebar() {
           isActive={isActive(item.href)}
           tooltip={item.label}
         >
-          <Link href={item.href} data-testid={`sidebar-link-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-            <Icon className="h-4 w-4" />
+          <Link 
+            href={item.href} 
+            data-testid={`sidebar-link-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            <Icon className="h-4 w-4" aria-hidden="true" />
             <span>{item.label}</span>
           </Link>
         </SidebarMenuButton>
@@ -91,13 +94,13 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" aria-label="Main navigation">
       <SidebarHeader className="border-b">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild tooltip="SwiftNest">
-              <Link href="/" data-testid="sidebar-logo">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+              <Link href="/" data-testid="sidebar-logo" aria-label="SwiftNest Home">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary" aria-hidden="true">
                   <Building2 className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <span className="text-lg font-semibold">SwiftNest</span>
@@ -162,8 +165,11 @@ export function AppSidebar() {
                   isActive={isActive("/properties/deleted")}
                   tooltip="Deleted Properties"
                 >
-                  <Link href="/properties/deleted" data-testid="sidebar-link-deleted-properties">
-                    <Trash2 className="h-4 w-4" />
+                  <Link 
+                    href="/properties/deleted" 
+                    data-testid="sidebar-link-deleted-properties"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                     <span>Deleted Properties</span>
                   </Link>
                 </SidebarMenuButton>
@@ -174,8 +180,11 @@ export function AppSidebar() {
                   isActive={isActive("/settings")}
                   tooltip="Settings"
                 >
-                  <Link href="/settings" data-testid="sidebar-link-settings">
-                    <Settings className="h-4 w-4" />
+                  <Link 
+                    href="/settings" 
+                    data-testid="sidebar-link-settings"
+                  >
+                    <Settings className="h-4 w-4" aria-hidden="true" />
                     <span>Settings</span>
                   </Link>
                 </SidebarMenuButton>
@@ -207,7 +216,7 @@ export function AppSidebar() {
               className="text-destructive hover:text-destructive"
               data-testid="sidebar-button-logout"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-4 w-4" aria-hidden="true" />
               <span>Logout</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

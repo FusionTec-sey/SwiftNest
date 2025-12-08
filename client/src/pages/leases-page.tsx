@@ -352,199 +352,211 @@ export default function LeasesPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="propertyId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Property</FormLabel>
-                    <Select
-                      onValueChange={(val) => field.onChange(parseInt(val))}
-                      value={field.value ? field.value.toString() : ""}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-property">
-                          <SelectValue placeholder="Select property" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {properties?.map((property) => (
-                          <SelectItem key={property.id} value={property.id.toString()}>
-                            {property.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Parties</h3>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="propertyId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Property</FormLabel>
+                        <Select
+                          onValueChange={(val) => field.onChange(parseInt(val))}
+                          value={field.value ? field.value.toString() : ""}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-property">
+                              <SelectValue placeholder="Select property" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {properties?.map((property) => (
+                              <SelectItem key={property.id} value={property.id.toString()}>
+                                {property.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="tenantId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tenant</FormLabel>
-                    <Select
-                      onValueChange={(val) => field.onChange(parseInt(val))}
-                      value={field.value ? field.value.toString() : ""}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-tenant">
-                          <SelectValue placeholder="Select tenant" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {tenants?.map((tenant) => (
-                          <SelectItem key={tenant.id} value={tenant.id.toString()}>
-                            {tenant.legalName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="tenantId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tenant</FormLabel>
+                        <Select
+                          onValueChange={(val) => field.onChange(parseInt(val))}
+                          value={field.value ? field.value.toString() : ""}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-tenant">
+                              <SelectValue placeholder="Select tenant" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {tenants?.map((tenant) => (
+                              <SelectItem key={tenant.id} value={tenant.id.toString()}>
+                                {tenant.legalName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="rentFrequency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Rent Frequency</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Lease Duration</h3>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Start Date</FormLabel>
                         <FormControl>
-                          <SelectTrigger data-testid="select-rent-frequency">
-                            <SelectValue placeholder="Select frequency" />
-                          </SelectTrigger>
+                          <Input {...field} type="date" data-testid="input-start-date" />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="MONTHLY">Monthly</SelectItem>
-                          <SelectItem value="QUARTERLY">Quarterly</SelectItem>
-                          <SelectItem value="ANNUALLY">Annually</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                  <FormField
+                    control={form.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Date</FormLabel>
                         <FormControl>
-                          <SelectTrigger data-testid="select-status">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
+                          <Input {...field} type="date" data-testid="input-end-date" />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="DRAFT">Draft</SelectItem>
-                          <SelectItem value="ACTIVE">Active</SelectItem>
-                          <SelectItem value="EXPIRED">Expired</SelectItem>
-                          <SelectItem value="TERMINATED">Terminated</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="rentFrequency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Rent Frequency</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-rent-frequency">
+                              <SelectValue placeholder="Select frequency" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="MONTHLY">Monthly</SelectItem>
+                            <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                            <SelectItem value="ANNUALLY">Annually</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Status</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-status">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="DRAFT">Draft</SelectItem>
+                            <SelectItem value="ACTIVE">Active</SelectItem>
+                            <SelectItem value="EXPIRED">Expired</SelectItem>
+                            <SelectItem value="TERMINATED">Terminated</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Financial Terms</h3>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="rentAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Rent Amount</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.01" placeholder="0.00" data-testid="input-rent-amount" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="depositAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Security Deposit</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.01" placeholder="0.00" data-testid="input-deposit-amount" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="paymentDueDay"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Due Day</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={1}
+                          max={31}
+                          placeholder="1-31"
+                          onChange={(e) => field.onChange(parseInt(e.target.value))}
+                          data-testid="input-payment-due-day"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="startDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Start Date</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="date" data-testid="input-start-date" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="endDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>End Date</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="date" data-testid="input-end-date" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="rentAmount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Rent Amount</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="number" step="0.01" data-testid="input-rent-amount" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="depositAmount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Security Deposit</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="number" step="0.01" data-testid="input-deposit-amount" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="paymentDueDay"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Payment Due Day (1-31)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        min={1}
-                        max={31}
-                        onChange={(e) => field.onChange(parseInt(e.target.value))}
-                        data-testid="input-payment-due-day"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-lease">
-                  {createMutation.isPending ? "Saving..." : editingLease ? "Update" : "Create"}
+                  {createMutation.isPending ? "Saving..." : editingLease ? "Update Lease" : "Create Lease"}
                 </Button>
               </div>
             </form>

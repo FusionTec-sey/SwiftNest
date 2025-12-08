@@ -353,53 +353,61 @@ export default function RentCollectionPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Property</TableHead>
-                  <TableHead>Tenant</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead className="text-right">Amount Due</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {overdueInvoices.map((invoice) => {
-                  const lease = leases?.find((l) => l.id === invoice.leaseId);
-                  const remaining = parseFloat(invoice.totalAmount) - parseFloat(invoice.amountPaid || "0");
-                  return (
-                    <TableRow key={invoice.id} data-testid={`row-overdue-invoice-${invoice.id}`}>
-                      <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
-                      <TableCell>{lease ? getPropertyName(lease.propertyId) : "-"}</TableCell>
-                      <TableCell>{lease ? getTenantName(lease.tenantId) : "-"}</TableCell>
-                      <TableCell className="text-destructive">{formatDate(invoice.dueDate)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleRecordPayment({ ...invoice, lease })}
-                            data-testid={`button-record-payment-${invoice.id}`}
-                          >
-                            <CreditCard className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleDownloadPDF(invoice.id)}
-                            data-testid={`button-download-invoice-${invoice.id}`}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead className="hidden sm:table-cell">Property</TableHead>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead className="hidden md:table-cell">Due Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {overdueInvoices.map((invoice) => {
+                    const lease = leases?.find((l) => l.id === invoice.leaseId);
+                    const remaining = parseFloat(invoice.totalAmount) - parseFloat(invoice.amountPaid || "0");
+                    return (
+                      <TableRow key={invoice.id} data-testid={`row-overdue-invoice-${invoice.id}`}>
+                        <TableCell>
+                          <div className="font-mono text-sm">{invoice.invoiceNumber}</div>
+                          <div className="text-xs text-destructive md:hidden">{formatDate(invoice.dueDate)}</div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">{lease ? getPropertyName(lease.propertyId) : "-"}</TableCell>
+                        <TableCell>
+                          <div>{lease ? getTenantName(lease.tenantId) : "-"}</div>
+                          <div className="text-xs text-muted-foreground sm:hidden">{lease ? getPropertyName(lease.propertyId) : "-"}</div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-destructive">{formatDate(invoice.dueDate)}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleRecordPayment({ ...invoice, lease })}
+                              data-testid={`button-record-payment-${invoice.id}`}
+                            >
+                              <CreditCard className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleDownloadPDF(invoice.id)}
+                              data-testid={`button-download-invoice-${invoice.id}`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -418,73 +426,78 @@ export default function RentCollectionPage() {
             </CardHeader>
             <CardContent>
               {invoices && invoices.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Invoice #</TableHead>
-                      <TableHead>Property</TableHead>
-                      <TableHead>Tenant</TableHead>
-                      <TableHead>Period</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Paid</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoices.map((invoice) => {
-                      const lease = leases?.find((l) => l.id === invoice.leaseId);
-                      const status = getInvoiceStatus(invoice);
-                      const StatusIcon = status.icon;
-                      return (
-                        <TableRow key={invoice.id} data-testid={`row-invoice-${invoice.id}`}>
-                          <TableCell className="font-mono">{invoice.invoiceNumber}</TableCell>
-                          <TableCell>{lease ? getPropertyName(lease.propertyId) : "-"}</TableCell>
-                          <TableCell>{lease ? getTenantName(lease.tenantId) : "-"}</TableCell>
-                          <TableCell className="text-sm">
-                            {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}
-                          </TableCell>
-                          <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                          <TableCell>
-                            <Badge variant={status.variant} className="gap-1">
-                              <StatusIcon className="h-3 w-3" />
-                              {status.label}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(invoice.totalAmount)}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {formatCurrency(invoice.amountPaid)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {invoice.status !== "PAID" && (
+                <div className="overflow-x-auto -mx-6 px-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead className="hidden lg:table-cell">Property</TableHead>
+                        <TableHead className="hidden sm:table-cell">Tenant</TableHead>
+                        <TableHead className="hidden xl:table-cell">Period</TableHead>
+                        <TableHead className="hidden md:table-cell">Due Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {invoices.map((invoice) => {
+                        const lease = leases?.find((l) => l.id === invoice.leaseId);
+                        const status = getInvoiceStatus(invoice);
+                        const StatusIcon = status.icon;
+                        return (
+                          <TableRow key={invoice.id} data-testid={`row-invoice-${invoice.id}`}>
+                            <TableCell>
+                              <div className="font-mono text-sm">{invoice.invoiceNumber}</div>
+                              <div className="text-xs text-muted-foreground sm:hidden">{lease ? getTenantName(lease.tenantId) : "-"}</div>
+                              <div className="text-xs text-muted-foreground md:hidden">{formatDate(invoice.dueDate)}</div>
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell">{lease ? getPropertyName(lease.propertyId) : "-"}</TableCell>
+                            <TableCell className="hidden sm:table-cell">{lease ? getTenantName(lease.tenantId) : "-"}</TableCell>
+                            <TableCell className="hidden xl:table-cell text-sm">
+                              {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell">{formatDate(invoice.dueDate)}</TableCell>
+                            <TableCell>
+                              <Badge variant={status.variant} className="gap-1">
+                                <StatusIcon className="h-3 w-3" />
+                                <span className="hidden sm:inline">{status.label}</span>
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="font-medium">{formatCurrency(invoice.totalAmount)}</div>
+                              {parseFloat(invoice.amountPaid || "0") > 0 && (
+                                <div className="text-xs text-muted-foreground">Paid: {formatCurrency(invoice.amountPaid || "0")}</div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {invoice.status !== "PAID" && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleRecordPayment({ ...invoice, lease })}
+                                    data-testid={`button-record-payment-${invoice.id}`}
+                                  >
+                                    <CreditCard className="h-4 w-4" />
+                                  </Button>
+                                )}
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  onClick={() => handleRecordPayment({ ...invoice, lease })}
-                                  data-testid={`button-record-payment-${invoice.id}`}
+                                  onClick={() => handleDownloadPDF(invoice.id)}
+                                  data-testid={`button-download-invoice-${invoice.id}`}
                                 >
-                                  <CreditCard className="h-4 w-4" />
+                                  <Download className="h-4 w-4" />
                                 </Button>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDownloadPDF(invoice.id)}
-                                data-testid={`button-download-invoice-${invoice.id}`}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               ) : (
                 <EmptyState
                   icon={FileText}
@@ -504,43 +517,51 @@ export default function RentCollectionPage() {
             </CardHeader>
             <CardContent>
               {activeLeases.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Property</TableHead>
-                      <TableHead>Tenant</TableHead>
-                      <TableHead>Rent Amount</TableHead>
-                      <TableHead>Payment Due Day</TableHead>
-                      <TableHead>Next Invoice Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {activeLeases.map((lease) => (
-                      <TableRow key={lease.id} data-testid={`row-lease-${lease.id}`}>
-                        <TableCell className="font-medium">{getPropertyName(lease.propertyId)}</TableCell>
-                        <TableCell>{getTenantName(lease.tenantId)}</TableCell>
-                        <TableCell>{formatCurrency(lease.rentAmount)}</TableCell>
-                        <TableCell>Day {lease.paymentDueDay || 1}</TableCell>
-                        <TableCell>
-                          {lease.nextInvoiceDate ? formatDate(lease.nextInvoiceDate) : "Not set"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => generateInvoiceMutation.mutate(lease.id)}
-                            disabled={generateInvoiceMutation.isPending}
-                            data-testid={`button-generate-invoice-${lease.id}`}
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Generate Invoice
-                          </Button>
-                        </TableCell>
+                <div className="overflow-x-auto -mx-6 px-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Property</TableHead>
+                        <TableHead className="hidden sm:table-cell">Tenant</TableHead>
+                        <TableHead>Rent</TableHead>
+                        <TableHead className="hidden md:table-cell">Due Day</TableHead>
+                        <TableHead className="hidden lg:table-cell">Next Invoice</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {activeLeases.map((lease) => (
+                        <TableRow key={lease.id} data-testid={`row-lease-${lease.id}`}>
+                          <TableCell>
+                            <div className="font-medium">{getPropertyName(lease.propertyId)}</div>
+                            <div className="text-xs text-muted-foreground sm:hidden">{getTenantName(lease.tenantId)}</div>
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">{getTenantName(lease.tenantId)}</TableCell>
+                          <TableCell>
+                            <div>{formatCurrency(lease.rentAmount)}</div>
+                            <div className="text-xs text-muted-foreground md:hidden">Day {lease.paymentDueDay || 1}</div>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">Day {lease.paymentDueDay || 1}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            {lease.nextInvoiceDate ? formatDate(lease.nextInvoiceDate) : "Not set"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => generateInvoiceMutation.mutate(lease.id)}
+                              disabled={generateInvoiceMutation.isPending}
+                              data-testid={`button-generate-invoice-${lease.id}`}
+                            >
+                              <Plus className="h-4 w-4 sm:mr-1" />
+                              <span className="hidden sm:inline">Generate</span>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               ) : (
                 <EmptyState
                   icon={Building2}
@@ -562,95 +583,101 @@ export default function RentCollectionPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...paymentForm}>
-            <form onSubmit={paymentForm.handleSubmit((data) => recordPaymentMutation.mutate(data))} className="space-y-4">
-              <FormField
-                control={paymentForm.control}
-                name="amount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Amount</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        data-testid="input-payment-amount"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <form onSubmit={paymentForm.handleSubmit((data) => recordPaymentMutation.mutate(data))} className="space-y-6">
+              <div className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={paymentForm.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amount</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            data-testid="input-payment-amount"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={paymentForm.control}
-                name="paymentMethod"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Payment Method</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormField
+                    control={paymentForm.control}
+                    name="paymentMethod"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Method</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-payment-method">
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="CASH">Cash</SelectItem>
+                            <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                            <SelectItem value="CHECK">Check</SelectItem>
+                            <SelectItem value="CARD">Card</SelectItem>
+                            <SelectItem value="OTHER">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={paymentForm.control}
+                    name="paymentDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Date</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="date" data-testid="input-payment-date" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={paymentForm.control}
+                    name="referenceNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Reference Number</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="Transaction ID, check number" data-testid="input-reference-number" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={paymentForm.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
                       <FormControl>
-                        <SelectTrigger data-testid="select-payment-method">
-                          <SelectValue placeholder="Select method" />
-                        </SelectTrigger>
+                        <Input {...field} placeholder="Additional notes (optional)" data-testid="input-payment-notes" />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="CASH">Cash</SelectItem>
-                        <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                        <SelectItem value="CHECK">Check</SelectItem>
-                        <SelectItem value="CARD">Card</SelectItem>
-                        <SelectItem value="OTHER">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-              <FormField
-                control={paymentForm.control}
-                name="paymentDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Payment Date</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="date" data-testid="input-payment-date" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={paymentForm.control}
-                name="referenceNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Reference Number (Optional)</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="Transaction ID, check number, etc." data-testid="input-reference-number" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={paymentForm.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes (Optional)</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="Additional notes" data-testid="input-payment-notes" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="flex justify-end gap-2 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t">
                 <Button
                   type="button"
                   variant="outline"

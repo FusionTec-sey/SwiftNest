@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Building2, Home, LogOut, User, Users, UserCircle, Calculator, FileText, Gauge, Landmark, Package, ChevronDown, BarChart3, Receipt } from "lucide-react";
+import { Building2, Home, LogOut, User, Users, UserCircle, Calculator, FileText, Gauge, Landmark, Package, ChevronDown, BarChart3, Receipt, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -142,6 +142,12 @@ export function Header() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="flex items-center gap-2 cursor-pointer" data-testid="link-settings">
+                      <Settings className="h-4 w-4" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => logoutMutation.mutate()}
                     className="text-destructive focus:text-destructive cursor-pointer"

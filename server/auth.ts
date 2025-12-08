@@ -4,8 +4,22 @@ import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
+import { z } from "zod";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
+
+const updateProfileSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name too long").optional(),
+  phone: z.string().min(1, "Phone is required").max(20, "Phone too long").optional(),
+  organizationName: z.string().max(200, "Organization name too long").optional(),
+  organizationType: z.string().max(100, "Organization type too long").optional(),
+  gstId: z.string().max(50, "GST ID too long").optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters").max(100, "Password too long"),
+});
 
 declare global {
   namespace Express {
@@ -15,13 +29,13 @@ declare global {
 
 const scryptAsync = promisify(scrypt);
 
-async function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
 }
 
-async function comparePasswords(supplied: string, stored: string) {
+export async function comparePasswords(supplied: string, stored: string) {
   const [hashed, salt] = stored.split(".");
   const hashedBuf = Buffer.from(hashed, "hex");
   const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
@@ -120,6 +134,68 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const { password, ...safeUser } = req.user!;
     res.json(safeUser);
+  });
+
+  app.put("/api/user/profile", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const validation = updateProfileSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: validation.error.errors[0]?.message || "Invalid input" 
+        });
+      }
+      
+      const { name, phone, organizationName, organizationType, gstId } = validation.data;
+      
+      const updateData: Partial<typeof validation.data> = {};
+      if (name !== undefined) updateData.name = name.trim();
+      if (phone !== undefined) updateData.phone = phone.trim();
+      if (organizationName !== undefined) updateData.organizationName = organizationName.trim();
+      if (organizationType !== undefined) updateData.organizationType = organizationType.trim();
+      if (gstId !== undefined) updateData.gstId = gstId.trim();
+      
+      const updated = await storage.updateUser(req.user!.id, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const { password, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/user/password", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const validation = changePasswordSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: validation.error.errors[0]?.message || "Invalid input" 
+        });
+      }
+      
+      const { currentPassword, newPassword } = validation.data;
+      
+      const user = await storage.getUser(req.user!.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const isValid = await comparePasswords(currentPassword, user.password);
+      if (!isValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+      
+      const hashedPassword = await hashPassword(newPassword);
+      await storage.updateUserPassword(req.user!.id, hashedPassword);
+      
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      next(error);
+    }
   });
 }
 

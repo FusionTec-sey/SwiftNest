@@ -25,6 +25,7 @@ import AssetsPage from "@/pages/assets-page";
 import ReportsPage from "@/pages/reports-page";
 import InvitePage from "@/pages/invite-page";
 import RentCollectionPage from "@/pages/rent-collection-page";
+import SettingsPage from "@/pages/settings-page";
 
 function Router() {
   return (
@@ -45,6 +46,7 @@ function Router() {
       <ProtectedRoute path="/loans" component={LoansPage} />
       <ProtectedRoute path="/assets" component={AssetsPage} />
       <ProtectedRoute path="/reports" component={ReportsPage} />
+      <ProtectedRoute path="/settings" component={SettingsPage} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/invite/:token" component={InvitePage} />
       <Route component={NotFound} />

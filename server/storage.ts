@@ -34,6 +34,11 @@ import {
   depreciationRules,
   depreciationRuns,
   documents,
+  complianceDocuments,
+  roles,
+  permissions,
+  rolePermissions,
+  userRoleAssignments,
   type User, 
   type InsertUser, 
   type Property,
@@ -106,10 +111,16 @@ import {
   type OwnerWithProperties,
   type Document,
   type InsertDocument,
-  complianceDocuments,
   type ComplianceDocument,
   type InsertComplianceDocument,
-  type ComplianceDocumentWithStatus
+  type ComplianceDocumentWithStatus,
+  type Role,
+  type InsertRole,
+  type Permission,
+  type UserRoleAssignment,
+  type InsertUserRoleAssignment,
+  type UserWithRoles,
+  type RoleWithPermissions
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -3670,6 +3681,209 @@ export class DatabaseStorage implements IStorage {
 
   async deleteComplianceDocument(id: number): Promise<void> {
     await db.delete(complianceDocuments).where(eq(complianceDocuments.id, id));
+  }
+
+  // =====================================================
+  // RBAC MANAGEMENT METHODS
+  // =====================================================
+
+  async getAllRoles(): Promise<RoleWithPermissions[]> {
+    const allRoles = await db.select().from(roles).orderBy(roles.name);
+    const result: RoleWithPermissions[] = [];
+    
+    for (const role of allRoles) {
+      const perms = await db
+        .select({ permission: permissions })
+        .from(rolePermissions)
+        .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+        .where(eq(rolePermissions.roleId, role.id));
+      
+      result.push({
+        ...role,
+        permissions: perms.map(p => p.permission),
+      });
+    }
+    
+    return result;
+  }
+
+  async getRoleById(id: number): Promise<RoleWithPermissions | undefined> {
+    const [role] = await db.select().from(roles).where(eq(roles.id, id));
+    if (!role) return undefined;
+    
+    const perms = await db
+      .select({ permission: permissions })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .where(eq(rolePermissions.roleId, role.id));
+    
+    return {
+      ...role,
+      permissions: perms.map(p => p.permission),
+    };
+  }
+
+  async getAllPermissions(): Promise<Permission[]> {
+    return db.select().from(permissions).orderBy(permissions.module, permissions.key);
+  }
+
+  async getPermissionsByModule(module: string): Promise<Permission[]> {
+    return db.select().from(permissions).where(eq(permissions.module, module));
+  }
+
+  async getAllUsers(): Promise<UserWithRoles[]> {
+    const allUsers = await db.select().from(users).orderBy(users.name);
+    const result: UserWithRoles[] = [];
+    
+    for (const user of allUsers) {
+      const assignments = await db
+        .select()
+        .from(userRoleAssignments)
+        .where(eq(userRoleAssignments.userId, user.id));
+      
+      const rolesWithDetails: (UserRoleAssignment & { role: Role; property?: Property | null })[] = [];
+      
+      for (const assignment of assignments) {
+        const [role] = await db.select().from(roles).where(eq(roles.id, assignment.roleId));
+        let property = null;
+        if (assignment.propertyId) {
+          const [prop] = await db.select().from(properties).where(eq(properties.id, assignment.propertyId));
+          property = prop || null;
+        }
+        rolesWithDetails.push({
+          ...assignment,
+          role,
+          property,
+        });
+      }
+      
+      result.push({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        isSuperAdmin: user.isSuperAdmin,
+        isActive: user.isActive,
+        roles: rolesWithDetails,
+      });
+    }
+    
+    return result;
+  }
+
+  async getUserWithRoles(userId: number): Promise<UserWithRoles | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user) return undefined;
+    
+    const assignments = await db
+      .select()
+      .from(userRoleAssignments)
+      .where(eq(userRoleAssignments.userId, userId));
+    
+    const rolesWithDetails: (UserRoleAssignment & { role: Role; property?: Property | null })[] = [];
+    
+    for (const assignment of assignments) {
+      const [role] = await db.select().from(roles).where(eq(roles.id, assignment.roleId));
+      let property = null;
+      if (assignment.propertyId) {
+        const [prop] = await db.select().from(properties).where(eq(properties.id, assignment.propertyId));
+        property = prop || null;
+      }
+      rolesWithDetails.push({
+        ...assignment,
+        role,
+        property,
+      });
+    }
+    
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      isSuperAdmin: user.isSuperAdmin,
+      isActive: user.isActive,
+      roles: rolesWithDetails,
+    };
+  }
+
+  async createUserByAdmin(userData: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+    accountType?: string;
+    organizationName?: string;
+    organizationType?: string;
+    createdByUserId: number;
+  }): Promise<User> {
+    const [newUser] = await db.insert(users).values({
+      name: userData.name,
+      email: userData.email,
+      phone: userData.phone,
+      password: userData.password,
+      accountType: (userData.accountType as any) || "INDIVIDUAL",
+      organizationName: userData.organizationName || "",
+      organizationType: userData.organizationType || "",
+      gstId: "",
+      isSuperAdmin: 0,
+      isActive: 1,
+      createdByUserId: userData.createdByUserId,
+    }).returning();
+    return newUser;
+  }
+
+  async updateUserActiveStatus(userId: number, isActive: number): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async assignRoleToUser(userId: number, roleId: number, propertyId: number | null, assignedByUserId: number): Promise<UserRoleAssignment> {
+    const existing = await db
+      .select()
+      .from(userRoleAssignments)
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.roleId, roleId),
+        propertyId ? eq(userRoleAssignments.propertyId, propertyId) : isNull(userRoleAssignments.propertyId)
+      ));
+    
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(userRoleAssignments)
+        .set({ isActive: 1, updatedAt: new Date() })
+        .where(eq(userRoleAssignments.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [assignment] = await db.insert(userRoleAssignments).values({
+      userId,
+      roleId,
+      propertyId,
+      assignedByUserId,
+      isActive: 1,
+    }).returning();
+    return assignment;
+  }
+
+  async removeRoleFromUser(assignmentId: number): Promise<void> {
+    await db.delete(userRoleAssignments).where(eq(userRoleAssignments.id, assignmentId));
+  }
+
+  async deactivateRoleAssignment(assignmentId: number): Promise<void> {
+    await db
+      .update(userRoleAssignments)
+      .set({ isActive: 0, updatedAt: new Date() })
+      .where(eq(userRoleAssignments.id, assignmentId));
+  }
+
+  async getUserRoleAssignments(userId: number): Promise<UserRoleAssignment[]> {
+    return db.select().from(userRoleAssignments).where(eq(userRoleAssignments.userId, userId));
   }
 }
 

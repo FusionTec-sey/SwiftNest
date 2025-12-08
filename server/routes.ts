@@ -4188,6 +4188,248 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // ADMIN / RBAC API
+  // =====================================================
+
+  // Get all roles with their permissions
+  app.get("/api/admin/roles", requireAuth, async (req, res, next) => {
+    try {
+      // Only super admins can view roles
+      const user = await storage.getUser(req.user!.id);
+      if (!user || user.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const allRoles = await storage.getAllRoles();
+      res.json(allRoles);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get all permissions
+  app.get("/api/admin/permissions", requireAuth, async (req, res, next) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (!user || user.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const allPermissions = await storage.getAllPermissions();
+      res.json(allPermissions);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get all users with their roles
+  app.get("/api/admin/users", requireAuth, async (req, res, next) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (!user || user.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get a specific user with their roles
+  app.get("/api/admin/users/:id", requireAuth, async (req, res, next) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (!user || user.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const userId = parseInt(req.params.id);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      
+      const targetUser = await storage.getUserWithRoles(userId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json(targetUser);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create a new user (admin only)
+  app.post("/api/admin/users", requireAuth, async (req, res, next) => {
+    try {
+      const currentUser = await storage.getUser(req.user!.id);
+      if (!currentUser || currentUser.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const { name, email, phone, password, accountType, organizationName, organizationType, roleAssignments } = req.body;
+      
+      if (!name || !email || !phone || !password) {
+        return res.status(400).json({ message: "Name, email, phone, and password are required" });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+      
+      // Hash the password
+      const { hashPassword } = await import("./auth");
+      const hashedPassword = await hashPassword(password);
+      
+      // Create the user
+      const newUser = await storage.createUserByAdmin({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        accountType,
+        organizationName,
+        organizationType,
+        createdByUserId: req.user!.id,
+      });
+      
+      // Assign roles if provided
+      if (roleAssignments && Array.isArray(roleAssignments)) {
+        for (const assignment of roleAssignments) {
+          if (assignment.roleId) {
+            await storage.assignRoleToUser(
+              newUser.id,
+              assignment.roleId,
+              assignment.propertyId || null,
+              req.user!.id
+            );
+          }
+        }
+      }
+      
+      // Get the user with roles
+      const userWithRoles = await storage.getUserWithRoles(newUser.id);
+      res.status(201).json(userWithRoles);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update user active status (activate/deactivate)
+  app.patch("/api/admin/users/:id/status", requireAuth, async (req, res, next) => {
+    try {
+      const currentUser = await storage.getUser(req.user!.id);
+      if (!currentUser || currentUser.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const userId = parseInt(req.params.id);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      
+      // Don't allow deactivating yourself
+      if (userId === req.user!.id) {
+        return res.status(400).json({ message: "Cannot change your own status" });
+      }
+      
+      const { isActive } = req.body;
+      if (typeof isActive !== "number" || (isActive !== 0 && isActive !== 1)) {
+        return res.status(400).json({ message: "isActive must be 0 or 1" });
+      }
+      
+      const updated = await storage.updateUserActiveStatus(userId, isActive);
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({ message: `User ${isActive ? "activated" : "deactivated"} successfully` });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Assign a role to a user
+  app.post("/api/admin/users/:id/roles", requireAuth, async (req, res, next) => {
+    try {
+      const currentUser = await storage.getUser(req.user!.id);
+      if (!currentUser || currentUser.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const userId = parseInt(req.params.id);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      
+      const { roleId, propertyId } = req.body;
+      if (!roleId || typeof roleId !== "number") {
+        return res.status(400).json({ message: "roleId is required" });
+      }
+      
+      // Verify the role exists
+      const role = await storage.getRoleById(roleId);
+      if (!role) {
+        return res.status(404).json({ message: "Role not found" });
+      }
+      
+      // Verify the property exists if provided
+      if (propertyId) {
+        const property = await storage.getPropertyById(propertyId);
+        if (!property) {
+          return res.status(404).json({ message: "Property not found" });
+        }
+      }
+      
+      const assignment = await storage.assignRoleToUser(
+        userId,
+        roleId,
+        propertyId || null,
+        req.user!.id
+      );
+      
+      res.status(201).json(assignment);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Remove a role assignment from a user
+  app.delete("/api/admin/role-assignments/:id", requireAuth, async (req, res, next) => {
+    try {
+      const currentUser = await storage.getUser(req.user!.id);
+      if (!currentUser || currentUser.isSuperAdmin !== 1) {
+        return res.status(403).json({ message: "Access denied. Super admin privileges required." });
+      }
+      
+      const assignmentId = parseInt(req.params.id);
+      if (isNaN(assignmentId)) {
+        return res.status(400).json({ message: "Invalid assignment ID" });
+      }
+      
+      await storage.removeRoleFromUser(assignmentId);
+      res.json({ message: "Role assignment removed successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get current user's permissions
+  app.get("/api/user/permissions", requireAuth, async (req, res, next) => {
+    try {
+      const { getUserPermissions } = await import("./rbac");
+      const permissions = await getUserPermissions(req.user!.id);
+      res.json(permissions);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

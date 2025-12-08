@@ -630,8 +630,10 @@ export const depreciationRunTypeEnum = pgEnum("depreciation_run_type", ["BOOK", 
 
 export const owners = pgTable("owners", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   ownerType: ownerTypeEnum("owner_type").notNull().default("INDIVIDUAL"),
   legalName: text("legal_name").notNull(),
+  tradingName: text("trading_name"),
   registrationNumber: text("registration_number"),
   taxId: text("tax_id"),
   email: text("email"),
@@ -644,11 +646,11 @@ export const owners = pgTable("owners", {
   postalCode: text("postal_code"),
   isResident: integer("is_resident").default(1),
   notes: text("notes"),
-  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  isDefault: integer("is_default").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
-  index("owners_created_by_idx").on(table.createdByUserId),
+  index("owners_user_idx").on(table.userId),
   index("owners_type_idx").on(table.ownerType),
 ]);
 
@@ -1135,11 +1137,13 @@ export const depreciationRuns = pgTable("depreciation_runs", {
 // Owner schemas
 export const insertOwnerSchema = createInsertSchema(owners).omit({
   id: true,
-  createdByUserId: true,
+  userId: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
   legalName: z.string().min(2, "Legal name must be at least 2 characters"),
+  isDefault: z.number().optional(),
+  tradingName: z.string().optional(),
 });
 
 // Property owner schemas

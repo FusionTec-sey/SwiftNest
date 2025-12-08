@@ -329,7 +329,7 @@ export interface IStorage {
   getOwnersByUserId(userId: number): Promise<Owner[]>;
   getOwnerById(id: number): Promise<Owner | undefined>;
   getOwnerWithProperties(id: number): Promise<OwnerWithProperties | undefined>;
-  createOwner(owner: InsertOwner & { createdByUserId: number }): Promise<Owner>;
+  createOwner(owner: InsertOwner & { userId: number }): Promise<Owner>;
   updateOwner(id: number, owner: Partial<InsertOwner>): Promise<Owner | undefined>;
   deleteOwner(id: number): Promise<void>;
 
@@ -1433,7 +1433,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(owners)
-      .where(eq(owners.createdByUserId, userId))
+      .where(eq(owners.userId, userId))
       .orderBy(desc(owners.createdAt));
   }
 
@@ -1461,7 +1461,7 @@ export class DatabaseStorage implements IStorage {
     return { ...owner, propertyOwnerships: ownershipWithProps };
   }
 
-  async createOwner(owner: InsertOwner & { createdByUserId: number }): Promise<Owner> {
+  async createOwner(owner: InsertOwner & { userId: number }): Promise<Owner> {
     const [newOwner] = await db.insert(owners).values(owner).returning();
     return newOwner;
   }

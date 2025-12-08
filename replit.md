@@ -62,15 +62,22 @@ Preferred communication style: Simple, everyday language.
 
 **Database Schema Design**
 - **Users Table**: Stores authentication credentials and account metadata (individual vs organization)
+- **Owners Table**: Multi-entity ownership support - users can manage multiple businesses and individual portfolios
+  - `userId`: Links owner entities to managing user account (renamed from createdByUserId)
+  - `ownerType`: INDIVIDUAL, COMPANY, or TRUST
+  - `tradingName`: Optional business/trading name
+  - `isDefault`: Marks the default owner entity for new properties (0 or 1)
+  - Allows a single user to manage properties under multiple legal entities
 - **Properties Table**: Property details with foreign key to owner user, supports images array and soft delete
 - **Units Table**: Sub-properties within a property (apartments, offices, etc.)
 - **Property Collaborators Table**: Enables property sharing with role-based permissions (VIEWER/EDITOR)
+- **Property Owners Table**: Junction table linking properties to owner entities with ownership percentages
 - **Property Nodes Table**: Hierarchical tree structure for organizing property components (buildings, floors, flats, rooms, etc.)
   - Uses adjacency list pattern with parentId for tree relationships
   - sortOrder field maintains sibling ordering
   - nodeType enum: BUILDING, FLOOR, FLAT, VILLA, ROOM, BED, SECTION, PLOT, CUSTOM
   - metadata JSONB field for flexible node-specific data
-- Enums for type safety: account_type, property_type, unit_status, collaborator_role, node_type
+- Enums for type safety: account_type, property_type, unit_status, collaborator_role, node_type, owner_type
 - Indexed columns for performance: email, ownerUserId, city, propertyId, userId, parentId
 
 **Advanced Features**

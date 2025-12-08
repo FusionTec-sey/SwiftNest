@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent } from "lucide-react";
+import { Plus, UserCircle, Phone, Mail, Building2, Edit2, Trash2, Search, Percent, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +51,7 @@ import type { Owner } from "@shared/schema";
 const ownerFormSchema = z.object({
   ownerType: z.enum(["INDIVIDUAL", "COMPANY", "TRUST"]),
   legalName: z.string().min(1, "Name is required"),
+  tradingName: z.string().optional(),
   email: z.string().email("Valid email required").optional().or(z.literal("")),
   phone: z.string().optional(),
   registrationNumber: z.string().optional(),
@@ -61,6 +63,7 @@ const ownerFormSchema = z.object({
   country: z.string().optional(),
   postalCode: z.string().optional(),
   isResident: z.number().optional(),
+  isDefault: z.number().optional(),
   notes: z.string().optional(),
 });
 
@@ -82,6 +85,7 @@ export default function OwnersPage() {
     defaultValues: {
       ownerType: "INDIVIDUAL",
       legalName: "",
+      tradingName: "",
       email: "",
       phone: "",
       registrationNumber: "",
@@ -93,6 +97,7 @@ export default function OwnersPage() {
       country: "",
       postalCode: "",
       isResident: 1,
+      isDefault: 0,
       notes: "",
     },
   });
@@ -149,6 +154,7 @@ export default function OwnersPage() {
     form.reset({
       ownerType: owner.ownerType as "INDIVIDUAL" | "COMPANY" | "TRUST",
       legalName: owner.legalName,
+      tradingName: owner.tradingName || "",
       email: owner.email || "",
       phone: owner.phone || "",
       registrationNumber: owner.registrationNumber || "",
@@ -160,6 +166,7 @@ export default function OwnersPage() {
       country: owner.country || "",
       postalCode: owner.postalCode || "",
       isResident: owner.isResident ?? 1,
+      isDefault: owner.isDefault ?? 0,
       notes: owner.notes || "",
     });
     setIsFormOpen(true);
@@ -170,6 +177,7 @@ export default function OwnersPage() {
     form.reset({
       ownerType: "INDIVIDUAL",
       legalName: "",
+      tradingName: "",
       email: "",
       phone: "",
       registrationNumber: "",
@@ -181,6 +189,7 @@ export default function OwnersPage() {
       country: "",
       postalCode: "",
       isResident: 1,
+      isDefault: 0,
       notes: "",
     });
     setIsFormOpen(true);
@@ -245,10 +254,21 @@ export default function OwnersPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <CardTitle className="text-lg truncate">{owner.legalName}</CardTitle>
-                      <CardDescription className="flex items-center gap-1 mt-1">
+                      {owner.tradingName && (
+                        <p className="text-sm text-muted-foreground truncate">
+                          t/a {owner.tradingName}
+                        </p>
+                      )}
+                      <CardDescription className="flex flex-wrap items-center gap-1 mt-1">
                         <Badge variant="secondary" className="text-xs">
                           {ownerTypeLabels[owner.ownerType] || owner.ownerType}
                         </Badge>
+                        {owner.isDefault === 1 && (
+                          <Badge variant="outline" className="text-xs gap-1">
+                            <Star className="h-3 w-3" />
+                            Default
+                          </Badge>
+                        )}
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">
@@ -348,6 +368,20 @@ export default function OwnersPage() {
                     <FormLabel>Name / Company Name</FormLabel>
                     <FormControl>
                       <Input {...field} data-testid="input-owner-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="tradingName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Trading Name (Optional)</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Business name used for trading" data-testid="input-trading-name" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -481,6 +515,29 @@ export default function OwnersPage() {
                     <FormControl>
                       <Input {...field} data-testid="input-registration-number" />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="isDefault"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center gap-3 space-y-0 rounded-md border p-4">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value === 1}
+                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                        data-testid="checkbox-default-owner"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Default Owner</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        Set this as the default owner entity for new properties
+                      </p>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

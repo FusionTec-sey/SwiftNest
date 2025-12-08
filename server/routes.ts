@@ -1636,7 +1636,7 @@ export async function registerRoutes(
       if (!owner) {
         return res.status(404).json({ message: "Owner not found" });
       }
-      if (owner.createdByUserId !== req.user!.id) {
+      if (owner.userId !== req.user!.id) {
         return res.status(403).json({ message: "Access denied" });
       }
       res.json(owner);
@@ -1651,7 +1651,7 @@ export async function registerRoutes(
       if (!validation.success) {
         return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
       }
-      const owner = await storage.createOwner({ ...validation.data, createdByUserId: req.user!.id });
+      const owner = await storage.createOwner({ ...validation.data, userId: req.user!.id });
       res.status(201).json(owner);
     } catch (error) {
       next(error);
@@ -1668,7 +1668,7 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Owner not found" });
       }
-      if (existing.createdByUserId !== req.user!.id) {
+      if (existing.userId !== req.user!.id) {
         return res.status(403).json({ message: "Access denied" });
       }
       const updated = await storage.updateOwner(id, req.body);
@@ -1688,7 +1688,7 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Owner not found" });
       }
-      if (existing.createdByUserId !== req.user!.id) {
+      if (existing.userId !== req.user!.id) {
         return res.status(403).json({ message: "Access denied" });
       }
       await storage.deleteOwner(id);

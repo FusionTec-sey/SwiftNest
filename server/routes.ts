@@ -41,9 +41,24 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+const documentsDir = path.join(process.cwd(), "uploads", "documents");
+if (!fs.existsSync(documentsDir)) {
+  fs.mkdirSync(documentsDir, { recursive: true });
+}
+
 const imageStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const documentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, documentsDir);
   },
   filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -62,6 +77,21 @@ const upload = multer({
       return cb(null, true);
     }
     cb(new Error("Only image files are allowed"));
+  },
+});
+
+const documentUpload = multer({
+  storage: documentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for documents
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp|pdf|doc|docx/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const allowedMimes = /image\/(jpeg|jpg|png|gif|webp)|application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/;
+    const mimetype = allowedMimes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error("Only images (JPG, PNG, GIF, WebP) and documents (PDF, DOC, DOCX) are allowed"));
   },
 });
 
@@ -2949,6 +2979,417 @@ export async function registerRoutes(
       next(error);
     }
   });
+
+  // =====================================================
+  // DOCUMENTS API
+  // =====================================================
+
+  // Map frontend module names to database enum values for document queries
+  const documentModuleMap: Record<string, string> = {
+    "PROPERTY": "PROPERTY",
+    "UNIT": "UNIT",
+    "LEASE": "LEASE",
+    "TENANT": "TENANT",
+    "METER": "UTILITY_METER",
+    "BILL": "UTILITY_BILL",
+    "INVOICE": "PAYMENT",
+    "PAYMENT": "PAYMENT",
+    "MAINTENANCE_ISSUE": "MAINTENANCE_ISSUE",
+    "MAINTENANCE_TASK": "MAINTENANCE_TASK",
+    "LOAN": "LOAN",
+    "ASSET": "ASSET",
+    "OWNER": "OWNER",
+    "REPORT": "REPORT",
+  };
+
+  // Helper function to verify user has access to a module's associated property
+  async function verifyModuleAccess(module: string, moduleId: number, userId: number): Promise<{ hasAccess: boolean; propertyId: number | null; message?: string }> {
+    try {
+      switch (module) {
+        case "PROPERTY": {
+          const access = await storage.canUserAccessProperty(moduleId, userId);
+          return { hasAccess: access.canAccess, propertyId: moduleId };
+        }
+        case "UNIT": {
+          const unit = await storage.getUnitById(moduleId);
+          if (!unit) return { hasAccess: false, propertyId: null, message: "Unit not found" };
+          const access = await storage.canUserAccessProperty(unit.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: unit.propertyId };
+        }
+        case "LEASE": {
+          const lease = await storage.getLeaseById(moduleId);
+          if (!lease) return { hasAccess: false, propertyId: null, message: "Lease not found" };
+          const access = await storage.canUserAccessProperty(lease.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: lease.propertyId };
+        }
+        case "TENANT": {
+          const tenant = await storage.getTenantById(moduleId);
+          if (!tenant) return { hasAccess: false, propertyId: null, message: "Tenant not found" };
+          // Tenants belong to user directly
+          if (tenant.userId !== userId) return { hasAccess: false, propertyId: null, message: "Access denied" };
+          return { hasAccess: true, propertyId: null };
+        }
+        case "UTILITY_METER": {
+          const meter = await storage.getMeterById(moduleId);
+          if (!meter) return { hasAccess: false, propertyId: null, message: "Meter not found" };
+          const access = await storage.canUserAccessProperty(meter.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: meter.propertyId };
+        }
+        case "UTILITY_BILL": {
+          const bill = await storage.getUtilityBillById(moduleId);
+          if (!bill) return { hasAccess: false, propertyId: null, message: "Bill not found" };
+          const meter = await storage.getMeterById(bill.meterId);
+          if (!meter) return { hasAccess: false, propertyId: null, message: "Meter not found" };
+          const access = await storage.canUserAccessProperty(meter.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: meter.propertyId };
+        }
+        case "PAYMENT": {
+          const payment = await storage.getPaymentById(moduleId);
+          if (!payment) return { hasAccess: false, propertyId: null, message: "Payment not found" };
+          // Get property from invoice -> lease
+          const invoice = await storage.getInvoiceById(payment.rentInvoiceId);
+          if (!invoice) return { hasAccess: false, propertyId: null, message: "Invoice not found" };
+          const lease = await storage.getLeaseById(invoice.leaseId);
+          if (!lease) return { hasAccess: false, propertyId: null, message: "Lease not found" };
+          const access = await storage.canUserAccessProperty(lease.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: lease.propertyId };
+        }
+        case "MAINTENANCE_ISSUE": {
+          const issue = await storage.getIssueById(moduleId);
+          if (!issue) return { hasAccess: false, propertyId: null, message: "Issue not found" };
+          const access = await storage.canUserAccessProperty(issue.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: issue.propertyId };
+        }
+        case "MAINTENANCE_TASK": {
+          const task = await storage.getTaskById(moduleId);
+          if (!task) return { hasAccess: false, propertyId: null, message: "Task not found" };
+          const access = await storage.canUserAccessProperty(task.propertyId, userId);
+          return { hasAccess: access.canAccess, propertyId: task.propertyId };
+        }
+        case "LOAN": {
+          const loan = await storage.getLoanById(moduleId);
+          if (!loan) return { hasAccess: false, propertyId: null, message: "Loan not found" };
+          if (loan.propertyId) {
+            const access = await storage.canUserAccessProperty(loan.propertyId, userId);
+            return { hasAccess: access.canAccess, propertyId: loan.propertyId };
+          }
+          // Loan not linked to property - check if user owns it
+          if (loan.userId !== userId) return { hasAccess: false, propertyId: null, message: "Access denied" };
+          return { hasAccess: true, propertyId: null };
+        }
+        case "ASSET": {
+          const asset = await storage.getAssetById(moduleId);
+          if (!asset) return { hasAccess: false, propertyId: null, message: "Asset not found" };
+          if (asset.propertyId) {
+            const access = await storage.canUserAccessProperty(asset.propertyId, userId);
+            return { hasAccess: access.canAccess, propertyId: asset.propertyId };
+          }
+          // Asset not linked to property - check if user owns it
+          if (asset.userId !== userId) return { hasAccess: false, propertyId: null, message: "Access denied" };
+          return { hasAccess: true, propertyId: null };
+        }
+        case "OWNER": {
+          const owner = await storage.getOwnerById(moduleId);
+          if (!owner) return { hasAccess: false, propertyId: null, message: "Owner not found" };
+          if (owner.userId !== userId) return { hasAccess: false, propertyId: null, message: "Access denied" };
+          return { hasAccess: true, propertyId: null };
+        }
+        default:
+          return { hasAccess: false, propertyId: null, message: "Unknown module type" };
+      }
+    } catch (error) {
+      console.error("Error verifying module access:", error);
+      return { hasAccess: false, propertyId: null, message: "Error verifying access" };
+    }
+  }
+
+  // Get documents by module and module ID
+  app.get("/api/documents/:module/:moduleId", requireAuth, async (req, res, next) => {
+    try {
+      const { module, moduleId } = req.params;
+      const mappedModule = documentModuleMap[module.toUpperCase()];
+      if (!mappedModule) {
+        return res.status(400).json({ message: "Invalid module type" });
+      }
+      const id = parseInt(moduleId);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid module ID" });
+      }
+
+      // Verify user has access to this module's property
+      const access = await verifyModuleAccess(mappedModule, id, req.user!.id);
+      if (!access.hasAccess) {
+        return res.status(403).json({ message: access.message || "Access denied" });
+      }
+
+      const documents = await storage.getDocumentsByModule(mappedModule, id);
+      res.json(documents);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get all documents for a property
+  app.get("/api/properties/:propertyId/documents", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const documents = await storage.getDocumentsByPropertyId(propertyId);
+      res.json(documents);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get single document by ID
+  app.get("/api/documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      const document = await storage.getDocumentById(id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Verify user has access to this document's module
+      const access = await verifyModuleAccess(document.module, document.moduleId, req.user!.id);
+      if (!access.hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(document);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Map frontend module names to database enum values
+  const moduleMap: Record<string, string> = {
+    "PROPERTY": "PROPERTY",
+    "UNIT": "UNIT",
+    "LEASE": "LEASE",
+    "TENANT": "TENANT",
+    "METER": "UTILITY_METER",
+    "BILL": "UTILITY_BILL",
+    "INVOICE": "PAYMENT",
+    "PAYMENT": "PAYMENT",
+    "MAINTENANCE_ISSUE": "MAINTENANCE_ISSUE",
+    "MAINTENANCE_TASK": "MAINTENANCE_TASK",
+    "LOAN": "LOAN",
+    "ASSET": "ASSET",
+    "OWNER": "OWNER",
+    "REPORT": "REPORT",
+  };
+
+  // Upload document
+  app.post("/api/documents", requireAuth, documentUpload.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const { title, description, documentType, module, moduleId, propertyId } = req.body;
+
+      if (!title || !documentType || !module || !moduleId) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: "Missing required fields: title, documentType, module, moduleId" });
+      }
+
+      const validDocTypes = ["INVOICE", "RECEIPT", "PAYMENT_PROOF", "CONTRACT", "LEASE_AGREEMENT", "UTILITY_BILL_IMAGE", "MAINTENANCE_PHOTO", "ID_DOCUMENT", "PROPERTY_IMAGE", "WORK_ORDER", "QUOTE", "COMPLETION_CERTIFICATE", "REPORT", "OTHER"];
+      if (!validDocTypes.includes(documentType.toUpperCase())) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: "Invalid document type" });
+      }
+
+      const mappedModule = moduleMap[module.toUpperCase()];
+      if (!mappedModule) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: "Invalid module type" });
+      }
+
+      // Verify user has access to the module they're uploading to
+      const moduleIdInt = parseInt(moduleId);
+      const access = await verifyModuleAccess(mappedModule, moduleIdInt, req.user!.id);
+      if (!access.hasAccess) {
+        fs.unlinkSync(req.file.path);
+        return res.status(403).json({ message: access.message || "Access denied" });
+      }
+
+      // Use the resolved propertyId from access check, or the one provided if valid
+      const resolvedPropertyId = access.propertyId || (propertyId ? parseInt(propertyId) : null);
+
+      const document = await storage.createDocument({
+        documentType: documentType.toUpperCase() as any,
+        module: mappedModule as any,
+        moduleId: moduleIdInt,
+        propertyId: resolvedPropertyId,
+        storagePath: req.file.path,
+        fileName: req.file.filename,
+        originalName: title,
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+        description: description || null,
+        uploadedByUserId: req.user!.id,
+      });
+
+      res.status(201).json(document);
+    } catch (error) {
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      next(error);
+    }
+  });
+
+  // Update document metadata
+  app.patch("/api/documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getDocumentById(id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Verify user has access to this document's module
+      const access = await verifyModuleAccess(document.module, document.moduleId, req.user!.id);
+      if (!access.hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const { title, description } = req.body;
+      const updates: any = {};
+      if (title !== undefined) updates.originalName = title;
+      if (description !== undefined) updates.description = description;
+
+      const updated = await storage.updateDocument(id, updates);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete document
+  app.delete("/api/documents/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getDocumentById(id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Verify user has access to this document's module
+      const access = await verifyModuleAccess(document.module, document.moduleId, req.user!.id);
+      if (!access.hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Delete file from disk
+      if (fs.existsSync(document.storagePath)) {
+        fs.unlinkSync(document.storagePath);
+      }
+
+      await storage.deleteDocument(id);
+      res.json({ message: "Document deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Generate share link for document
+  app.post("/api/documents/:id/share", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getDocumentById(id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Verify user has access to this document's module
+      const access = await verifyModuleAccess(document.module, document.moduleId, req.user!.id);
+      if (!access.hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const expiresInHours = req.body.expiresInHours || 24;
+      const token = await storage.generateShareToken(id, expiresInHours);
+      
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const shareUrl = `${baseUrl}/api/documents/shared/${token}`;
+      
+      res.json({ shareUrl, expiresInHours });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Access shared document (public endpoint)
+  app.get("/api/documents/shared/:token", async (req, res, next) => {
+    try {
+      const { token } = req.params;
+      const document = await storage.getDocumentByShareToken(token);
+      
+      if (!document) {
+        return res.status(404).json({ message: "Document not found or link expired" });
+      }
+
+      // Send the file
+      res.download(document.storagePath, document.originalName);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Download document (authenticated)
+  app.get("/api/documents/:id/download", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getDocumentById(id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Verify user has access to this document's module
+      const access = await verifyModuleAccess(document.module, document.moduleId, req.user!.id);
+      if (!access.hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      if (!fs.existsSync(document.storagePath)) {
+        return res.status(404).json({ message: "File not found on server" });
+      }
+
+      res.download(document.storagePath, document.originalName);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Serve uploaded documents (for inline viewing)
+  app.use("/uploads/documents", express.static(documentsDir));
 
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);

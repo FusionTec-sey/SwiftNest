@@ -31,6 +31,7 @@ import {
   assets,
   depreciationRules,
   depreciationRuns,
+  documents,
   type User, 
   type InsertUser, 
   type Property,
@@ -96,7 +97,9 @@ import {
   type DepreciationRule,
   type InsertDepreciationRule,
   type DepreciationRun,
-  type OwnerWithProperties
+  type OwnerWithProperties,
+  type Document,
+  type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -484,6 +487,18 @@ export interface IStorage {
   getLoansSummaryReport(userId: number): Promise<LoansSummaryReport>;
   getDepreciationReport(userId: number, asOfDate: Date, ownerId?: number, propertyId?: number): Promise<DepreciationReportData>;
   getDashboardSummary(userId: number): Promise<DashboardSummary>;
+
+  // =====================================================
+  // DOCUMENTS MODULE
+  // =====================================================
+  getDocumentsByModule(module: string, moduleId: number): Promise<Document[]>;
+  getDocumentsByPropertyId(propertyId: number): Promise<Document[]>;
+  getDocumentById(id: number): Promise<Document | undefined>;
+  getDocumentByShareToken(shareToken: string): Promise<Document | undefined>;
+  createDocument(doc: InsertDocument & { uploadedByUserId: number }): Promise<Document>;
+  updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined>;
+  deleteDocument(id: number): Promise<void>;
+  generateShareToken(documentId: number, expiresInHours?: number): Promise<string>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2969,6 +2984,67 @@ export class DatabaseStorage implements IStorage {
       loans: { total: totalLoans, totalOutstanding: loanOutstanding },
       assets: { total: totalAssets, totalValue: assetsValue },
     };
+  }
+
+  // =====================================================
+  // DOCUMENTS MODULE
+  // =====================================================
+
+  async getDocumentsByModule(module: string, moduleId: number): Promise<Document[]> {
+    return db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.module, module as any), eq(documents.moduleId, moduleId)))
+      .orderBy(desc(documents.createdAt));
+  }
+
+  async getDocumentsByPropertyId(propertyId: number): Promise<Document[]> {
+    return db
+      .select()
+      .from(documents)
+      .where(eq(documents.propertyId, propertyId))
+      .orderBy(desc(documents.createdAt));
+  }
+
+  async getDocumentById(id: number): Promise<Document | undefined> {
+    const [doc] = await db.select().from(documents).where(eq(documents.id, id));
+    return doc || undefined;
+  }
+
+  async getDocumentByShareToken(shareToken: string): Promise<Document | undefined> {
+    const [doc] = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.shareToken, shareToken), gte(documents.shareExpiresAt, new Date())));
+    return doc || undefined;
+  }
+
+  async createDocument(doc: InsertDocument & { uploadedByUserId: number }): Promise<Document> {
+    const [newDoc] = await db.insert(documents).values(doc).returning();
+    return newDoc;
+  }
+
+  async updateDocument(id: number, updates: Partial<Document>): Promise<Document | undefined> {
+    const [updated] = await db
+      .update(documents)
+      .set(updates)
+      .where(eq(documents.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteDocument(id: number): Promise<void> {
+    await db.delete(documents).where(eq(documents.id, id));
+  }
+
+  async generateShareToken(documentId: number, expiresInHours: number = 24): Promise<string> {
+    const token = `share_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
+    await db
+      .update(documents)
+      .set({ shareToken: token, shareExpiresAt: expiresAt })
+      .where(eq(documents.id, documentId));
+    return token;
   }
 }
 

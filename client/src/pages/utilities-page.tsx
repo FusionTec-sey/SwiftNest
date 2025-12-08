@@ -4,7 +4,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Gauge, Plus, Trash2, Zap, Droplet, Flame, Search, Receipt, Clock, CheckCircle, AlertCircle, Send, ArrowRightLeft, User, Building, History } from "lucide-react";
+import { Gauge, Plus, Trash2, Zap, Droplet, Flame, Search, Receipt, Clock, CheckCircle, AlertCircle, Send, ArrowRightLeft, User, Building, History, FileText } from "lucide-react";
+import { DocumentManager } from "@/components/document-manager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -141,6 +142,7 @@ export default function UtilitiesPage() {
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [transferringMeter, setTransferringMeter] = useState<MeterWithAssignment | null>(null);
   const [viewingHistory, setViewingHistory] = useState<number | null>(null);
+  const [viewingBillDocs, setViewingBillDocs] = useState<UtilityBill | null>(null);
 
   const { data: meters, isLoading: metersLoading } = useQuery<UtilityMeter[]>({
     queryKey: ["/api/utility-meters"],
@@ -519,6 +521,14 @@ export default function UtilitiesPage() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setViewingBillDocs(bill)}
+                          data-testid={`button-docs-bill-${bill.id}`}
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -1370,6 +1380,36 @@ export default function UtilitiesPage() {
               Close
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewingBillDocs} onOpenChange={(open) => !open && setViewingBillDocs(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Bill Documents
+            </DialogTitle>
+            <DialogDescription>
+              {viewingBillDocs && (
+                <>
+                  {viewingBillDocs.provider} - {getPropertyName(viewingBillDocs.propertyId)}
+                  <br />
+                  Bill Date: {format(new Date(viewingBillDocs.billDate), "dd MMM yyyy")}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingBillDocs && (
+            <DocumentManager
+              module="BILL"
+              moduleId={viewingBillDocs.id}
+              propertyId={viewingBillDocs.propertyId}
+              title="Attached Documents"
+              allowedTypes={["INVOICE", "RECEIPT", "PAYMENT_PROOF", "OTHER"]}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

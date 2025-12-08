@@ -90,6 +90,15 @@ Preferred communication style: Simple, everyday language.
 - **maintenance_task_materials**: Junction table for materials used in tasks
 - **maintenance_schedules**: Recurring maintenance schedules with frequency (DAILY/WEEKLY/MONTHLY/etc.)
 
+**Document Management Module**
+- **documents**: Centralized document storage for all modules
+  - Document types: INVOICE, RECEIPT, PAYMENT_PROOF, CONTRACT, PHOTO, REPORT, OTHER
+  - Source modules: PROPERTY, UNIT, LEASE, TENANT, METER, BILL, INVOICE, PAYMENT, MAINTENANCE_ISSUE, MAINTENANCE_TASK, LOAN, ASSET, OWNER
+  - Features: File upload (PDFs, images), shareable links with expiration, download support
+  - Files stored in /uploads/documents directory
+  - Reusable DocumentManager component for integration across modules
+  - Share links work on mobile via native share API, desktop via copy/download
+
 **Data Validation**
 - Zod schemas for runtime validation
 - Drizzle-Zod integration for automatic schema generation from database schema

@@ -310,6 +310,55 @@ export const propertyNodesRelations = relations(propertyNodes, ({ one, many }) =
   }),
 }));
 
+// =====================================================
+// DOCUMENT MANAGEMENT MODULE
+// =====================================================
+
+export const documentTypeEnum = pgEnum("document_type", [
+  "INVOICE", "RECEIPT", "PAYMENT_PROOF", "CONTRACT", "LEASE_AGREEMENT",
+  "UTILITY_BILL_IMAGE", "MAINTENANCE_PHOTO", "ID_DOCUMENT", "PROPERTY_IMAGE",
+  "WORK_ORDER", "QUOTE", "COMPLETION_CERTIFICATE", "REPORT", "OTHER"
+]);
+
+export const documentModuleEnum = pgEnum("document_module", [
+  "PROPERTY", "UNIT", "TENANT", "OWNER", "LEASE", "PAYMENT", "UTILITY_BILL",
+  "UTILITY_METER", "MAINTENANCE_ISSUE", "MAINTENANCE_TASK", "LOAN", "ASSET", "REPORT"
+]);
+
+export const documents = pgTable("documents", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  documentType: documentTypeEnum("document_type").notNull(),
+  module: documentModuleEnum("module").notNull(),
+  moduleId: integer("module_id").notNull(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  storagePath: text("storage_path").notNull(),
+  description: text("description"),
+  metadata: jsonb("metadata").default({}).$type<Record<string, unknown>>(),
+  shareToken: text("share_token"),
+  shareExpiresAt: timestamp("share_expires_at"),
+  uploadedByUserId: integer("uploaded_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("documents_module_idx").on(table.module, table.moduleId),
+  index("documents_property_idx").on(table.propertyId),
+  index("documents_type_idx").on(table.documentType),
+]);
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  property: one(properties, {
+    fields: [documents.propertyId],
+    references: [properties.id],
+  }),
+  uploadedBy: one(users, {
+    fields: [documents.uploadedByUserId],
+    references: [users.id],
+  }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -1216,6 +1265,18 @@ export const insertMeterAssignmentHistorySchema = createInsertSchema(meterAssign
 
 export type InsertMeterAssignmentHistory = z.infer<typeof insertMeterAssignmentHistorySchema>;
 export type MeterAssignmentHistory = typeof meterAssignmentHistory.$inferSelect;
+
+// Document schemas
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  shareToken: true,
+  shareExpiresAt: true,
+  uploadedByUserId: true,
+  createdAt: true,
+});
+
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type Document = typeof documents.$inferSelect;
 
 // Loan schemas
 export const insertLoanSchema = createInsertSchema(loans).omit({

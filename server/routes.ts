@@ -4014,7 +4014,12 @@ export async function registerRoutes(
   // Create compliance document
   app.post("/api/compliance-documents", requireAuth, async (req, res, next) => {
     try {
-      const parseResult = insertComplianceDocumentSchema.safeParse(req.body);
+      // Preprocess date fields - convert empty strings to null
+      const body = { ...req.body };
+      if (body.issueDate === "") body.issueDate = null;
+      if (body.expiryDate === "") body.expiryDate = null;
+
+      const parseResult = insertComplianceDocumentSchema.safeParse(body);
       if (!parseResult.success) {
         return res.status(400).json({ 
           message: "Validation failed", 
@@ -4073,8 +4078,13 @@ export async function registerRoutes(
         }
       }
 
+      // Preprocess date fields - convert empty strings to null
+      const body = { ...req.body };
+      if (body.issueDate === "") body.issueDate = null;
+      if (body.expiryDate === "") body.expiryDate = null;
+
       const partialSchema = insertComplianceDocumentSchema.partial();
-      const parseResult = partialSchema.safeParse(req.body);
+      const parseResult = partialSchema.safeParse(body);
       if (!parseResult.success) {
         return res.status(400).json({ 
           message: "Validation failed", 

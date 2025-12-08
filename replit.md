@@ -42,6 +42,7 @@ Preferred communication style: Simple, everyday language.
 -   **Modules:**
     -   **Maintenance:** Comprehensive issue tracking, task management, team management, materials inventory, and recurring schedules across 8 tables.
     -   **Document Management:** Centralized storage for various document types with shareable links and module-specific authorization.
+    -   **Compliance Management:** Tracks licenses, permits, certificates, insurance, and legal documents with expiry dates and automated reminders. Supports 11 document types (Business License, Building Permit, Fire Safety Certificate, Health Permit, Occupancy Certificate, Insurance Policy, GST Registration, Environmental Clearance, Property Tax Receipt, Rental License, Other). Computes status as ACTIVE, EXPIRING_SOON, or EXPIRED based on expiry date and reminder lead days. Dashboard integration shows alerts for expired and expiring documents.
     -   **Accounting (Double-Entry):** Chart of Accounts, Ledger Entries, Ledger Lines for automated and manual journal entries, supporting rent collection, utility payments, loan payments, and financial reporting.
     -   **Rent Collection:** Dashboard metrics, automated invoice generation (PDF), payment recording, and overdue tracking.
     -   **User Settings:** Profile and security management with robust validation.

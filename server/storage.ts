@@ -23,6 +23,7 @@ import {
   ledgerLines,
   utilityMeters,
   meterReadings,
+  meterAssignmentHistory,
   utilityBills,
   loans,
   loanSchedule,
@@ -79,6 +80,8 @@ import {
   type InsertUtilityMeter,
   type MeterReading,
   type InsertMeterReading,
+  type MeterAssignmentHistory,
+  type InsertMeterAssignmentHistory,
   type UtilityBill,
   type InsertUtilityBill,
   type Loan,
@@ -409,6 +412,25 @@ export interface IStorage {
   getReadingById(id: number): Promise<MeterReading | undefined>;
   createMeterReading(reading: InsertMeterReading & { recordedByUserId: number }): Promise<MeterReading>;
   deleteMeterReading(id: number): Promise<void>;
+
+  // Meter Assignment
+  getMeterAssignmentHistory(meterId: number): Promise<MeterAssignmentHistory[]>;
+  getMetersWithAssignmentsByPropertyId(propertyId: number): Promise<(UtilityMeter & { assignedOwner?: Owner | null; assignedTenant?: Tenant | null })[]>;
+  getOutstandingBillsForMeter(meterId: number): Promise<UtilityBill[]>;
+  transferMeterAssignment(
+    meterId: number,
+    newAssigneeType: "OWNER" | "TENANT",
+    newOwnerId: number | null,
+    newTenantId: number | null,
+    userId: number,
+    options?: {
+      leaseId?: number;
+      finalMeterReading?: string;
+      settlementAmount?: string;
+      transferReason?: string;
+      notes?: string;
+    }
+  ): Promise<{ meter: UtilityMeter; history: MeterAssignmentHistory }>;
 
   // =====================================================
   // UTILITY BILLS MODULE
@@ -1928,6 +1950,111 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMeterReading(id: number): Promise<void> {
     await db.delete(meterReadings).where(eq(meterReadings.id, id));
+  }
+
+  // =====================================================
+  // METER ASSIGNMENT MODULE
+  // =====================================================
+
+  async getMeterAssignmentHistory(meterId: number): Promise<MeterAssignmentHistory[]> {
+    return db
+      .select()
+      .from(meterAssignmentHistory)
+      .where(eq(meterAssignmentHistory.meterId, meterId))
+      .orderBy(desc(meterAssignmentHistory.transferDate));
+  }
+
+  async getMetersWithAssignmentsByPropertyId(propertyId: number): Promise<(UtilityMeter & { assignedOwner?: Owner | null; assignedTenant?: Tenant | null })[]> {
+    const meters = await db.select().from(utilityMeters).where(eq(utilityMeters.propertyId, propertyId));
+    
+    const metersWithAssignments = await Promise.all(
+      meters.map(async (meter) => {
+        let assignedOwner = null;
+        let assignedTenant = null;
+        
+        if (meter.assignedToType === "OWNER" && meter.assignedToOwnerId) {
+          const [owner] = await db.select().from(owners).where(eq(owners.id, meter.assignedToOwnerId));
+          assignedOwner = owner || null;
+        } else if (meter.assignedToType === "TENANT" && meter.assignedToTenantId) {
+          const [tenant] = await db.select().from(tenants).where(eq(tenants.id, meter.assignedToTenantId));
+          assignedTenant = tenant || null;
+        }
+        
+        return { ...meter, assignedOwner, assignedTenant };
+      })
+    );
+    
+    return metersWithAssignments;
+  }
+
+  async getOutstandingBillsForMeter(meterId: number): Promise<UtilityBill[]> {
+    return db
+      .select()
+      .from(utilityBills)
+      .where(
+        and(
+          eq(utilityBills.meterId, meterId),
+          inArray(utilityBills.status, ["PENDING", "OVERDUE", "PARTIALLY_PAID"])
+        )
+      )
+      .orderBy(desc(utilityBills.dueDate));
+  }
+
+  async transferMeterAssignment(
+    meterId: number,
+    newAssigneeType: "OWNER" | "TENANT",
+    newOwnerId: number | null,
+    newTenantId: number | null,
+    userId: number,
+    options?: {
+      leaseId?: number;
+      finalMeterReading?: string;
+      settlementAmount?: string;
+      transferReason?: string;
+      notes?: string;
+    }
+  ): Promise<{ meter: UtilityMeter; history: MeterAssignmentHistory }> {
+    const meter = await this.getMeterById(meterId);
+    if (!meter) {
+      throw new Error("Meter not found");
+    }
+
+    const outstandingBills = await this.getOutstandingBillsForMeter(meterId);
+    const hasOutstandingBills = outstandingBills.length > 0;
+
+    const [history] = await db
+      .insert(meterAssignmentHistory)
+      .values({
+        meterId,
+        previousAssigneeType: meter.assignedToType,
+        previousOwnerId: meter.assignedToOwnerId,
+        previousTenantId: meter.assignedToTenantId,
+        newAssigneeType,
+        newOwnerId,
+        newTenantId,
+        leaseId: options?.leaseId,
+        finalMeterReading: options?.finalMeterReading,
+        outstandingBillsSettled: hasOutstandingBills ? 0 : 1,
+        settlementAmount: options?.settlementAmount,
+        transferReason: options?.transferReason,
+        notes: options?.notes,
+        recordedByUserId: userId,
+      })
+      .returning();
+
+    const [updatedMeter] = await db
+      .update(utilityMeters)
+      .set({
+        assignedToType: newAssigneeType,
+        assignedToOwnerId: newOwnerId,
+        assignedToTenantId: newTenantId,
+        assignedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(utilityMeters.id, meterId))
+      .returning();
+
+    return { meter: updatedMeter, history };
   }
 
   // =====================================================

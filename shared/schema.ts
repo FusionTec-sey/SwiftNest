@@ -545,6 +545,9 @@ export const ledgerModuleEnum = pgEnum("ledger_module", ["RENT", "UTILITY", "MAI
 // Utility type enum
 export const utilityTypeEnum = pgEnum("utility_type", ["ELECTRICITY", "WATER", "GAS", "INTERNET", "OTHER"]);
 
+// Utility bill status enum
+export const utilityBillStatusEnum = pgEnum("utility_bill_status", ["PENDING", "FORWARDED", "PAID", "PARTIALLY_PAID", "OVERDUE"]);
+
 // Loan compounding enum
 export const loanCompoundingEnum = pgEnum("loan_compounding", ["SIMPLE", "COMPOUND_MONTHLY", "COMPOUND_ANNUALLY"]);
 
@@ -841,6 +844,49 @@ export const meterReadings = pgTable("meter_readings", {
 ]);
 
 // =====================================================
+// UTILITY BILLS TABLE
+// =====================================================
+
+export const utilityBills = pgTable("utility_bills", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  meterId: integer("meter_id").references(() => utilityMeters.id, { onDelete: "set null" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  utilityType: utilityTypeEnum("utility_type").notNull(),
+  provider: text("provider").notNull().default("PUC"),
+  billReference: text("bill_reference"),
+  accountNumber: text("account_number"),
+  billDate: timestamp("bill_date").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  billingPeriodStart: timestamp("billing_period_start"),
+  billingPeriodEnd: timestamp("billing_period_end"),
+  previousReading: decimal("previous_reading", { precision: 12, scale: 2 }),
+  currentReading: decimal("current_reading", { precision: 12, scale: 2 }),
+  consumption: decimal("consumption", { precision: 12, scale: 2 }),
+  previousBalance: decimal("previous_balance", { precision: 12, scale: 2 }).default("0"),
+  currentCharges: decimal("current_charges", { precision: 12, scale: 2 }).notNull(),
+  taxes: decimal("taxes", { precision: 12, scale: 2 }).default("0"),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  status: utilityBillStatusEnum("status").notNull().default("PENDING"),
+  billImagePath: text("bill_image_path"),
+  forwardedToTenantAt: timestamp("forwarded_to_tenant_at"),
+  paidAt: timestamp("paid_at"),
+  paymentReference: text("payment_reference"),
+  notes: text("notes"),
+  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("utility_bills_property_idx").on(table.propertyId),
+  index("utility_bills_unit_idx").on(table.unitId),
+  index("utility_bills_tenant_idx").on(table.tenantId),
+  index("utility_bills_status_idx").on(table.status),
+  index("utility_bills_due_date_idx").on(table.dueDate),
+]);
+
+// =====================================================
 // LOANS TABLE
 // =====================================================
 
@@ -1103,6 +1149,25 @@ export const insertMeterReadingSchema = createInsertSchema(meterReadings).omit({
   recordedByUserId: true,
   createdAt: true,
 });
+
+// Utility bill schemas
+export const insertUtilityBillSchema = createInsertSchema(utilityBills).omit({
+  id: true,
+  amountPaid: true,
+  forwardedToTenantAt: true,
+  paidAt: true,
+  paymentReference: true,
+  recordedByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  provider: z.string().min(1, "Provider is required"),
+  currentCharges: z.string().or(z.number()).transform(val => String(val)),
+  totalAmount: z.string().or(z.number()).transform(val => String(val)),
+});
+
+export type InsertUtilityBill = z.infer<typeof insertUtilityBillSchema>;
+export type UtilityBill = typeof utilityBills.$inferSelect;
 
 // Loan schemas
 export const insertLoanSchema = createInsertSchema(loans).omit({

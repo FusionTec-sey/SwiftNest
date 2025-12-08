@@ -22,7 +22,17 @@ import {
   HomeIcon,
   User,
   FileText,
+  Receipt,
+  Zap,
+  Droplet,
+  Flame,
+  Gauge,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Send,
 } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +70,7 @@ import { ShareDialog } from "@/components/share-dialog";
 import { PropertyTree } from "@/components/property-tree";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit, InsertUnit, LeaseWithDetails } from "@shared/schema";
+import type { Property, Unit, InsertUnit, LeaseWithDetails, UtilityBill } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[]; userRole?: string; isOwner?: boolean };
 
@@ -92,6 +102,36 @@ const propertyTypeColors: Record<string, string> = {
   MIXED_USE: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300",
 };
 
+const getUtilityIcon = (type: string) => {
+  switch (type) {
+    case "ELECTRICITY":
+      return <Zap className="h-4 w-4" />;
+    case "WATER":
+      return <Droplet className="h-4 w-4" />;
+    case "GAS":
+      return <Flame className="h-4 w-4" />;
+    default:
+      return <Gauge className="h-4 w-4" />;
+  }
+};
+
+const getBillStatusBadge = (status: string) => {
+  switch (status) {
+    case "PENDING":
+      return <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Pending</Badge>;
+    case "FORWARDED":
+      return <Badge className="gap-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 border-0"><Send className="h-3 w-3" /> Forwarded</Badge>;
+    case "PAID":
+      return <Badge className="gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 border-0"><CheckCircle className="h-3 w-3" /> Paid</Badge>;
+    case "PARTIALLY_PAID":
+      return <Badge className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 border-0"><AlertCircle className="h-3 w-3" /> Partial</Badge>;
+    case "OVERDUE":
+      return <Badge variant="destructive" className="gap-1"><AlertCircle className="h-3 w-3" /> Overdue</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+
 export default function PropertyDetailPage() {
   const params = useParams<{ id: string }>();
   const propertyId = parseInt(params.id);
@@ -108,6 +148,10 @@ export default function PropertyDetailPage() {
   const { data: leases } = useQuery<LeaseWithDetails[]>({
     queryKey: [`/api/properties/${propertyId}/leases`],
     enabled: !isNaN(propertyId),
+  });
+
+  const { data: utilityBills } = useQuery<UtilityBill[]>({
+    queryKey: ["/api/properties", propertyId, "utility-bills"],
   });
 
   const getLeaseForUnit = (unitId: number): LeaseWithDetails | undefined => {
@@ -597,6 +641,71 @@ export default function PropertyDetailPage() {
                   propertyId={propertyId} 
                   canEdit={property.isOwner !== false || property.userRole === "EDITOR"}
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Receipt className="h-5 w-5" />
+                  Utility Bills
+                </CardTitle>
+                <Link href="/utilities">
+                  <Button variant="outline" size="sm" data-testid="button-view-all-bills">
+                    View All
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {utilityBills && utilityBills.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Provider</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Due Date</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {utilityBills.slice(0, 5).map((bill) => (
+                        <TableRow key={bill.id} data-testid={`row-bill-${bill.id}`}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {getUtilityIcon(bill.utilityType)}
+                              {bill.provider}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{bill.utilityType}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className={new Date(bill.dueDate) < new Date() && bill.status !== "PAID" ? "text-destructive font-medium" : ""}>
+                              {format(new Date(bill.dueDate), "dd MMM yyyy")}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            SCR {parseFloat(bill.totalAmount).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {getBillStatusBadge(bill.status)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Receipt className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <p>No utility bills recorded yet.</p>
+                    <Link href="/utilities">
+                      <Button variant="ghost" size="sm" className="mt-2" data-testid="button-record-first-bill">
+                        Record your first bill
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

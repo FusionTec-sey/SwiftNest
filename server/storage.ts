@@ -23,6 +23,7 @@ import {
   ledgerLines,
   utilityMeters,
   meterReadings,
+  utilityBills,
   loans,
   loanSchedule,
   loanPayments,
@@ -78,6 +79,8 @@ import {
   type InsertUtilityMeter,
   type MeterReading,
   type InsertMeterReading,
+  type UtilityBill,
+  type InsertUtilityBill,
   type Loan,
   type InsertLoan,
   type LoanScheduleEntry,
@@ -406,6 +409,19 @@ export interface IStorage {
   getReadingById(id: number): Promise<MeterReading | undefined>;
   createMeterReading(reading: InsertMeterReading & { recordedByUserId: number }): Promise<MeterReading>;
   deleteMeterReading(id: number): Promise<void>;
+
+  // =====================================================
+  // UTILITY BILLS MODULE
+  // =====================================================
+  getUtilityBillsByPropertyId(propertyId: number): Promise<UtilityBill[]>;
+  getUtilityBillsByTenantId(tenantId: number): Promise<UtilityBill[]>;
+  getUtilityBillById(id: number): Promise<UtilityBill | undefined>;
+  createUtilityBill(bill: InsertUtilityBill & { recordedByUserId: number }): Promise<UtilityBill>;
+  updateUtilityBill(id: number, bill: Partial<UtilityBill>): Promise<UtilityBill | undefined>;
+  forwardBillToTenant(id: number, tenantId: number): Promise<UtilityBill | undefined>;
+  markBillAsPaid(id: number, amountPaid: string, paymentReference?: string): Promise<UtilityBill | undefined>;
+  deleteUtilityBill(id: number): Promise<void>;
+  getPendingBillsByUserId(userId: number): Promise<UtilityBill[]>;
 
   // =====================================================
   // LOANS MODULE
@@ -1912,6 +1928,104 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMeterReading(id: number): Promise<void> {
     await db.delete(meterReadings).where(eq(meterReadings.id, id));
+  }
+
+  // =====================================================
+  // UTILITY BILLS MODULE
+  // =====================================================
+
+  async getUtilityBillsByPropertyId(propertyId: number): Promise<UtilityBill[]> {
+    return db
+      .select()
+      .from(utilityBills)
+      .where(eq(utilityBills.propertyId, propertyId))
+      .orderBy(desc(utilityBills.dueDate));
+  }
+
+  async getUtilityBillsByTenantId(tenantId: number): Promise<UtilityBill[]> {
+    return db
+      .select()
+      .from(utilityBills)
+      .where(eq(utilityBills.tenantId, tenantId))
+      .orderBy(desc(utilityBills.dueDate));
+  }
+
+  async getUtilityBillById(id: number): Promise<UtilityBill | undefined> {
+    const [bill] = await db.select().from(utilityBills).where(eq(utilityBills.id, id));
+    return bill || undefined;
+  }
+
+  async createUtilityBill(bill: InsertUtilityBill & { recordedByUserId: number }): Promise<UtilityBill> {
+    const [newBill] = await db.insert(utilityBills).values(bill).returning();
+    return newBill;
+  }
+
+  async updateUtilityBill(id: number, bill: Partial<UtilityBill>): Promise<UtilityBill | undefined> {
+    const [updated] = await db
+      .update(utilityBills)
+      .set({ ...bill, updatedAt: new Date() })
+      .where(eq(utilityBills.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async forwardBillToTenant(id: number, tenantId: number): Promise<UtilityBill | undefined> {
+    const [updated] = await db
+      .update(utilityBills)
+      .set({ 
+        tenantId, 
+        status: "FORWARDED", 
+        forwardedToTenantAt: new Date(),
+        updatedAt: new Date() 
+      })
+      .where(eq(utilityBills.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async markBillAsPaid(id: number, amountPaid: string, paymentReference?: string): Promise<UtilityBill | undefined> {
+    const bill = await this.getUtilityBillById(id);
+    if (!bill) return undefined;
+
+    const totalPaid = parseFloat(bill.amountPaid || "0") + parseFloat(amountPaid);
+    const totalAmount = parseFloat(bill.totalAmount);
+    const newStatus = totalPaid >= totalAmount ? "PAID" : "PARTIALLY_PAID";
+
+    const [updated] = await db
+      .update(utilityBills)
+      .set({ 
+        amountPaid: String(totalPaid),
+        status: newStatus,
+        paidAt: newStatus === "PAID" ? new Date() : bill.paidAt,
+        paymentReference: paymentReference || bill.paymentReference,
+        updatedAt: new Date() 
+      })
+      .where(eq(utilityBills.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteUtilityBill(id: number): Promise<void> {
+    await db.delete(utilityBills).where(eq(utilityBills.id, id));
+  }
+
+  async getPendingBillsByUserId(userId: number): Promise<UtilityBill[]> {
+    const userProperties = await db
+      .select({ id: properties.id })
+      .from(properties)
+      .where(and(eq(properties.ownerUserId, userId), eq(properties.isDeleted, 0)));
+    
+    if (userProperties.length === 0) return [];
+    
+    const propertyIds = userProperties.map(p => p.id);
+    return db
+      .select()
+      .from(utilityBills)
+      .where(and(
+        inArray(utilityBills.propertyId, propertyIds),
+        or(eq(utilityBills.status, "PENDING"), eq(utilityBills.status, "FORWARDED"))
+      ))
+      .orderBy(utilityBills.dueDate);
   }
 
   // =====================================================

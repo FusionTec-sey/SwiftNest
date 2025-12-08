@@ -29,6 +29,7 @@ import {
   insertLedgerLineSchema,
   insertUtilityMeterSchema,
   insertMeterReadingSchema,
+  insertUtilityBillSchema,
   insertLoanSchema,
   insertLoanPaymentSchema,
   insertAssetSchema,
@@ -2324,6 +2325,159 @@ export async function registerRoutes(
       }
       const reading = await storage.createMeterReading({ ...validation.data, recordedByUserId: req.user!.id });
       res.status(201).json(reading);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // UTILITY BILLS MODULE
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/utility-bills", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const bills = await storage.getUtilityBillsByPropertyId(propertyId);
+      res.json(bills);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/utility-bills/pending", requireAuth, async (req, res, next) => {
+    try {
+      const bills = await storage.getPendingBillsByUserId(req.user!.id);
+      res.json(bills);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/utility-bills/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid bill ID" });
+      }
+      const bill = await storage.getUtilityBillById(id);
+      if (!bill) {
+        return res.status(404).json({ message: "Utility bill not found" });
+      }
+      const access = await storage.canUserAccessProperty(bill.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json(bill);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/utility-bills", requireAuth, async (req, res, next) => {
+    try {
+      const validation = insertUtilityBillSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+      const access = await storage.canUserAccessProperty(validation.data.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const bill = await storage.createUtilityBill({ ...validation.data, recordedByUserId: req.user!.id });
+      res.status(201).json(bill);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/utility-bills/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid bill ID" });
+      }
+      const existingBill = await storage.getUtilityBillById(id);
+      if (!existingBill) {
+        return res.status(404).json({ message: "Utility bill not found" });
+      }
+      const access = await storage.canUserAccessProperty(existingBill.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateUtilityBill(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/utility-bills/:id/forward", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { tenantId } = req.body;
+      if (isNaN(id) || !tenantId) {
+        return res.status(400).json({ message: "Invalid bill ID or tenant ID" });
+      }
+      const existingBill = await storage.getUtilityBillById(id);
+      if (!existingBill) {
+        return res.status(404).json({ message: "Utility bill not found" });
+      }
+      const access = await storage.canUserAccessProperty(existingBill.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const bill = await storage.forwardBillToTenant(id, tenantId);
+      res.json(bill);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/utility-bills/:id/pay", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { amountPaid, paymentReference } = req.body;
+      if (isNaN(id) || !amountPaid) {
+        return res.status(400).json({ message: "Invalid bill ID or amount" });
+      }
+      const existingBill = await storage.getUtilityBillById(id);
+      if (!existingBill) {
+        return res.status(404).json({ message: "Utility bill not found" });
+      }
+      const access = await storage.canUserAccessProperty(existingBill.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const bill = await storage.markBillAsPaid(id, amountPaid, paymentReference);
+      res.json(bill);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/utility-bills/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid bill ID" });
+      }
+      const existingBill = await storage.getUtilityBillById(id);
+      if (!existingBill) {
+        return res.status(404).json({ message: "Utility bill not found" });
+      }
+      const access = await storage.canUserAccessProperty(existingBill.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      await storage.deleteUtilityBill(id);
+      res.sendStatus(204);
     } catch (error) {
       next(error);
     }

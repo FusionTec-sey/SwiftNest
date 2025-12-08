@@ -27,6 +27,13 @@ Preferred communication style: Simple, everyday language.
     -   Form layouts with section headers and responsive grids (2-column on desktop, stacked on mobile).
     -   Responsive data tables with horizontal scroll and column hiding on smaller screens.
     -   Accessibility: aria-hidden on decorative icons, aria-labels on toggles, role attributes on landmarks.
+    -   **Module Crosslinks:** Comprehensive navigation between related entities:
+        -   Property ↔ Tenant: Property detail shows units with tenant links; tenant detail links to property
+        -   Lease ↔ Property: Lease detail links to associated property
+        -   Unit → Lease: Property detail unit dropdown includes "View Lease" option
+        -   Tenant → Active Leases: Tenant detail shows all active leases with links
+        -   Owner → Properties: Owner cards have "View Properties" button that filters properties by owner
+        -   Dashboard tasks: All pending tasks (maintenance issues, overdue invoices, compliance alerts) have clickable links to their respective detail pages
 
 ### Backend
 

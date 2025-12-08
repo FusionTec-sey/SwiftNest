@@ -3,13 +3,17 @@ import {
   properties, 
   units,
   propertyCollaborators,
+  propertyNodes,
   type User, 
   type InsertUser, 
   type Property,
   type InsertProperty,
   type Unit,
   type InsertUnit,
-  type PropertyCollaborator 
+  type PropertyCollaborator,
+  type PropertyNode,
+  type InsertPropertyNode,
+  type PropertyNodeWithChildren
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray } from "drizzle-orm";
@@ -48,6 +52,13 @@ export interface IStorage {
   removeCollaborator(propertyId: number, userId: number): Promise<void>;
   getCollaboratorRole(propertyId: number, userId: number): Promise<string | null>;
   canUserAccessProperty(propertyId: number, userId: number): Promise<{ canAccess: boolean; role: string | null; isOwner: boolean }>;
+  
+  getPropertyTree(propertyId: number): Promise<PropertyNodeWithChildren[]>;
+  getNodeById(nodeId: number): Promise<PropertyNode | undefined>;
+  createPropertyNode(node: InsertPropertyNode): Promise<PropertyNode>;
+  updatePropertyNode(nodeId: number, node: Partial<InsertPropertyNode>): Promise<PropertyNode | undefined>;
+  movePropertyNode(nodeId: number, parentId: number | null, sortOrder?: number): Promise<PropertyNode | undefined>;
+  deletePropertyNode(nodeId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -349,6 +360,105 @@ export class DatabaseStorage implements IStorage {
     
     const role = await this.getCollaboratorRole(propertyId, userId);
     return { canAccess: role !== null, role, isOwner: false };
+  }
+
+  async getPropertyTree(propertyId: number): Promise<PropertyNodeWithChildren[]> {
+    const nodes = await db
+      .select()
+      .from(propertyNodes)
+      .where(eq(propertyNodes.propertyId, propertyId))
+      .orderBy(propertyNodes.sortOrder);
+    
+    const nodeMap = new Map<number, PropertyNodeWithChildren>();
+    const rootNodes: PropertyNodeWithChildren[] = [];
+    
+    nodes.forEach(node => {
+      nodeMap.set(node.id, { ...node, children: [] });
+    });
+    
+    nodes.forEach(node => {
+      const nodeWithChildren = nodeMap.get(node.id)!;
+      if (node.parentId === null) {
+        rootNodes.push(nodeWithChildren);
+      } else {
+        const parent = nodeMap.get(node.parentId);
+        if (parent) {
+          parent.children.push(nodeWithChildren);
+        } else {
+          rootNodes.push(nodeWithChildren);
+        }
+      }
+    });
+    
+    return rootNodes;
+  }
+
+  async getNodeById(nodeId: number): Promise<PropertyNode | undefined> {
+    const [node] = await db
+      .select()
+      .from(propertyNodes)
+      .where(eq(propertyNodes.id, nodeId));
+    return node || undefined;
+  }
+
+  async createPropertyNode(node: InsertPropertyNode): Promise<PropertyNode> {
+    const [newNode] = await db
+      .insert(propertyNodes)
+      .values(node)
+      .returning();
+    return newNode;
+  }
+
+  async updatePropertyNode(nodeId: number, node: Partial<InsertPropertyNode>): Promise<PropertyNode | undefined> {
+    const [updated] = await db
+      .update(propertyNodes)
+      .set({ ...node, updatedAt: new Date() })
+      .where(eq(propertyNodes.id, nodeId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async movePropertyNode(nodeId: number, parentId: number | null, sortOrder?: number): Promise<PropertyNode | undefined> {
+    const updates: Partial<PropertyNode> = { 
+      parentId, 
+      updatedAt: new Date() 
+    };
+    if (sortOrder !== undefined) {
+      updates.sortOrder = sortOrder;
+    }
+    
+    const [updated] = await db
+      .update(propertyNodes)
+      .set(updates)
+      .where(eq(propertyNodes.id, nodeId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePropertyNode(nodeId: number): Promise<void> {
+    const descendantIds = await this.getDescendantNodeIds(nodeId);
+    const allIds = [nodeId, ...descendantIds];
+    
+    await db
+      .delete(propertyNodes)
+      .where(inArray(propertyNodes.id, allIds));
+  }
+
+  private async getDescendantNodeIds(nodeId: number): Promise<number[]> {
+    const children = await db
+      .select()
+      .from(propertyNodes)
+      .where(eq(propertyNodes.parentId, nodeId));
+    
+    const childIds = children.map(c => c.id);
+    const descendantIds: number[] = [...childIds];
+    
+    for (const childId of childIds) {
+      const childDescendants = await this.getDescendantNodeIds(childId);
+      descendantIds.push(...childDescendants);
+    }
+    
+    return descendantIds;
   }
 }
 

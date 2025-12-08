@@ -306,6 +306,8 @@ export default function TenantDetailPage() {
         className="hidden"
         accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
         data-testid="input-file-upload"
+        tabIndex={-1}
+        aria-hidden="true"
       />
 
       <div className="flex items-center gap-4">

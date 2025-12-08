@@ -21,6 +21,7 @@ import TenantDetailPage from "@/pages/tenant-detail-page";
 import OwnersPage from "@/pages/owners-page";
 import AccountingPage from "@/pages/accounting-page";
 import LeasesPage from "@/pages/leases-page";
+import LeaseDetailPage from "@/pages/lease-detail-page";
 import UtilitiesPage from "@/pages/utilities-page";
 import LoansPage from "@/pages/loans-page";
 import AssetsPage from "@/pages/assets-page";
@@ -44,6 +45,7 @@ function ProtectedRoutes() {
       <Route path="/tenants/:id" component={TenantDetailPage} />
       <Route path="/owners" component={OwnersPage} />
       <Route path="/leases" component={LeasesPage} />
+      <Route path="/leases/:id" component={LeaseDetailPage} />
       <Route path="/rent-collection" component={RentCollectionPage} />
       <Route path="/accounting" component={AccountingPage} />
       <Route path="/utilities" component={UtilitiesPage} />

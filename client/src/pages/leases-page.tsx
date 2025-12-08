@@ -13,7 +13,9 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Eye,
 } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -280,6 +282,15 @@ export default function LeasesPage() {
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      <Link href={`/leases/${lease.id}`}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          data-testid={`button-view-lease-${lease.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
                       <Button
                         size="icon"
                         variant="ghost"

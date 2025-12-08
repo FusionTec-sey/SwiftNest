@@ -120,7 +120,11 @@ import {
   type UserRoleAssignment,
   type InsertUserRoleAssignment,
   type UserWithRoles,
-  type RoleWithPermissions
+  type RoleWithPermissions,
+  expenses,
+  type Expense,
+  type InsertExpense,
+  type ExpenseWithDetails
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -561,6 +565,23 @@ export interface IStorage {
   createComplianceDocument(doc: InsertComplianceDocument & { createdByUserId: number }): Promise<ComplianceDocument>;
   updateComplianceDocument(id: number, updates: Partial<InsertComplianceDocument>): Promise<ComplianceDocument | undefined>;
   deleteComplianceDocument(id: number): Promise<void>;
+
+  // =====================================================
+  // EXPENSES MODULE
+  // =====================================================
+  getExpensesByOwnerId(ownerId: number): Promise<ExpenseWithDetails[]>;
+  getExpensesByPropertyId(propertyId: number): Promise<ExpenseWithDetails[]>;
+  getExpensesByUser(userId: number): Promise<ExpenseWithDetails[]>;
+  getExpenseById(id: number): Promise<ExpenseWithDetails | undefined>;
+  getExpensesByMaintenanceIssue(issueId: number): Promise<Expense[]>;
+  getExpensesByMaintenanceTask(taskId: number): Promise<Expense[]>;
+  getExpensesByComplianceDocument(docId: number): Promise<Expense[]>;
+  createExpense(expense: InsertExpense & { createdByUserId: number }): Promise<Expense>;
+  updateExpense(id: number, expense: Partial<Expense>): Promise<Expense | undefined>;
+  updateExpensePayment(id: number, paymentStatus: string, paymentMethod?: string, paymentDate?: Date, paymentReference?: string): Promise<Expense | undefined>;
+  deleteExpense(id: number): Promise<void>;
+  getExpenseSummaryByOwner(ownerId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]>;
+  getExpenseSummaryByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4038,6 +4059,176 @@ export class DatabaseStorage implements IStorage {
 
   async getUserRoleAssignments(userId: number): Promise<UserRoleAssignment[]> {
     return db.select().from(userRoleAssignments).where(eq(userRoleAssignments.userId, userId));
+  }
+
+  // =====================================================
+  // EXPENSES MODULE IMPLEMENTATION
+  // =====================================================
+
+  private async enrichExpenseWithDetails(expense: Expense): Promise<ExpenseWithDetails> {
+    const [owner] = await db.select().from(owners).where(eq(owners.id, expense.ownerId));
+    let property = null;
+    let unit = null;
+    let maintenanceIssue = null;
+    let maintenanceTask = null;
+    let complianceDocument = null;
+
+    if (expense.propertyId) {
+      const [prop] = await db.select().from(properties).where(eq(properties.id, expense.propertyId));
+      property = prop || null;
+    }
+    if (expense.unitId) {
+      const [u] = await db.select().from(units).where(eq(units.id, expense.unitId));
+      unit = u || null;
+    }
+    if (expense.maintenanceIssueId) {
+      const [issue] = await db.select().from(maintenanceIssues).where(eq(maintenanceIssues.id, expense.maintenanceIssueId));
+      maintenanceIssue = issue || null;
+    }
+    if (expense.maintenanceTaskId) {
+      const [task] = await db.select().from(maintenanceTasks).where(eq(maintenanceTasks.id, expense.maintenanceTaskId));
+      maintenanceTask = task || null;
+    }
+    if (expense.complianceDocumentId) {
+      const [doc] = await db.select().from(complianceDocuments).where(eq(complianceDocuments.id, expense.complianceDocumentId));
+      complianceDocument = doc || null;
+    }
+
+    return {
+      ...expense,
+      owner,
+      property,
+      unit,
+      maintenanceIssue,
+      maintenanceTask,
+      complianceDocument,
+    };
+  }
+
+  async getExpensesByOwnerId(ownerId: number): Promise<ExpenseWithDetails[]> {
+    const expenseList = await db.select().from(expenses).where(eq(expenses.ownerId, ownerId)).orderBy(desc(expenses.expenseDate));
+    return Promise.all(expenseList.map(e => this.enrichExpenseWithDetails(e)));
+  }
+
+  async getExpensesByPropertyId(propertyId: number): Promise<ExpenseWithDetails[]> {
+    const expenseList = await db.select().from(expenses).where(eq(expenses.propertyId, propertyId)).orderBy(desc(expenses.expenseDate));
+    return Promise.all(expenseList.map(e => this.enrichExpenseWithDetails(e)));
+  }
+
+  async getExpensesByUser(userId: number): Promise<ExpenseWithDetails[]> {
+    const userOwners = await db.select().from(owners).where(eq(owners.userId, userId));
+    if (userOwners.length === 0) return [];
+    
+    const ownerIds = userOwners.map(o => o.id);
+    const expenseList = await db.select().from(expenses).where(inArray(expenses.ownerId, ownerIds)).orderBy(desc(expenses.expenseDate));
+    return Promise.all(expenseList.map(e => this.enrichExpenseWithDetails(e)));
+  }
+
+  async getExpenseById(id: number): Promise<ExpenseWithDetails | undefined> {
+    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    if (!expense) return undefined;
+    return this.enrichExpenseWithDetails(expense);
+  }
+
+  async getExpensesByMaintenanceIssue(issueId: number): Promise<Expense[]> {
+    return db.select().from(expenses).where(eq(expenses.maintenanceIssueId, issueId)).orderBy(desc(expenses.expenseDate));
+  }
+
+  async getExpensesByMaintenanceTask(taskId: number): Promise<Expense[]> {
+    return db.select().from(expenses).where(eq(expenses.maintenanceTaskId, taskId)).orderBy(desc(expenses.expenseDate));
+  }
+
+  async getExpensesByComplianceDocument(docId: number): Promise<Expense[]> {
+    return db.select().from(expenses).where(eq(expenses.complianceDocumentId, docId)).orderBy(desc(expenses.expenseDate));
+  }
+
+  async createExpense(expense: InsertExpense & { createdByUserId: number }): Promise<Expense> {
+    const [created] = await db.insert(expenses).values({
+      ...expense,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return created;
+  }
+
+  async updateExpense(id: number, expenseData: Partial<Expense>): Promise<Expense | undefined> {
+    const [updated] = await db
+      .update(expenses)
+      .set({ ...expenseData, updatedAt: new Date() })
+      .where(eq(expenses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateExpensePayment(
+    id: number, 
+    paymentStatus: string, 
+    paymentMethod?: string, 
+    paymentDate?: Date, 
+    paymentReference?: string
+  ): Promise<Expense | undefined> {
+    const updateData: Partial<Expense> = {
+      paymentStatus: paymentStatus as any,
+      updatedAt: new Date(),
+    };
+    if (paymentMethod) updateData.paymentMethod = paymentMethod as any;
+    if (paymentDate) updateData.paymentDate = paymentDate;
+    if (paymentReference) updateData.paymentReference = paymentReference;
+
+    const [updated] = await db
+      .update(expenses)
+      .set(updateData)
+      .where(eq(expenses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteExpense(id: number): Promise<void> {
+    await db.delete(expenses).where(eq(expenses.id, id));
+  }
+
+  async getExpenseSummaryByOwner(ownerId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]> {
+    let query = db.select({
+      category: expenses.category,
+      total: sql<number>`COALESCE(SUM(CAST(${expenses.totalAmount} AS DECIMAL)), 0)`,
+      count: sql<number>`COUNT(*)`,
+    }).from(expenses).where(eq(expenses.ownerId, ownerId));
+    
+    if (startDate) {
+      query = query.where(gte(expenses.expenseDate, startDate)) as any;
+    }
+    if (endDate) {
+      query = query.where(lte(expenses.expenseDate, endDate)) as any;
+    }
+    
+    const result = await (query as any).groupBy(expenses.category);
+    return result.map((r: any) => ({
+      category: r.category,
+      total: Number(r.total),
+      count: Number(r.count),
+    }));
+  }
+
+  async getExpenseSummaryByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]> {
+    let query = db.select({
+      category: expenses.category,
+      total: sql<number>`COALESCE(SUM(CAST(${expenses.totalAmount} AS DECIMAL)), 0)`,
+      count: sql<number>`COUNT(*)`,
+    }).from(expenses).where(eq(expenses.propertyId, propertyId));
+    
+    if (startDate) {
+      query = query.where(gte(expenses.expenseDate, startDate)) as any;
+    }
+    if (endDate) {
+      query = query.where(lte(expenses.expenseDate, endDate)) as any;
+    }
+    
+    const result = await (query as any).groupBy(expenses.category);
+    return result.map((r: any) => ({
+      category: r.category,
+      total: Number(r.total),
+      count: Number(r.count),
+    }));
   }
 }
 

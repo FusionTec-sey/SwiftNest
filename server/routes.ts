@@ -2331,6 +2331,122 @@ export async function registerRoutes(
   });
 
   // =====================================================
+  // METER ASSIGNMENT MODULE
+  // =====================================================
+
+  app.get("/api/properties/:propertyId/meters-with-assignments", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const meters = await storage.getMetersWithAssignmentsByPropertyId(propertyId);
+      res.json(meters);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/meters/:meterId/assignment-history", requireAuth, async (req, res, next) => {
+    try {
+      const meterId = parseInt(req.params.meterId);
+      if (isNaN(meterId)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const meter = await storage.getMeterById(meterId);
+      if (!meter) {
+        return res.status(404).json({ message: "Meter not found" });
+      }
+      const access = await storage.canUserAccessProperty(meter.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const history = await storage.getMeterAssignmentHistory(meterId);
+      res.json(history);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/meters/:meterId/outstanding-bills", requireAuth, async (req, res, next) => {
+    try {
+      const meterId = parseInt(req.params.meterId);
+      if (isNaN(meterId)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const meter = await storage.getMeterById(meterId);
+      if (!meter) {
+        return res.status(404).json({ message: "Meter not found" });
+      }
+      const access = await storage.canUserAccessProperty(meter.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const bills = await storage.getOutstandingBillsForMeter(meterId);
+      res.json(bills);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/meters/:meterId/transfer", requireAuth, async (req, res, next) => {
+    try {
+      const meterId = parseInt(req.params.meterId);
+      if (isNaN(meterId)) {
+        return res.status(400).json({ message: "Invalid meter ID" });
+      }
+      const meter = await storage.getMeterById(meterId);
+      if (!meter) {
+        return res.status(404).json({ message: "Meter not found" });
+      }
+      const access = await storage.canUserAccessProperty(meter.propertyId, req.user!.id);
+      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { newAssigneeType, newOwnerId, newTenantId, leaseId, finalMeterReading, settlementAmount, transferReason, notes, forceTran } = req.body;
+      
+      if (!newAssigneeType || !["OWNER", "TENANT"].includes(newAssigneeType)) {
+        return res.status(400).json({ message: "Invalid assignee type" });
+      }
+      
+      if (newAssigneeType === "OWNER" && !newOwnerId) {
+        return res.status(400).json({ message: "Owner ID is required when assigning to owner" });
+      }
+      
+      if (newAssigneeType === "TENANT" && !newTenantId) {
+        return res.status(400).json({ message: "Tenant ID is required when assigning to tenant" });
+      }
+      
+      const outstandingBills = await storage.getOutstandingBillsForMeter(meterId);
+      if (outstandingBills.length > 0 && !forceTran) {
+        return res.status(400).json({ 
+          message: "Cannot transfer meter with outstanding bills. Settle all bills first or use forceTran=true.",
+          outstandingBills,
+          outstandingAmount: outstandingBills.reduce((sum, bill) => sum + parseFloat(bill.totalAmount || "0") - parseFloat(bill.amountPaid || "0"), 0)
+        });
+      }
+      
+      const result = await storage.transferMeterAssignment(
+        meterId,
+        newAssigneeType,
+        newAssigneeType === "OWNER" ? newOwnerId : null,
+        newAssigneeType === "TENANT" ? newTenantId : null,
+        req.user!.id,
+        { leaseId, finalMeterReading, settlementAmount, transferReason, notes }
+      );
+      
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
   // UTILITY BILLS MODULE
   // =====================================================
 

@@ -1217,6 +1217,7 @@ export const insertOwnerInvitationSchema = createInsertSchema(ownerInvitations).
   invitedByUserId: true,
   acceptedByUserId: true,
   status: true,
+  expiresAt: true,
   createdAt: true,
   updatedAt: true,
 }).extend({

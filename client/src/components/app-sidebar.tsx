@@ -14,6 +14,7 @@ import {
   Settings,
   LogOut,
   Trash2,
+  FileCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -45,6 +46,7 @@ const operationsNavItems = [
   { href: "/leases", label: "Leases", icon: FileText },
   { href: "/rent-collection", label: "Rent Collection", icon: Receipt },
   { href: "/utilities", label: "Utilities", icon: Gauge },
+  { href: "/compliance", label: "Compliance", icon: FileCheck },
 ];
 
 const financeNavItems = [

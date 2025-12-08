@@ -27,6 +27,7 @@ import ReportsPage from "@/pages/reports-page";
 import InvitePage from "@/pages/invite-page";
 import RentCollectionPage from "@/pages/rent-collection-page";
 import SettingsPage from "@/pages/settings-page";
+import CompliancePage from "@/pages/compliance-page";
 
 function ProtectedRoutes() {
   return (
@@ -47,6 +48,7 @@ function ProtectedRoutes() {
       <Route path="/loans" component={LoansPage} />
       <Route path="/assets" component={AssetsPage} />
       <Route path="/reports" component={ReportsPage} />
+      <Route path="/compliance" component={CompliancePage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>

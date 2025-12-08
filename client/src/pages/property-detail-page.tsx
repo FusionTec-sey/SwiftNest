@@ -578,6 +578,17 @@ export default function PropertyDetailPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {lease && (
+                                  <Link href={`/leases/${lease.id}`}>
+                                    <DropdownMenuItem
+                                      className="cursor-pointer"
+                                      data-testid={`button-view-lease-${unit.id}`}
+                                    >
+                                      <FileText className="h-4 w-4 mr-2" />
+                                      View Lease
+                                    </DropdownMenuItem>
+                                  </Link>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => {
                                     setEditingUnit(unit);

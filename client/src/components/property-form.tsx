@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building, Building2, Home, Landmark, Store, MapPin, Map } from "lucide-react";
+import { Building, Building2, Home, Landmark, Store, MapPin, Map, Warehouse, Factory, Layers, TreeDeciduous, HomeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,9 +31,22 @@ interface PropertyFormProps {
 const propertyTypes = [
   { value: "APARTMENT", label: "Apartment", icon: Building },
   { value: "VILLA", label: "Villa", icon: Home },
+  { value: "HOUSE", label: "House", icon: HomeIcon },
+  { value: "TOWNHOUSE", label: "Townhouse", icon: Layers },
   { value: "PLOT", label: "Plot", icon: Landmark },
+  { value: "LAND", label: "Land", icon: TreeDeciduous },
   { value: "OFFICE", label: "Office", icon: Building2 },
   { value: "SHOP", label: "Shop", icon: Store },
+  { value: "WAREHOUSE", label: "Warehouse", icon: Warehouse },
+  { value: "INDUSTRIAL", label: "Industrial", icon: Factory },
+  { value: "MIXED_USE", label: "Mixed Use", icon: Layers },
+];
+
+const occupancyPurposes = [
+  { value: "OWNER_OCCUPIED", label: "Owner Occupied (Personal Use)" },
+  { value: "RENTAL", label: "Rental Property" },
+  { value: "INVESTMENT", label: "Investment Property" },
+  { value: "VACANT_LAND", label: "Vacant Land" },
 ];
 
 export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }: PropertyFormProps) {
@@ -42,6 +55,7 @@ export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }
     defaultValues: {
       name: defaultValues?.name || "",
       propertyType: (defaultValues?.propertyType as InsertProperty["propertyType"]) || "APARTMENT",
+      occupancyPurpose: (defaultValues?.occupancyPurpose as InsertProperty["occupancyPurpose"]) || "RENTAL",
       addressLine1: defaultValues?.addressLine1 || "",
       addressLine2: defaultValues?.addressLine2 || "",
       city: defaultValues?.city || "",
@@ -118,6 +132,35 @@ export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }
                 )}
               />
             </div>
+            
+            <FormField
+              control={form.control}
+              name="occupancyPurpose"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Occupancy Purpose</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || "RENTAL"}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-occupancy-purpose">
+                        <SelectValue placeholder="Select purpose" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {occupancyPurposes.map((purpose) => (
+                        <SelectItem 
+                          key={purpose.value} 
+                          value={purpose.value}
+                          data-testid={`option-${purpose.value.toLowerCase().replace("_", "-")}`}
+                        >
+                          {purpose.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </CardContent>
         </Card>
 

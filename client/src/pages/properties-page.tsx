@@ -28,9 +28,15 @@ const propertyTypes = [
   { value: "all", label: "All Types" },
   { value: "APARTMENT", label: "Apartment" },
   { value: "VILLA", label: "Villa" },
+  { value: "HOUSE", label: "House" },
+  { value: "TOWNHOUSE", label: "Townhouse" },
   { value: "PLOT", label: "Plot" },
+  { value: "LAND", label: "Land" },
   { value: "OFFICE", label: "Office" },
   { value: "SHOP", label: "Shop" },
+  { value: "WAREHOUSE", label: "Warehouse" },
+  { value: "INDUSTRIAL", label: "Industrial" },
+  { value: "MIXED_USE", label: "Mixed Use" },
 ];
 
 export default function PropertiesPage() {

@@ -15,6 +15,13 @@ import {
   Trash2,
   MoreVertical,
   Wrench,
+  Warehouse,
+  Factory,
+  Layers,
+  TreeDeciduous,
+  HomeIcon,
+  User,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,24 +60,36 @@ import { ShareDialog } from "@/components/share-dialog";
 import { PropertyTree } from "@/components/property-tree";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Property, Unit, InsertUnit } from "@shared/schema";
+import type { Property, Unit, InsertUnit, LeaseWithDetails } from "@shared/schema";
 
 type PropertyWithUnits = Property & { units: Unit[]; userRole?: string; isOwner?: boolean };
 
 const propertyTypeIcons: Record<string, typeof Building> = {
   APARTMENT: Building,
   VILLA: Home,
+  HOUSE: HomeIcon,
+  TOWNHOUSE: Layers,
   PLOT: Landmark,
+  LAND: TreeDeciduous,
   OFFICE: Building2,
   SHOP: Store,
+  WAREHOUSE: Warehouse,
+  INDUSTRIAL: Factory,
+  MIXED_USE: Layers,
 };
 
 const propertyTypeColors: Record<string, string> = {
   APARTMENT: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
   VILLA: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300",
+  HOUSE: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300",
+  TOWNHOUSE: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300",
   PLOT: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
+  LAND: "bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-300",
   OFFICE: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
   SHOP: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-300",
+  WAREHOUSE: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300",
+  INDUSTRIAL: "bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
+  MIXED_USE: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300",
 };
 
 export default function PropertyDetailPage() {
@@ -85,6 +104,27 @@ export default function PropertyDetailPage() {
     queryKey: ["/api/properties", propertyId],
     enabled: !isNaN(propertyId),
   });
+
+  const { data: leases } = useQuery<LeaseWithDetails[]>({
+    queryKey: [`/api/properties/${propertyId}/leases`],
+    enabled: !isNaN(propertyId),
+  });
+
+  const getLeaseForUnit = (unitId: number): LeaseWithDetails | undefined => {
+    return leases?.find(
+      (lease) => 
+        lease.unitId === unitId && 
+        lease.status === "ACTIVE"
+    );
+  };
+
+  const getPropertyLease = (): LeaseWithDetails | undefined => {
+    return leases?.find(
+      (lease) => 
+        !lease.unitId && 
+        lease.status === "ACTIVE"
+    );
+  };
 
   const deletePropertyMutation = useMutation({
     mutationFn: async () => {
@@ -436,11 +476,14 @@ export default function PropertyDetailPage() {
                         <TableHead>Floor</TableHead>
                         <TableHead>Area (sq.ft)</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Tenant</TableHead>
                         <TableHead className="w-12"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {property.units.map((unit) => (
+                      {property.units.map((unit) => {
+                        const lease = getLeaseForUnit(unit.id);
+                        return (
                         <TableRow key={unit.id} data-testid={`row-unit-${unit.id}`}>
                           <TableCell className="font-medium" data-testid={`text-unit-name-${unit.id}`}>
                             {unit.unitName}
@@ -459,6 +502,16 @@ export default function PropertyDetailPage() {
                             >
                               {unit.status}
                             </Badge>
+                          </TableCell>
+                          <TableCell data-testid={`text-unit-tenant-${unit.id}`}>
+                            {lease?.tenant ? (
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-muted-foreground" />
+                                <span>{lease.tenant.firstName} {lease.tenant.lastName}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             <DropdownMenu>
@@ -519,7 +572,8 @@ export default function PropertyDetailPage() {
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      )})}
+                    
                     </TableBody>
                   </Table>
                 ) : (

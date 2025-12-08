@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Building, Building2, Home, Landmark, MapPin, MoreVertical, Pencil, Store, Trash2 } from "lucide-react";
+import { Building, Building2, Home, Landmark, MapPin, MoreVertical, Pencil, Store, Trash2, Warehouse, Factory, Layers, TreeDeciduous, HomeIcon, User, DollarSign, Key } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,17 +33,36 @@ interface PropertyCardProps {
 const propertyTypeIcons: Record<string, typeof Building> = {
   APARTMENT: Building,
   VILLA: Home,
+  HOUSE: HomeIcon,
+  TOWNHOUSE: Layers,
   PLOT: Landmark,
+  LAND: TreeDeciduous,
   OFFICE: Building2,
   SHOP: Store,
+  WAREHOUSE: Warehouse,
+  INDUSTRIAL: Factory,
+  MIXED_USE: Layers,
 };
 
 const propertyTypeColors: Record<string, string> = {
   APARTMENT: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
   VILLA: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300",
+  HOUSE: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300",
+  TOWNHOUSE: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300",
   PLOT: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
+  LAND: "bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-300",
   OFFICE: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
   SHOP: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-300",
+  WAREHOUSE: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300",
+  INDUSTRIAL: "bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
+  MIXED_USE: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300",
+};
+
+const occupancyPurposeLabels: Record<string, { label: string; icon: typeof User }> = {
+  OWNER_OCCUPIED: { label: "Owner Occupied", icon: User },
+  RENTAL: { label: "Rental", icon: Key },
+  INVESTMENT: { label: "Investment", icon: DollarSign },
+  VACANT_LAND: { label: "Vacant Land", icon: TreeDeciduous },
 };
 
 export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideEdit }: PropertyCardProps) {
@@ -73,14 +92,34 @@ export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideE
           <h3 className="font-semibold text-lg truncate" data-testid={`text-property-name-${property.id}`}>
             {property.name}
           </h3>
-          <Badge 
-            variant="secondary" 
-            className={`mt-1 gap-1 ${typeColorClass} border-0`}
-            data-testid={`badge-property-type-${property.id}`}
-          >
-            <Icon className="h-3 w-3" />
-            {property.propertyType}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <Badge 
+              variant="secondary" 
+              className={`gap-1 ${typeColorClass} border-0`}
+              data-testid={`badge-property-type-${property.id}`}
+            >
+              <Icon className="h-3 w-3" />
+              {property.propertyType.replace("_", " ")}
+            </Badge>
+            {property.occupancyPurpose && (
+              <Badge 
+                variant="outline" 
+                className="gap-1"
+                data-testid={`badge-occupancy-${property.id}`}
+              >
+                {(() => {
+                  const purpose = occupancyPurposeLabels[property.occupancyPurpose];
+                  const PurposeIcon = purpose?.icon || Key;
+                  return (
+                    <>
+                      <PurposeIcon className="h-3 w-3" />
+                      {purpose?.label || property.occupancyPurpose}
+                    </>
+                  );
+                })()}
+              </Badge>
+            )}
+          </div>
         </div>
         
         <DropdownMenu>

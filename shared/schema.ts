@@ -6,7 +6,8 @@ import { z } from "zod";
 
 // Enums
 export const accountTypeEnum = pgEnum("account_type", ["INDIVIDUAL", "ORGANIZATION"]);
-export const propertyTypeEnum = pgEnum("property_type", ["APARTMENT", "VILLA", "PLOT", "OFFICE", "SHOP"]);
+export const propertyTypeEnum = pgEnum("property_type", ["APARTMENT", "VILLA", "PLOT", "OFFICE", "SHOP", "HOUSE", "TOWNHOUSE", "WAREHOUSE", "INDUSTRIAL", "MIXED_USE", "LAND"]);
+export const occupancyPurposeEnum = pgEnum("occupancy_purpose", ["OWNER_OCCUPIED", "RENTAL", "INVESTMENT", "VACANT_LAND"]);
 export const unitStatusEnum = pgEnum("unit_status", ["VACANT", "OCCUPIED"]);
 export const nodeTypeEnum = pgEnum("node_type", ["BUILDING", "FLOOR", "FLAT", "VILLA", "ROOM", "BED", "SECTION", "PLOT", "CUSTOM"]);
 
@@ -34,6 +35,7 @@ export const properties = pgTable("properties", {
   ownerOrgName: text("owner_org_name"),
   name: text("name").notNull(),
   propertyType: propertyTypeEnum("property_type").notNull(),
+  occupancyPurpose: occupancyPurposeEnum("occupancy_purpose").default("RENTAL"),
   addressLine1: text("address_line1").notNull(),
   addressLine2: text("address_line2"),
   city: text("city").notNull(),

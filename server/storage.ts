@@ -35,7 +35,7 @@ export interface IStorage {
   getPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
   getDeletedPropertyById(id: number): Promise<(Property & { units: Unit[] }) | undefined>;
   createProperty(property: InsertProperty & { ownerUserId: number; ownerOrgName?: string | null }): Promise<Property>;
-  updateProperty(id: number, property: Partial<InsertProperty>): Promise<Property | undefined>;
+  updateProperty(id: number, property: Partial<InsertProperty> & { images?: string[] }): Promise<Property | undefined>;
   deleteProperty(id: number): Promise<void>;
   restoreProperty(id: number): Promise<Property | undefined>;
   permanentlyDeleteProperty(id: number): Promise<void>;
@@ -135,7 +135,7 @@ export class DatabaseStorage implements IStorage {
     return newProperty;
   }
 
-  async updateProperty(id: number, property: Partial<InsertProperty>): Promise<Property | undefined> {
+  async updateProperty(id: number, property: Partial<InsertProperty> & { images?: string[] }): Promise<Property | undefined> {
     const [updated] = await db
       .update(properties)
       .set({ ...property, updatedAt: new Date() })

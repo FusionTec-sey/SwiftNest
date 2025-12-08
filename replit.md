@@ -65,8 +65,13 @@ Preferred communication style: Simple, everyday language.
 - **Properties Table**: Property details with foreign key to owner user, supports images array and soft delete
 - **Units Table**: Sub-properties within a property (apartments, offices, etc.)
 - **Property Collaborators Table**: Enables property sharing with role-based permissions (VIEWER/EDITOR)
-- Enums for type safety: account_type, property_type, unit_status, collaborator_role
-- Indexed columns for performance: email, ownerUserId, city, propertyId, userId
+- **Property Nodes Table**: Hierarchical tree structure for organizing property components (buildings, floors, flats, rooms, etc.)
+  - Uses adjacency list pattern with parentId for tree relationships
+  - sortOrder field maintains sibling ordering
+  - nodeType enum: BUILDING, FLOOR, FLAT, VILLA, ROOM, BED, SECTION, PLOT, CUSTOM
+  - metadata JSONB field for flexible node-specific data
+- Enums for type safety: account_type, property_type, unit_status, collaborator_role, node_type
+- Indexed columns for performance: email, ownerUserId, city, propertyId, userId, parentId
 
 **Advanced Features**
 - Soft delete: Properties use isDeleted flag for trash/restore functionality

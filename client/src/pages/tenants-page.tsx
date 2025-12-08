@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Users, Phone, Mail, MapPin, Edit2, Trash2, Search } from "lucide-react";
+import { Plus, Users, Phone, Mail, MapPin, Edit2, Trash2, Search, Eye, CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -232,13 +233,37 @@ export default function TenantsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <CardTitle className="text-lg truncate">{tenant.legalName}</CardTitle>
-                      <CardDescription className="flex items-center gap-1 mt-1">
+                      <CardDescription className="flex flex-wrap items-center gap-1 mt-1">
                         <Badge variant="secondary" className="text-xs">
                           {tenant.tenantType === "COMPANY" ? "Company" : "Individual"}
+                        </Badge>
+                        <Badge 
+                          variant={
+                            tenant.verificationStatus === "VERIFIED" ? "default" :
+                            tenant.verificationStatus === "REJECTED" ? "destructive" :
+                            tenant.verificationStatus === "IN_PROGRESS" ? "secondary" : "outline"
+                          } 
+                          className="text-xs"
+                        >
+                          {tenant.verificationStatus === "VERIFIED" && <CheckCircle className="h-3 w-3 mr-1" />}
+                          {tenant.verificationStatus === "IN_PROGRESS" && <Clock className="h-3 w-3 mr-1" />}
+                          {tenant.verificationStatus === "REJECTED" && <XCircle className="h-3 w-3 mr-1" />}
+                          {(!tenant.verificationStatus || tenant.verificationStatus === "PENDING") && <AlertTriangle className="h-3 w-3 mr-1" />}
+                          {tenant.verificationStatus || "PENDING"}
                         </Badge>
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      <Link href={`/tenants/${tenant.id}`}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          data-testid={`button-view-tenant-${tenant.id}`}
+                          title="View KYC & Documents"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
                       <Button
                         size="icon"
                         variant="ghost"

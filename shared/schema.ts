@@ -617,6 +617,9 @@ export const ownershipRoleEnum = pgEnum("ownership_role", ["PRIMARY", "SECONDARY
 // Tenant type enum
 export const tenantTypeEnum = pgEnum("tenant_type", ["INDIVIDUAL", "COMPANY"]);
 
+// Tenant verification status enum (for KYC)
+export const tenantVerificationStatusEnum = pgEnum("tenant_verification_status", ["PENDING", "IN_PROGRESS", "VERIFIED", "REJECTED"]);
+
 // Lease status enum
 export const leaseStatusEnum = pgEnum("lease_status", ["DRAFT", "ACTIVE", "EXPIRED", "TERMINATED"]);
 
@@ -791,12 +794,22 @@ export const tenants = pgTable("tenants", {
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
   notes: text("notes"),
+  // KYC (Know Your Customer) fields
+  passportNumber: text("passport_number"),
+  nationality: text("nationality"),
+  dateOfBirth: timestamp("date_of_birth"),
+  workPermitNumber: text("work_permit_number"),
+  workPermitExpiry: timestamp("work_permit_expiry"),
+  verificationStatus: tenantVerificationStatusEnum("verification_status").notNull().default("PENDING"),
+  kycNotes: text("kyc_notes"),
+  kycCompletedAt: timestamp("kyc_completed_at"),
   createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("tenants_created_by_idx").on(table.createdByUserId),
   index("tenants_email_idx").on(table.email),
+  index("tenants_verification_idx").on(table.verificationStatus),
 ]);
 
 // =====================================================
@@ -1285,9 +1298,12 @@ export const insertTenantSchema = createInsertSchema(tenants).omit({
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
+  kycCompletedAt: true,
 }).extend({
   legalName: z.string().min(2, "Legal name must be at least 2 characters"),
   phone: z.string().min(7, "Phone number is required"),
+  dateOfBirth: z.string().optional().nullable(),
+  workPermitExpiry: z.string().optional().nullable(),
 });
 
 // Lease schemas

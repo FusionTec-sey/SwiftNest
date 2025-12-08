@@ -17,6 +17,7 @@ import PropertyDetailPage from "@/pages/property-detail-page";
 import DeletedPropertiesPage from "@/pages/deleted-properties-page";
 import MaintenancePage from "@/pages/maintenance-page";
 import TenantsPage from "@/pages/tenants-page";
+import TenantDetailPage from "@/pages/tenant-detail-page";
 import OwnersPage from "@/pages/owners-page";
 import AccountingPage from "@/pages/accounting-page";
 import LeasesPage from "@/pages/leases-page";
@@ -40,6 +41,7 @@ function ProtectedRoutes() {
       <Route path="/properties/:id/maintenance" component={MaintenancePage} />
       <Route path="/properties/:id" component={PropertyDetailPage} />
       <Route path="/tenants" component={TenantsPage} />
+      <Route path="/tenants/:id" component={TenantDetailPage} />
       <Route path="/owners" component={OwnersPage} />
       <Route path="/leases" component={LeasesPage} />
       <Route path="/rent-collection" component={RentCollectionPage} />

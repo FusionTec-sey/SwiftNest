@@ -62,7 +62,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Header } from "@/components/header";
 import { UnitForm } from "@/components/unit-form";
 import { EmptyState } from "@/components/empty-state";
 import { ImageGallery } from "@/components/image-gallery";
@@ -258,9 +257,8 @@ export default function PropertyDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto">
           <Skeleton className="h-8 w-48 mb-8" />
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2 space-y-6">
@@ -272,16 +270,15 @@ export default function PropertyDetailPage() {
               <Skeleton className="h-32" />
             </div>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
 
   if (error || !property) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center py-16">
             <h2 className="text-xl font-semibold mb-2">Property not found</h2>
             <p className="text-muted-foreground mb-6">
@@ -291,7 +288,7 @@ export default function PropertyDetailPage() {
               <Button>Back to Properties</Button>
             </Link>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -314,10 +311,8 @@ export default function PropertyDetailPage() {
   const occupiedCount = property.units?.filter((u) => u.status === "OCCUPIED").length || 0;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+    <div className="p-6">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
             <Link href="/">
@@ -770,7 +765,7 @@ export default function PropertyDetailPage() {
             </Card>
           </div>
         </div>
-      </main>
+      </div>
 
       <UnitForm
         propertyId={propertyId}

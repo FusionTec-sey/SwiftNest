@@ -2,7 +2,6 @@ import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Header } from "@/components/header";
 import { PropertyForm } from "@/components/property-form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -35,10 +34,8 @@ export default function PropertyNewPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      
-      <main className="max-w-2xl mx-auto px-4 md:px-8 py-8">
+    <div className="p-6">
+      <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <Link href="/properties">
             <Button variant="ghost" size="sm" className="gap-2 -ml-2 mb-4" data-testid="link-back">
@@ -57,7 +54,7 @@ export default function PropertyNewPage() {
           isSubmitting={createMutation.isPending}
           onCancel={() => setLocation("/properties")}
         />
-      </main>
+      </div>
     </div>
   );
 }

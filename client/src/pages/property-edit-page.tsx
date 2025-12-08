@@ -3,7 +3,6 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { Link, useLocation, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Header } from "@/components/header";
 import { PropertyForm } from "@/components/property-form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -47,25 +46,23 @@ export default function PropertyEditPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="max-w-2xl mx-auto px-4 md:px-8 py-8">
+      <div className="p-6">
+        <div className="max-w-2xl mx-auto">
           <Skeleton className="h-8 w-48 mb-8" />
           <div className="space-y-6">
             <Skeleton className="h-48" />
             <Skeleton className="h-64" />
             <Skeleton className="h-32" />
           </div>
-        </main>
+        </div>
       </div>
     );
   }
 
   if (error || !property) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="max-w-2xl mx-auto px-4 md:px-8 py-8">
+      <div className="p-6">
+        <div className="max-w-2xl mx-auto">
           <div className="text-center py-16">
             <h2 className="text-xl font-semibold mb-2">Property not found</h2>
             <p className="text-muted-foreground mb-6">
@@ -75,16 +72,14 @@ export default function PropertyEditPage() {
               <Button>Back to Properties</Button>
             </Link>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      
-      <main className="max-w-2xl mx-auto px-4 md:px-8 py-8">
+    <div className="p-6">
+      <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <Link href={`/properties/${propertyId}`}>
             <Button variant="ghost" size="sm" className="gap-2 -ml-2 mb-4" data-testid="link-back">
@@ -104,7 +99,7 @@ export default function PropertyEditPage() {
           isSubmitting={updateMutation.isPending}
           onCancel={() => setLocation(`/properties/${propertyId}`)}
         />
-      </main>
+      </div>
     </div>
   );
 }

@@ -12,7 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Header } from "@/components/header";
 
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -92,9 +91,8 @@ export default function SettingsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="max-w-4xl mx-auto px-4 md:px-8 py-8">
+    <div className="p-6">
+      <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold" data-testid="text-page-title">Settings</h1>
           <p className="text-muted-foreground mt-1">Manage your account settings and preferences</p>
@@ -302,7 +300,7 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
     </div>
   );
 }

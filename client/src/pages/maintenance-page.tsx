@@ -118,7 +118,7 @@ export default function MaintenancePage() {
 
   if (propertyLoading || statsLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -126,7 +126,7 @@ export default function MaintenancePage() {
 
   if (!property) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Property not found</p>
       </div>
     );
@@ -159,9 +159,9 @@ export default function MaintenancePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+    <div className="p-6">
+      <div className="border-b -m-6 mb-6">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4 flex-wrap">
               <Link href={`/properties/${propertyId}`}>

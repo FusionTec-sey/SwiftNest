@@ -1,11 +1,12 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AuthProvider } from "@/hooks/use-auth";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
+import { AppLayout } from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 import DashboardPage from "@/pages/dashboard-page";
@@ -27,30 +28,63 @@ import InvitePage from "@/pages/invite-page";
 import RentCollectionPage from "@/pages/rent-collection-page";
 import SettingsPage from "@/pages/settings-page";
 
-function Router() {
+function ProtectedRoutes() {
   return (
     <Switch>
-      <ProtectedRoute path="/" component={DashboardPage} />
-      <ProtectedRoute path="/properties" component={PropertiesPage} />
-      <ProtectedRoute path="/properties/deleted" component={DeletedPropertiesPage} />
-      <ProtectedRoute path="/properties/new" component={PropertyNewPage} />
-      <ProtectedRoute path="/properties/:id/edit" component={PropertyEditPage} />
-      <ProtectedRoute path="/properties/:id/maintenance" component={MaintenancePage} />
-      <ProtectedRoute path="/properties/:id" component={PropertyDetailPage} />
-      <ProtectedRoute path="/tenants" component={TenantsPage} />
-      <ProtectedRoute path="/owners" component={OwnersPage} />
-      <ProtectedRoute path="/leases" component={LeasesPage} />
-      <ProtectedRoute path="/rent-collection" component={RentCollectionPage} />
-      <ProtectedRoute path="/accounting" component={AccountingPage} />
-      <ProtectedRoute path="/utilities" component={UtilitiesPage} />
-      <ProtectedRoute path="/loans" component={LoansPage} />
-      <ProtectedRoute path="/assets" component={AssetsPage} />
-      <ProtectedRoute path="/reports" component={ReportsPage} />
-      <ProtectedRoute path="/settings" component={SettingsPage} />
-      <Route path="/auth" component={AuthPage} />
-      <Route path="/invite/:token" component={InvitePage} />
+      <Route path="/" component={DashboardPage} />
+      <Route path="/properties" component={PropertiesPage} />
+      <Route path="/properties/deleted" component={DeletedPropertiesPage} />
+      <Route path="/properties/new" component={PropertyNewPage} />
+      <Route path="/properties/:id/edit" component={PropertyEditPage} />
+      <Route path="/properties/:id/maintenance" component={MaintenancePage} />
+      <Route path="/properties/:id" component={PropertyDetailPage} />
+      <Route path="/tenants" component={TenantsPage} />
+      <Route path="/owners" component={OwnersPage} />
+      <Route path="/leases" component={LeasesPage} />
+      <Route path="/rent-collection" component={RentCollectionPage} />
+      <Route path="/accounting" component={AccountingPage} />
+      <Route path="/utilities" component={UtilitiesPage} />
+      <Route path="/loans" component={LoansPage} />
+      <Route path="/assets" component={AssetsPage} />
+      <Route path="/reports" component={ReportsPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
+  );
+}
+
+function AppContent() {
+  const { user, isLoading } = useAuth();
+  const [location] = useLocation();
+  
+  const isPublicRoute = location === "/auth" || location.startsWith("/invite/");
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  
+  if (isPublicRoute) {
+    return (
+      <Switch>
+        <Route path="/auth" component={AuthPage} />
+        <Route path="/invite/:token" component={InvitePage} />
+      </Switch>
+    );
+  }
+  
+  if (!user) {
+    window.location.href = "/auth";
+    return null;
+  }
+  
+  return (
+    <AppLayout>
+      <ProtectedRoutes />
+    </AppLayout>
   );
 }
 
@@ -61,7 +95,7 @@ function App() {
         <AuthProvider>
           <TooltipProvider>
             <Toaster />
-            <Router />
+            <AppContent />
           </TooltipProvider>
         </AuthProvider>
       </ThemeProvider>

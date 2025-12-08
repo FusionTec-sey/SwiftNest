@@ -93,12 +93,133 @@ import {
   type OwnerWithProperties
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 
 const PostgresSessionStore = connectPg(session);
+
+// Report Types
+export interface PropertyPnLEntry {
+  propertyId: number;
+  propertyName: string;
+  income: number;
+  expenses: number;
+  netIncome: number;
+  incomeBreakdown: { category: string; amount: number }[];
+  expenseBreakdown: { category: string; amount: number }[];
+}
+
+export interface PropertyPnLReport {
+  startDate: Date;
+  endDate: Date;
+  properties: PropertyPnLEntry[];
+  totals: { income: number; expenses: number; netIncome: number };
+}
+
+export interface OwnerPnLEntry {
+  ownerId: number;
+  ownerName: string;
+  ownershipPercent: number;
+  properties: { propertyId: number; propertyName: string; ownershipPercent: number }[];
+  grossIncome: number;
+  ownerShare: number;
+  expenses: number;
+  netIncome: number;
+}
+
+export interface OwnerPnLReport {
+  startDate: Date;
+  endDate: Date;
+  owners: OwnerPnLEntry[];
+  totals: { grossIncome: number; expenses: number; netIncome: number };
+}
+
+export interface LoanScheduleReport {
+  loanId: number;
+  lenderName: string;
+  principal: number;
+  interestRate: number;
+  termMonths: number;
+  startDate: Date;
+  schedule: LoanScheduleEntry[];
+  summary: {
+    totalPayments: number;
+    totalInterest: number;
+    totalPrincipal: number;
+    remainingBalance: number;
+    paidPeriods: number;
+    remainingPeriods: number;
+  };
+}
+
+export interface LoanSummaryEntry {
+  loanId: number;
+  lenderName: string;
+  ownerName: string;
+  propertyName: string | null;
+  principal: number;
+  outstandingBalance: number;
+  interestRate: number;
+  nextPaymentDate: Date | null;
+  nextPaymentAmount: number | null;
+  status: string;
+}
+
+export interface LoansSummaryReport {
+  loans: LoanSummaryEntry[];
+  totals: {
+    totalPrincipal: number;
+    totalOutstanding: number;
+    monthlyPayments: number;
+  };
+}
+
+export interface DepreciationAssetEntry {
+  assetId: number;
+  assetName: string;
+  category: string;
+  ownerName: string;
+  propertyName: string | null;
+  acquisitionDate: Date;
+  cost: number;
+  salvageValue: number;
+  usefulLifeMonths: number;
+  bookMethod: string;
+  taxMethod: string;
+  bookAccumulatedDepreciation: number;
+  taxAccumulatedDepreciation: number;
+  bookNetValue: number;
+  taxNetValue: number;
+  bookDepreciationYTD: number;
+  taxDepreciationYTD: number;
+}
+
+export interface DepreciationReportData {
+  asOfDate: Date;
+  assets: DepreciationAssetEntry[];
+  totals: {
+    totalCost: number;
+    totalBookAccumulated: number;
+    totalTaxAccumulated: number;
+    totalBookNetValue: number;
+    totalTaxNetValue: number;
+  };
+}
+
+export interface DashboardSummary {
+  properties: { total: number; occupied: number; vacant: number };
+  tenants: { total: number; active: number };
+  leases: { active: number; expiringSoon: number };
+  financials: {
+    monthlyRentDue: number;
+    overdueAmount: number;
+    receivedThisMonth: number;
+  };
+  loans: { total: number; totalOutstanding: number };
+  assets: { total: number; totalValue: number };
+}
 
 export interface IStorage {
   sessionStore: session.Store;
@@ -314,6 +435,16 @@ export interface IStorage {
   createDepreciationRule(rule: InsertDepreciationRule): Promise<DepreciationRule>;
   runDepreciation(assetId: number, runType: string, periodStart: Date, periodEnd: Date, userId: number): Promise<DepreciationRun>;
   getDepreciationRunsByAssetId(assetId: number): Promise<DepreciationRun[]>;
+
+  // =====================================================
+  // REPORTS MODULE
+  // =====================================================
+  getPropertyPnLReport(userId: number, startDate: Date, endDate: Date, propertyId?: number): Promise<PropertyPnLReport>;
+  getOwnerPnLReport(userId: number, startDate: Date, endDate: Date, ownerId?: number): Promise<OwnerPnLReport>;
+  getLoanScheduleReport(loanId: number): Promise<LoanScheduleReport>;
+  getLoansSummaryReport(userId: number): Promise<LoansSummaryReport>;
+  getDepreciationReport(userId: number, asOfDate: Date, ownerId?: number, propertyId?: number): Promise<DepreciationReportData>;
+  getDashboardSummary(userId: number): Promise<DashboardSummary>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2099,6 +2230,452 @@ export class DatabaseStorage implements IStorage {
       .from(depreciationRuns)
       .where(eq(depreciationRuns.assetId, assetId))
       .orderBy(desc(depreciationRuns.periodEnd));
+  }
+
+  // =====================================================
+  // REPORTS MODULE
+  // =====================================================
+
+  async getPropertyPnLReport(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    propertyId?: number
+  ): Promise<PropertyPnLReport> {
+    const propertyList = await this.getPropertiesByUserId(userId);
+    const filteredProperties = propertyId
+      ? propertyList.filter((p) => p.id === propertyId)
+      : propertyList;
+
+    const propertyEntries: PropertyPnLEntry[] = [];
+    let totalIncome = 0;
+    let totalExpenses = 0;
+
+    for (const property of filteredProperties) {
+      const entries = await db
+        .select()
+        .from(ledgerEntries)
+        .where(
+          and(
+            eq(ledgerEntries.propertyId, property.id),
+            gte(ledgerEntries.entryDate, startDate),
+            lte(ledgerEntries.entryDate, endDate),
+            eq(ledgerEntries.isReversed, 0)
+          )
+        );
+
+      let income = 0;
+      let expenses = 0;
+      const incomeBreakdown: { category: string; amount: number }[] = [];
+      const expenseBreakdown: { category: string; amount: number }[] = [];
+
+      for (const entry of entries) {
+        const lines = await db
+          .select()
+          .from(ledgerLines)
+          .where(eq(ledgerLines.entryId, entry.id));
+
+        for (const line of lines) {
+          const [account] = await db
+            .select()
+            .from(chartOfAccounts)
+            .where(eq(chartOfAccounts.id, line.accountId));
+
+          if (account) {
+            const creditAmt = parseFloat(line.credit || "0");
+            const debitAmt = parseFloat(line.debit || "0");
+
+            if (account.accountType === "REVENUE") {
+              const amt = creditAmt - debitAmt;
+              income += amt;
+              const existing = incomeBreakdown.find((i) => i.category === account.name);
+              if (existing) existing.amount += amt;
+              else incomeBreakdown.push({ category: account.name, amount: amt });
+            } else if (account.accountType === "EXPENSE") {
+              const amt = debitAmt - creditAmt;
+              expenses += amt;
+              const existing = expenseBreakdown.find((e) => e.category === account.name);
+              if (existing) existing.amount += amt;
+              else expenseBreakdown.push({ category: account.name, amount: amt });
+            }
+          }
+        }
+      }
+
+      propertyEntries.push({
+        propertyId: property.id,
+        propertyName: property.name,
+        income,
+        expenses,
+        netIncome: income - expenses,
+        incomeBreakdown,
+        expenseBreakdown,
+      });
+
+      totalIncome += income;
+      totalExpenses += expenses;
+    }
+
+    return {
+      startDate,
+      endDate,
+      properties: propertyEntries,
+      totals: {
+        income: totalIncome,
+        expenses: totalExpenses,
+        netIncome: totalIncome - totalExpenses,
+      },
+    };
+  }
+
+  async getOwnerPnLReport(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    ownerId?: number
+  ): Promise<OwnerPnLReport> {
+    const ownerList = await this.getOwnersByUserId(userId);
+    const filteredOwners = ownerId
+      ? ownerList.filter((o) => o.id === ownerId)
+      : ownerList;
+
+    const ownerEntries: OwnerPnLEntry[] = [];
+    let totalGrossIncome = 0;
+    let totalExpenses = 0;
+
+    for (const owner of filteredOwners) {
+      const ownerWithProps = await this.getOwnerWithProperties(owner.id);
+      if (!ownerWithProps) continue;
+
+      const propertyData: { propertyId: number; propertyName: string; ownershipPercent: number }[] = [];
+      let ownerGrossIncome = 0;
+      let ownerExpenses = 0;
+
+      for (const po of ownerWithProps.propertyOwnerships) {
+        const ownershipPct = parseFloat(po.ownershipPercent) / 100;
+        propertyData.push({
+          propertyId: po.propertyId,
+          propertyName: po.property.name,
+          ownershipPercent: parseFloat(po.ownershipPercent),
+        });
+
+        const entries = await db
+          .select()
+          .from(ledgerEntries)
+          .where(
+            and(
+              eq(ledgerEntries.propertyId, po.propertyId),
+              gte(ledgerEntries.entryDate, startDate),
+              lte(ledgerEntries.entryDate, endDate),
+              eq(ledgerEntries.isReversed, 0)
+            )
+          );
+
+        for (const entry of entries) {
+          const lines = await db
+            .select()
+            .from(ledgerLines)
+            .where(eq(ledgerLines.entryId, entry.id));
+
+          for (const line of lines) {
+            const [account] = await db
+              .select()
+              .from(chartOfAccounts)
+              .where(eq(chartOfAccounts.id, line.accountId));
+
+            if (account) {
+              const creditAmt = parseFloat(line.credit || "0");
+              const debitAmt = parseFloat(line.debit || "0");
+
+              if (account.accountType === "REVENUE") {
+                ownerGrossIncome += (creditAmt - debitAmt) * ownershipPct;
+              } else if (account.accountType === "EXPENSE") {
+                ownerExpenses += (debitAmt - creditAmt) * ownershipPct;
+              }
+            }
+          }
+        }
+      }
+
+      const avgOwnership =
+        propertyData.length > 0
+          ? propertyData.reduce((sum, p) => sum + p.ownershipPercent, 0) / propertyData.length
+          : 0;
+
+      ownerEntries.push({
+        ownerId: owner.id,
+        ownerName: owner.legalName,
+        ownershipPercent: avgOwnership,
+        properties: propertyData,
+        grossIncome: ownerGrossIncome,
+        ownerShare: ownerGrossIncome,
+        expenses: ownerExpenses,
+        netIncome: ownerGrossIncome - ownerExpenses,
+      });
+
+      totalGrossIncome += ownerGrossIncome;
+      totalExpenses += ownerExpenses;
+    }
+
+    return {
+      startDate,
+      endDate,
+      owners: ownerEntries,
+      totals: {
+        grossIncome: totalGrossIncome,
+        expenses: totalExpenses,
+        netIncome: totalGrossIncome - totalExpenses,
+      },
+    };
+  }
+
+  async getLoanScheduleReport(loanId: number): Promise<LoanScheduleReport> {
+    const loan = await this.getLoanById(loanId);
+    if (!loan) throw new Error("Loan not found");
+
+    const schedule = loan.schedule || [];
+    const paidPeriods = schedule.filter((s) => s.isPaid === 1).length;
+    const remainingPeriods = schedule.length - paidPeriods;
+
+    const totalInterest = schedule.reduce((sum, s) => sum + parseFloat(s.interestDue), 0);
+    const totalPrincipal = schedule.reduce((sum, s) => sum + parseFloat(s.principalDue), 0);
+    const totalPayments = totalInterest + totalPrincipal;
+
+    const remainingBalance =
+      schedule.length > 0
+        ? parseFloat(schedule[schedule.length - 1].closingBalance)
+        : parseFloat(loan.principal);
+
+    return {
+      loanId: loan.id,
+      lenderName: loan.lenderName,
+      principal: parseFloat(loan.principal),
+      interestRate: parseFloat(loan.interestRate),
+      termMonths: loan.termMonths,
+      startDate: loan.startDate,
+      schedule,
+      summary: {
+        totalPayments,
+        totalInterest,
+        totalPrincipal,
+        remainingBalance: parseFloat(loan.outstandingBalance || loan.principal),
+        paidPeriods,
+        remainingPeriods,
+      },
+    };
+  }
+
+  async getLoansSummaryReport(userId: number): Promise<LoansSummaryReport> {
+    const ownerList = await this.getOwnersByUserId(userId);
+    const loanEntries: LoanSummaryEntry[] = [];
+    let totalPrincipal = 0;
+    let totalOutstanding = 0;
+    let monthlyPayments = 0;
+
+    for (const owner of ownerList) {
+      const loanList = await this.getLoansByOwnerId(owner.id);
+      for (const loan of loanList) {
+        const principal = parseFloat(loan.principal);
+        const outstanding = parseFloat(loan.outstandingBalance || loan.principal);
+        totalPrincipal += principal;
+        totalOutstanding += outstanding;
+
+        const nextUnpaid = loan.schedule?.find((s) => s.isPaid === 0);
+        const nextPaymentDate = nextUnpaid?.dueDate || null;
+        const nextPaymentAmount = nextUnpaid ? parseFloat(nextUnpaid.totalDue) : null;
+
+        if (nextPaymentAmount && loan.isActive === 1) {
+          monthlyPayments += nextPaymentAmount;
+        }
+
+        let propertyName: string | null = null;
+        if (loan.propertyId) {
+          const [prop] = await db.select().from(properties).where(eq(properties.id, loan.propertyId));
+          propertyName = prop?.name || null;
+        }
+
+        loanEntries.push({
+          loanId: loan.id,
+          lenderName: loan.lenderName,
+          ownerName: owner.legalName,
+          propertyName,
+          principal,
+          outstandingBalance: outstanding,
+          interestRate: parseFloat(loan.interestRate),
+          nextPaymentDate,
+          nextPaymentAmount,
+          status: loan.isActive === 1 ? "ACTIVE" : "PAID_OFF",
+        });
+      }
+    }
+
+    return {
+      loans: loanEntries,
+      totals: {
+        totalPrincipal,
+        totalOutstanding,
+        monthlyPayments,
+      },
+    };
+  }
+
+  async getDepreciationReport(
+    userId: number,
+    asOfDate: Date,
+    ownerId?: number,
+    propertyId?: number
+  ): Promise<DepreciationReportData> {
+    const ownerList = await this.getOwnersByUserId(userId);
+    const filteredOwners = ownerId ? ownerList.filter((o) => o.id === ownerId) : ownerList;
+
+    const assetEntries: DepreciationAssetEntry[] = [];
+    let totalCost = 0;
+    let totalBookAccumulated = 0;
+    let totalTaxAccumulated = 0;
+
+    const yearStart = new Date(asOfDate.getFullYear(), 0, 1);
+
+    for (const owner of filteredOwners) {
+      let assetList = await this.getAssetsByOwnerId(owner.id);
+      if (propertyId) {
+        assetList = assetList.filter((a) => a.propertyId === propertyId);
+      }
+
+      for (const asset of assetList) {
+        const cost = parseFloat(asset.cost);
+        const salvage = parseFloat(asset.salvageValue || "0");
+        const bookAccum = parseFloat(asset.bookAccumulatedDepreciation || "0");
+        const taxAccum = parseFloat(asset.taxAccumulatedDepreciation || "0");
+
+        const bookRuns = asset.depreciationRuns.filter(
+          (r) => r.runType === "BOOK" && r.periodStart >= yearStart && r.periodEnd <= asOfDate
+        );
+        const taxRuns = asset.depreciationRuns.filter(
+          (r) => r.runType === "TAX" && r.periodStart >= yearStart && r.periodEnd <= asOfDate
+        );
+
+        const bookYTD = bookRuns.reduce((sum, r) => sum + parseFloat(r.depreciationAmount), 0);
+        const taxYTD = taxRuns.reduce((sum, r) => sum + parseFloat(r.depreciationAmount), 0);
+
+        assetEntries.push({
+          assetId: asset.id,
+          assetName: asset.name,
+          category: asset.assetCategory,
+          ownerName: owner.legalName,
+          propertyName: asset.property?.name || null,
+          acquisitionDate: asset.acquisitionDate,
+          cost,
+          salvageValue: salvage,
+          usefulLifeMonths: asset.usefulLifeMonths,
+          bookMethod: asset.bookMethod,
+          taxMethod: asset.taxMethod,
+          bookAccumulatedDepreciation: bookAccum,
+          taxAccumulatedDepreciation: taxAccum,
+          bookNetValue: cost - bookAccum,
+          taxNetValue: cost - taxAccum,
+          bookDepreciationYTD: bookYTD,
+          taxDepreciationYTD: taxYTD,
+        });
+
+        totalCost += cost;
+        totalBookAccumulated += bookAccum;
+        totalTaxAccumulated += taxAccum;
+      }
+    }
+
+    return {
+      asOfDate,
+      assets: assetEntries,
+      totals: {
+        totalCost,
+        totalBookAccumulated,
+        totalTaxAccumulated,
+        totalBookNetValue: totalCost - totalBookAccumulated,
+        totalTaxNetValue: totalCost - totalTaxAccumulated,
+      },
+    };
+  }
+
+  async getDashboardSummary(userId: number): Promise<DashboardSummary> {
+    const propertyList = await this.getPropertiesByUserId(userId);
+    const totalProperties = propertyList.length;
+    let occupiedUnits = 0;
+    let vacantUnits = 0;
+
+    for (const property of propertyList) {
+      occupiedUnits += property.units.filter((u) => u.status === "OCCUPIED").length;
+      vacantUnits += property.units.filter((u) => u.status === "VACANT").length;
+    }
+
+    const tenantList = await this.getTenantsByUserId(userId);
+    const activeTenants = tenantList.filter((t) => t.isActive === 1).length;
+
+    const now = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+    const allLeases: any[] = [];
+    for (const property of propertyList) {
+      const propLeases = await this.getLeasesByPropertyId(property.id);
+      allLeases.push(...propLeases);
+    }
+
+    const activeLeases = allLeases.filter((l) => l.status === "ACTIVE").length;
+    const expiringSoon = allLeases.filter(
+      (l) => l.status === "ACTIVE" && l.endDate <= thirtyDaysFromNow
+    ).length;
+
+    let monthlyRentDue = 0;
+    let overdueAmount = 0;
+    let receivedThisMonth = 0;
+
+    for (const lease of allLeases.filter((l) => l.status === "ACTIVE")) {
+      monthlyRentDue += parseFloat(lease.rentAmount);
+    }
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    for (const lease of allLeases) {
+      const invoices = await this.getInvoicesByLeaseId(lease.id);
+      for (const inv of invoices) {
+        if (inv.status === "OVERDUE") {
+          overdueAmount += parseFloat(inv.totalAmount) - parseFloat(inv.paidAmount || "0");
+        }
+        if (inv.paidAt && inv.paidAt >= monthStart) {
+          receivedThisMonth += parseFloat(inv.paidAmount || "0");
+        }
+      }
+    }
+
+    const ownerList = await this.getOwnersByUserId(userId);
+    let totalLoans = 0;
+    let loanOutstanding = 0;
+    let totalAssets = 0;
+    let assetsValue = 0;
+
+    for (const owner of ownerList) {
+      const loanList = await this.getLoansByOwnerId(owner.id);
+      totalLoans += loanList.length;
+      loanOutstanding += loanList.reduce(
+        (sum, l) => sum + parseFloat(l.outstandingBalance || l.principal),
+        0
+      );
+
+      const assetList = await this.getAssetsByOwnerId(owner.id);
+      totalAssets += assetList.length;
+      assetsValue += assetList.reduce(
+        (sum, a) => sum + parseFloat(a.cost) - parseFloat(a.bookAccumulatedDepreciation || "0"),
+        0
+      );
+    }
+
+    return {
+      properties: { total: totalProperties, occupied: occupiedUnits, vacant: vacantUnits },
+      tenants: { total: tenantList.length, active: activeTenants },
+      leases: { active: activeLeases, expiringSoon },
+      financials: { monthlyRentDue, overdueAmount, receivedThisMonth },
+      loans: { total: totalLoans, totalOutstanding: loanOutstanding },
+      assets: { total: totalAssets, totalValue: assetsValue },
+    };
   }
 }
 

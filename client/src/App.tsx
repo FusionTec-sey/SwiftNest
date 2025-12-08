@@ -22,6 +22,7 @@ import LeasesPage from "@/pages/leases-page";
 import UtilitiesPage from "@/pages/utilities-page";
 import LoansPage from "@/pages/loans-page";
 import AssetsPage from "@/pages/assets-page";
+import ReportsPage from "@/pages/reports-page";
 
 function Router() {
   return (
@@ -40,6 +41,7 @@ function Router() {
       <ProtectedRoute path="/utilities" component={UtilitiesPage} />
       <ProtectedRoute path="/loans" component={LoansPage} />
       <ProtectedRoute path="/assets" component={AssetsPage} />
+      <ProtectedRoute path="/reports" component={ReportsPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

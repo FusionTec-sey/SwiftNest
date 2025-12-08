@@ -2591,6 +2591,86 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // REPORTS API
+  // =====================================================
+
+  // Property P&L Report
+  app.get("/api/reports/property-pnl", requireAuth, async (req, res, next) => {
+    try {
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(new Date().getFullYear(), 0, 1);
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      
+      const report = await storage.getPropertyPnLReport(req.user!.id, startDate, endDate, propertyId);
+      res.json(report);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Owner P&L Report
+  app.get("/api/reports/owner-pnl", requireAuth, async (req, res, next) => {
+    try {
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(new Date().getFullYear(), 0, 1);
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+      const ownerId = req.query.ownerId ? parseInt(req.query.ownerId as string) : undefined;
+      
+      const report = await storage.getOwnerPnLReport(req.user!.id, startDate, endDate, ownerId);
+      res.json(report);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Loan Amortization Schedule Report
+  app.get("/api/reports/loan-schedule/:loanId", requireAuth, async (req, res, next) => {
+    try {
+      const loanId = parseInt(req.params.loanId);
+      if (isNaN(loanId)) {
+        return res.status(400).json({ message: "Invalid loan ID" });
+      }
+      const schedule = await storage.getLoanScheduleReport(loanId);
+      res.json(schedule);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // All Loans Summary Report
+  app.get("/api/reports/loans-summary", requireAuth, async (req, res, next) => {
+    try {
+      const report = await storage.getLoansSummaryReport(req.user!.id);
+      res.json(report);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Depreciation Report
+  app.get("/api/reports/depreciation", requireAuth, async (req, res, next) => {
+    try {
+      const asOfDate = req.query.asOfDate ? new Date(req.query.asOfDate as string) : new Date();
+      const ownerId = req.query.ownerId ? parseInt(req.query.ownerId as string) : undefined;
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      
+      const report = await storage.getDepreciationReport(req.user!.id, asOfDate, ownerId, propertyId);
+      res.json(report);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Dashboard Summary Report
+  app.get("/api/reports/dashboard-summary", requireAuth, async (req, res, next) => {
+    try {
+      const summary = await storage.getDashboardSummary(req.user!.id);
+      res.json(summary);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

@@ -4116,11 +4116,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExpensesByUser(userId: number): Promise<ExpenseWithDetails[]> {
-    const userOwners = await db.select().from(owners).where(eq(owners.userId, userId));
-    if (userOwners.length === 0) return [];
+    // Get all property IDs the user has access to via RBAC
+    const accessiblePropertyIds = await this.getAccessiblePropertyIds(userId);
     
-    const ownerIds = userOwners.map(o => o.id);
-    const expenseList = await db.select().from(expenses).where(inArray(expenses.ownerId, ownerIds)).orderBy(desc(expenses.expenseDate));
+    // Get expenses for accessible properties (including those with null propertyId if user owns the related owner entity)
+    const userOwners = await db.select().from(owners).where(eq(owners.userId, userId));
+    const userOwnerIds = userOwners.map(o => o.id);
+    
+    let expenseList: Expense[] = [];
+    
+    if (accessiblePropertyIds.length > 0 && userOwnerIds.length > 0) {
+      // User has access to some properties and owns some entities - get expenses for either
+      expenseList = await db.select().from(expenses).where(
+        or(
+          inArray(expenses.propertyId, accessiblePropertyIds),
+          and(isNull(expenses.propertyId), inArray(expenses.ownerId, userOwnerIds))
+        )
+      ).orderBy(desc(expenses.expenseDate));
+    } else if (accessiblePropertyIds.length > 0) {
+      // User only has property access (e.g., super admin or RBAC role)
+      expenseList = await db.select().from(expenses).where(
+        inArray(expenses.propertyId, accessiblePropertyIds)
+      ).orderBy(desc(expenses.expenseDate));
+    } else if (userOwnerIds.length > 0) {
+      // User only owns entities but no property access - get expenses for their owners
+      expenseList = await db.select().from(expenses).where(
+        inArray(expenses.ownerId, userOwnerIds)
+      ).orderBy(desc(expenses.expenseDate));
+    }
+    
     return Promise.all(expenseList.map(e => this.enrichExpenseWithDetails(e)));
   }
 

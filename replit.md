@@ -8,6 +8,12 @@ SwiftNest is a full-stack property management web application designed for indiv
 
 Preferred communication style: Simple, everyday language.
 
+## Test Credentials
+
+Default admin/test account for all testing:
+- Email: parthvekaria123@gmail.com
+- Password: 123456789
+
 ## System Architecture
 
 ### Frontend

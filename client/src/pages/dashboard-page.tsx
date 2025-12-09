@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardWidget, WIDGET_COMPONENTS } from "@/components/dashboard/widgets";
+import { MobileQuickActionBar } from "@/components/mobile-quick-actions";
 import { 
   WIDGET_DEFINITIONS, 
   DEFAULT_LAYOUTS_BY_ROLE, 
@@ -116,54 +117,57 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6" data-testid="dashboard-page">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold" data-testid="text-welcome">
-              Welcome back, {user?.name?.split(" ")[0]}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {layoutData?.source === "USER" 
-                ? "Showing your customized dashboard" 
-                : layoutData?.source === "ROLE" 
-                  ? `Showing ${layoutData?.layoutName}` 
-                  : "Here's an overview of your property portfolio"}
-            </p>
+    <>
+      <div className="p-6 pb-24 md:pb-6" data-testid="dashboard-page">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold" data-testid="text-welcome">
+                Welcome back, {user?.name?.split(" ")[0]}
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                {layoutData?.source === "USER" 
+                  ? "Showing your customized dashboard" 
+                  : layoutData?.source === "ROLE" 
+                    ? `Showing ${layoutData?.layoutName}` 
+                    : "Here's an overview of your property portfolio"}
+              </p>
+            </div>
+            {isSuperAdmin && (
+              <Link href="/admin/dashboard-settings">
+                <Button variant="outline" size="sm" data-testid="button-dashboard-settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Customize Dashboard
+                </Button>
+              </Link>
+            )}
           </div>
-          {isSuperAdmin && (
-            <Link href="/admin/dashboard-settings">
-              <Button variant="outline" size="sm" data-testid="button-dashboard-settings">
-                <Settings className="mr-2 h-4 w-4" />
-                Customize Dashboard
-              </Button>
-            </Link>
+
+          {sortedWidgets.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">
+                No widgets available for your current permissions.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {sortedWidgets.map((widgetConfig) => {
+                const gridClass = getWidgetGridClass(widgetConfig.size);
+                return (
+                  <div 
+                    key={widgetConfig.id} 
+                    className={gridClass}
+                    data-testid={`widget-container-${widgetConfig.widgetType}`}
+                  >
+                    <DashboardWidget config={widgetConfig} />
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
-
-        {sortedWidgets.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">
-              No widgets available for your current permissions.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {sortedWidgets.map((widgetConfig) => {
-              const gridClass = getWidgetGridClass(widgetConfig.size);
-              return (
-                <div 
-                  key={widgetConfig.id} 
-                  className={gridClass}
-                  data-testid={`widget-container-${widgetConfig.widgetType}`}
-                >
-                  <DashboardWidget config={widgetConfig} />
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
-    </div>
+      <MobileQuickActionBar />
+    </>
   );
 }

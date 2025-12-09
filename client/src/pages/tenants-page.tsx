@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Users, Phone, Mail, MapPin, Edit2, Trash2, Search, Eye, CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, Users, Phone, Mail, MapPin, Edit2, Trash2, Search, Eye, CheckCircle, Clock, XCircle, AlertTriangle, ClipboardCheck, CircleDashed, ArrowRightCircle, Ban } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -45,7 +45,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Tenant } from "@shared/schema";
+import type { Tenant, OnboardingProcess } from "@shared/schema";
 
 const tenantFormSchema = z.object({
   tenantType: z.enum(["INDIVIDUAL", "COMPANY"]),
@@ -75,6 +75,25 @@ export default function TenantsPage() {
   const { data: tenants, isLoading } = useQuery<Tenant[]>({
     queryKey: ["/api/tenants"],
   });
+
+  // Fetch all onboarding processes to show status on tenant cards
+  const { data: onboardingProcesses } = useQuery<OnboardingProcess[]>({
+    queryKey: ["/api/onboarding"],
+  });
+
+  // Create a map of tenant ID to their latest onboarding process
+  const tenantOnboardingMap = useMemo(() => {
+    if (!onboardingProcesses) return new Map<number, OnboardingProcess>();
+    const map = new Map<number, OnboardingProcess>();
+    // Group by tenant and get the most recent process for each
+    onboardingProcesses.forEach((process) => {
+      const existing = map.get(process.tenantId);
+      if (!existing || new Date(process.createdAt!) > new Date(existing.createdAt!)) {
+        map.set(process.tenantId, process);
+      }
+    });
+    return map;
+  }, [onboardingProcesses]);
 
   const form = useForm<TenantFormData>({
     resolver: zodResolver(tenantFormSchema),
@@ -188,6 +207,35 @@ export default function TenantsPage() {
     tenant.phone?.includes(searchTerm)
   );
 
+  // Helper function to render onboarding status badge
+  const renderOnboardingBadge = (tenantId: number) => {
+    const process = tenantOnboardingMap.get(tenantId);
+    if (!process) {
+      return null; // No onboarding process for this tenant
+    }
+
+    const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle; label: string }> = {
+      'NOT_STARTED': { variant: 'outline', icon: CircleDashed, label: 'Onboarding Pending' },
+      'IN_PROGRESS': { variant: 'secondary', icon: ArrowRightCircle, label: `${process.currentStage?.replace(/_/g, ' ')}` },
+      'COMPLETED': { variant: 'default', icon: ClipboardCheck, label: 'Onboarded' },
+      'CANCELLED': { variant: 'destructive', icon: Ban, label: 'Cancelled' },
+    };
+
+    const config = statusConfig[process.status] || statusConfig['NOT_STARTED'];
+    const Icon = config.icon;
+
+    return (
+      <Badge 
+        variant={config.variant} 
+        className="text-xs"
+        data-testid={`badge-onboarding-${tenantId}`}
+      >
+        <Icon className="h-3 w-3 mr-1" />
+        {config.label}
+      </Badge>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
@@ -251,6 +299,7 @@ export default function TenantsPage() {
                           {(!tenant.verificationStatus || tenant.verificationStatus === "PENDING") && <AlertTriangle className="h-3 w-3 mr-1" />}
                           {tenant.verificationStatus || "PENDING"}
                         </Badge>
+                        {renderOnboardingBadge(tenant.id)}
                       </CardDescription>
                     </div>
                     <div className="flex gap-1 shrink-0">

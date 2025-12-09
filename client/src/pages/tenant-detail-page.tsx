@@ -29,6 +29,14 @@ import {
   Building2,
   DollarSign,
   ExternalLink,
+  ClipboardCheck,
+  Package,
+  Camera,
+  Home,
+  Key,
+  Plus,
+  Check,
+  Circle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,9 +70,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Tenant, Document, Lease, Property } from "@shared/schema";
+import type { Tenant, Document, Lease, Property, OnboardingProcess, ConditionChecklistItem, HandoverItem } from "@shared/schema";
 
 const kycFormSchema = z.object({
   passportNumber: z.string().optional(),
@@ -116,6 +125,301 @@ const documentTypeLabels: Record<string, string> = {
   OTHER: "Other Document",
 };
 
+// Onboarding stages with their display info
+const ONBOARDING_STAGES = [
+  { key: 'CONTRACT_REVIEW', label: 'Contract Review', icon: FileText, description: 'Review and sign lease agreement' },
+  { key: 'DEPOSIT_COLLECTION', label: 'Deposit Collection', icon: DollarSign, description: 'Collect security deposit' },
+  { key: 'INSPECTION', label: 'Inspection', icon: ClipboardCheck, description: 'Property condition inspection' },
+  { key: 'HANDOVER', label: 'Handover', icon: Key, description: 'Keys and inventory handover' },
+  { key: 'MOVE_IN', label: 'Move-In', icon: Home, description: 'Complete move-in process' },
+];
+
+type LeaseWithProperty = Lease & { property?: Property };
+
+interface OnboardingSectionProps {
+  tenantId: number;
+  onboardingProcesses?: OnboardingProcess[];
+  onboardingLoading: boolean;
+  leases?: LeaseWithProperty[];
+}
+
+function OnboardingSection({ tenantId, onboardingProcesses, onboardingLoading, leases }: OnboardingSectionProps) {
+  const { toast } = useToast();
+  const [selectedProcess, setSelectedProcess] = useState<OnboardingProcess | null>(null);
+
+  const createOnboardingMutation = useMutation({
+    mutationFn: async (data: { leaseId: number; tenantId: number; propertyId: number; unitId?: number }) => {
+      return apiRequest("POST", "/api/onboarding", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "onboarding"] });
+      toast({
+        title: "Onboarding started",
+        description: "The onboarding process has been initiated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const advanceStageMutation = useMutation({
+    mutationFn: async ({ processId, stage }: { processId: number; stage: string }) => {
+      return apiRequest("POST", `/api/onboarding/${processId}/stage`, { stage });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "onboarding"] });
+      toast({
+        title: "Stage updated",
+        description: "The onboarding stage has been advanced.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getStageIndex = (stage: string | null) => {
+    if (!stage) return -1; // NOT_STARTED state - no stage active yet
+    return ONBOARDING_STAGES.findIndex(s => s.key === stage);
+  };
+
+  const getNextStage = (currentStage: string): string | null => {
+    const idx = getStageIndex(currentStage);
+    if (idx < ONBOARDING_STAGES.length - 1) {
+      return ONBOARDING_STAGES[idx + 1].key;
+    }
+    return null;
+  };
+
+  const handleStartOnboarding = (lease: LeaseWithProperty) => {
+    createOnboardingMutation.mutate({
+      leaseId: lease.id,
+      tenantId: tenantId,
+      propertyId: lease.propertyId,
+      unitId: lease.unitId || undefined,
+    });
+  };
+
+  const handleAdvanceStage = (process: OnboardingProcess) => {
+    if (!process.currentStage) return;
+    
+    // Map stages to completion markers
+    const stageCompletionMap: Record<string, string> = {
+      'CONTRACT_REVIEW': 'CONTRACT_SIGNED',
+      'DEPOSIT_COLLECTION': 'DEPOSIT_PAID',
+      'INSPECTION': 'INSPECTION_COMPLETED',
+      'HANDOVER': 'HANDOVER_COMPLETED',
+      'MOVE_IN': 'MOVE_IN_COMPLETED',
+    };
+
+    const completionStage = stageCompletionMap[process.currentStage];
+    if (completionStage) {
+      advanceStageMutation.mutate({ processId: process.id, stage: completionStage });
+    }
+  };
+
+  if (onboardingLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-48" />
+        <Skeleton className="h-24" />
+      </div>
+    );
+  }
+
+  // Check for leases without onboarding
+  const leasesWithoutOnboarding = leases?.filter(
+    lease => !onboardingProcesses?.some(p => p.leaseId === lease.id)
+  ) || [];
+
+  return (
+    <div className="space-y-6">
+      {/* Start Onboarding for Leases */}
+      {leasesWithoutOnboarding.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Plus className="h-5 w-5" />
+              Start Onboarding
+            </CardTitle>
+            <CardDescription>
+              The following leases don't have an onboarding process. Click to start.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {leasesWithoutOnboarding.map((lease) => (
+                <div
+                  key={lease.id}
+                  className="flex items-center justify-between gap-4 p-3 rounded-md bg-muted/50"
+                  data-testid={`lease-onboarding-${lease.id}`}
+                >
+                  <div>
+                    <p className="text-sm font-medium">{lease.property?.name || `Property #${lease.propertyId}`}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Lease: {formatDate(lease.startDate)} - {formatDate(lease.endDate)}
+                    </p>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    onClick={() => handleStartOnboarding(lease)}
+                    disabled={createOnboardingMutation.isPending}
+                    data-testid={`button-start-onboarding-${lease.id}`}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Start Onboarding
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Onboarding Processes */}
+      {onboardingProcesses && onboardingProcesses.length > 0 ? (
+        <div className="space-y-4">
+          {onboardingProcesses.map((process) => (
+            <Card key={process.id} data-testid={`card-onboarding-${process.id}`}>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <ClipboardCheck className="h-5 w-5" />
+                      Onboarding Process #{process.id}
+                    </CardTitle>
+                    <CardDescription>
+                      Lease ID: {process.leaseId} | Started: {formatDate(process.createdAt)}
+                    </CardDescription>
+                  </div>
+                  <Badge 
+                    variant={
+                      process.status === 'COMPLETED' ? 'default' :
+                      process.status === 'IN_PROGRESS' ? 'secondary' :
+                      process.status === 'CANCELLED' ? 'destructive' : 'outline'
+                    }
+                  >
+                    {process.status}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {/* Stage Stepper */}
+                <div className="relative">
+                  <div className="flex justify-between">
+                    {ONBOARDING_STAGES.map((stage, idx) => {
+                      const currentIdx = getStageIndex(process.currentStage);
+                      // For NOT_STARTED (currentIdx = -1), nothing is completed, first stage is pending
+                      const isCompleted = process.status === 'COMPLETED' || (currentIdx >= 0 && idx < currentIdx);
+                      const isCurrent = currentIdx >= 0 && idx === currentIdx && process.status !== 'COMPLETED';
+                      const isPending = currentIdx < 0 && idx === 0; // First stage is pending when NOT_STARTED
+                      const Icon = stage.icon;
+
+                      return (
+                        <div key={stage.key} className="flex flex-col items-center flex-1">
+                          <div 
+                            className={`
+                              flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors
+                              ${isCompleted ? 'bg-primary border-primary text-primary-foreground' :
+                                isCurrent || isPending ? 'border-primary bg-background text-primary' :
+                                'border-muted bg-muted/50 text-muted-foreground'}
+                            `}
+                            data-testid={`stage-${stage.key}-${process.id}`}
+                          >
+                            {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                          </div>
+                          <p className={`text-xs mt-2 text-center font-medium ${isCurrent || isPending ? 'text-primary' : 'text-muted-foreground'}`}>
+                            {stage.label}
+                          </p>
+                          {idx < ONBOARDING_STAGES.length - 1 && (
+                            <div 
+                              className={`absolute top-5 h-0.5 ${isCompleted ? 'bg-primary' : 'bg-muted'}`}
+                              style={{
+                                left: `calc(${(idx + 0.5) * 20}% + 20px)`,
+                                width: 'calc(20% - 40px)',
+                              }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Current Stage Action */}
+                {process.status === 'IN_PROGRESS' && process.currentStage && (
+                  <div className="mt-6 flex justify-center">
+                    <Button 
+                      onClick={() => handleAdvanceStage(process)}
+                      disabled={advanceStageMutation.isPending}
+                      data-testid={`button-complete-stage-${process.id}`}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Complete {ONBOARDING_STAGES[getStageIndex(process.currentStage)]?.label || 'Current Stage'}
+                    </Button>
+                  </div>
+                )}
+
+                {(process.status === 'NOT_STARTED' || (process.status === 'IN_PROGRESS' && !process.currentStage)) && (
+                  <div className="mt-6 flex justify-center">
+                    <Button 
+                      onClick={() => advanceStageMutation.mutate({ processId: process.id, stage: 'CONTRACT_SIGNED' })}
+                      disabled={advanceStageMutation.isPending}
+                      data-testid={`button-start-stage-${process.id}`}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Start Contract Review
+                    </Button>
+                  </div>
+                )}
+
+                {process.status === 'COMPLETED' && (
+                  <div className="mt-6 text-center">
+                    <Badge variant="default" className="text-sm">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Onboarding Completed
+                    </Badge>
+                    {process.moveInCompletedAt && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Moved in on {formatDate(process.moveInCompletedAt)}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : !leasesWithoutOnboarding.length && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-lg font-medium">No Onboarding Processes</p>
+            <p className="text-sm mt-2">
+              Create a lease for this tenant to start the onboarding process.
+            </p>
+            <Link href="/leases">
+              <Button variant="ghost" size="sm" className="mt-4" data-testid="button-create-lease-onboarding">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Lease
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function TenantDetailPage() {
   const { id } = useParams<{ id: string }>();
   const tenantId = parseInt(id || "0");
@@ -139,6 +443,12 @@ export default function TenantDetailPage() {
   type LeaseWithProperty = Lease & { property?: Property };
   const { data: leases, isLoading: leasesLoading } = useQuery<LeaseWithProperty[]>({
     queryKey: ["/api/tenants", tenantId, "leases"],
+    enabled: !isNaN(tenantId) && tenantId > 0,
+  });
+
+  // Fetch onboarding processes for this tenant
+  const { data: onboardingProcesses, isLoading: onboardingLoading } = useQuery<OnboardingProcess[]>({
+    queryKey: ["/api/tenants", tenantId, "onboarding"],
     enabled: !isNaN(tenantId) && tenantId > 0,
   });
 
@@ -341,7 +651,25 @@ export default function TenantDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="overview" data-testid="tab-overview">
+            <User className="h-4 w-4 mr-2" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="onboarding" data-testid="tab-onboarding">
+            <ClipboardCheck className="h-4 w-4 mr-2" />
+            Onboarding
+            {onboardingProcesses && onboardingProcesses.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {onboardingProcesses.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -818,6 +1146,17 @@ export default function TenantDetailPage() {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+
+        <TabsContent value="onboarding" className="space-y-6">
+          <OnboardingSection 
+            tenantId={tenantId}
+            onboardingProcesses={onboardingProcesses}
+            onboardingLoading={onboardingLoading}
+            leases={leases}
+          />
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog open={!!deletingDoc} onOpenChange={() => setDeletingDoc(null)}>
         <AlertDialogContent>

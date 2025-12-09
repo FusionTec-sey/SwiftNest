@@ -89,7 +89,10 @@ Default admin/test account for all testing:
         -   **Photo Attachments:** Support for photos on checklist items and handover items
         -   **Inventory Integration:** Handover items link to inventory system for tracking keys, remotes, appliances handed to tenants
         -   **Database Tables:** onboarding_processes, condition_checklist_items, handover_items
-        -   **API Endpoints:** `/api/onboarding`, `/api/onboarding/:id`, `/api/onboarding/:id/stage`, `/api/onboarding/:id/checklist`, `/api/onboarding/:id/handover`
+        -   **API Endpoints:** `/api/onboarding`, `/api/onboarding/:id`, `/api/onboarding/:id/stage`, `/api/onboarding/:id/checklist`, `/api/onboarding/:id/handover`, `/api/tenants/:tenantId/onboarding`
+        -   **Frontend:** Tenant detail page (`/tenants/:id`) with tabbed UI:
+            -   Overview tab: Contact info, KYC verification, active leases, documents
+            -   Onboarding tab: Visual stage stepper with 5 stages, start/complete stage buttons, process cards
         -   **Permission:** Uses `tenant.manage` permission for CRUD operations
     -   **Multi-Currency Support (Phase 1 - Foundation):**
         -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR

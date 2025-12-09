@@ -1577,6 +1577,7 @@ export const onboardingProcesses = pgTable("onboarding_processes", {
   inspectionNotes: text("inspection_notes"),
   handoverScheduledAt: timestamp("handover_scheduled_at"),
   handoverCompletedAt: timestamp("handover_completed_at"),
+  moveInScheduledAt: timestamp("move_in_scheduled_at"),
   moveInCompletedAt: timestamp("move_in_completed_at"),
   // Digital signatures (base64 or document links)
   tenantSignature: text("tenant_signature"),

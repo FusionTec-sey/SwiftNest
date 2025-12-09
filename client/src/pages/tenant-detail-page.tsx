@@ -39,6 +39,7 @@ import {
   Circle,
   Pen,
   Wrench,
+  CalendarDays,
 } from "lucide-react";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { Button } from "@/components/ui/button";
@@ -82,7 +83,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Tenant, Document, Lease, Property, OnboardingProcess, ConditionChecklistItem, HandoverItem, InventoryItem } from "@shared/schema";
 
@@ -708,6 +712,28 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
     },
   });
 
+  // Update schedule mutation
+  const updateScheduleMutation = useMutation({
+    mutationFn: async (data: { 
+      inspectionScheduledAt?: Date | null;
+      handoverScheduledAt?: Date | null;
+      moveInScheduledAt?: Date | null;
+    }) => {
+      return apiRequest("PATCH", `/api/onboarding/${process.id}`, {
+        inspectionScheduledAt: data.inspectionScheduledAt?.toISOString() || null,
+        handoverScheduledAt: data.handoverScheduledAt?.toISOString() || null,
+        moveInScheduledAt: data.moveInScheduledAt?.toISOString() || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "onboarding"] });
+      toast({ title: "Schedule updated", description: "Appointment schedule has been saved." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleAddChecklist = () => {
     if (!newChecklistItem.roomType || !newChecklistItem.itemName || !newChecklistItem.conditionRating) {
       toast({ title: "Missing fields", description: "Room type, item name, and condition rating are required.", variant: "destructive" });
@@ -748,8 +774,12 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="checklist" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="schedule" className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="schedule" data-testid="tab-schedule">
+              <CalendarDays className="h-4 w-4 mr-2" />
+              Schedule
+            </TabsTrigger>
             <TabsTrigger value="checklist" data-testid="tab-checklist">
               <ClipboardCheck className="h-4 w-4 mr-2" />
               Checklist ({checklistItems?.length || 0})
@@ -763,6 +793,132 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
               Signatures
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="schedule" className="flex-1 overflow-auto space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Appointment Schedule</CardTitle>
+                <CardDescription>
+                  Schedule appointments for inspection, handover, and move-in
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-6 md:grid-cols-3">
+                  {/* Inspection Date */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <ClipboardCheck className="h-4 w-4" />
+                      Inspection Date
+                    </label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                          data-testid="button-inspection-date"
+                        >
+                          <CalendarDays className="mr-2 h-4 w-4" />
+                          {process.inspectionScheduledAt 
+                            ? format(new Date(process.inspectionScheduledAt), "PPP")
+                            : "Select date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={process.inspectionScheduledAt ? new Date(process.inspectionScheduledAt) : undefined}
+                          onSelect={(date) => updateScheduleMutation.mutate({ inspectionScheduledAt: date })}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {process.inspectionCompletedAt && (
+                      <Badge variant="default" className="gap-1">
+                        <Check className="h-3 w-3" />
+                        Completed {format(new Date(process.inspectionCompletedAt), "PP")}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Handover Date */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Handover Date
+                    </label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                          data-testid="button-handover-date"
+                        >
+                          <CalendarDays className="mr-2 h-4 w-4" />
+                          {process.handoverScheduledAt 
+                            ? format(new Date(process.handoverScheduledAt), "PPP")
+                            : "Select date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={process.handoverScheduledAt ? new Date(process.handoverScheduledAt) : undefined}
+                          onSelect={(date) => updateScheduleMutation.mutate({ handoverScheduledAt: date })}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {process.handoverCompletedAt && (
+                      <Badge variant="default" className="gap-1">
+                        <Check className="h-3 w-3" />
+                        Completed {format(new Date(process.handoverCompletedAt), "PP")}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Move-in Date */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Home className="h-4 w-4" />
+                      Move-in Date
+                    </label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                          data-testid="button-movein-date"
+                        >
+                          <CalendarDays className="mr-2 h-4 w-4" />
+                          {(process as any).moveInScheduledAt 
+                            ? format(new Date((process as any).moveInScheduledAt), "PPP")
+                            : "Select date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={(process as any).moveInScheduledAt ? new Date((process as any).moveInScheduledAt) : undefined}
+                          onSelect={(date) => updateScheduleMutation.mutate({ moveInScheduledAt: date })}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {process.moveInCompletedAt && (
+                      <Badge variant="default" className="gap-1">
+                        <Check className="h-3 w-3" />
+                        Completed {format(new Date(process.moveInCompletedAt), "PP")}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {updateScheduleMutation.isPending && (
+                  <div className="text-sm text-muted-foreground">Saving schedule...</div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="checklist" className="flex-1 overflow-auto space-y-4">
             {/* Add Checklist Item Form */}

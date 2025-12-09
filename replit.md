@@ -71,6 +71,13 @@ Default admin/test account for all testing:
     -   **Accounting (Double-Entry):** Chart of Accounts, Ledger Entries, Ledger Lines for automated and manual journal entries, supporting rent collection, utility payments, loan payments, and financial reporting.
     -   **Rent Collection:** Dashboard metrics, automated invoice generation (PDF), payment recording, and overdue tracking.
     -   **User Settings:** Profile and security management with robust validation.
+    -   **Multi-Currency Support (Phase 1 - Foundation):**
+        -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR
+        -   **Exchange Rates Table:** `exchange_rates` table with baseCurrency, quoteCurrency, rate (decimal 18,8), effectiveDate, source tracking, and CRUD API endpoints
+        -   **Property Base Currency:** Each property has a `currencyCode` field (default USD) that sets the base currency for all transactions
+        -   **Currency Utility:** `client/src/lib/currency.ts` provides `formatCurrency()` and `formatCurrencyCompact()` helpers with proper symbol/decimal handling
+        -   **Dashboard Widgets:** All financial amounts use formatCurrency for consistent display
+        -   **Property Form:** Currency selector in property creation/edit form with 30 currency options
 -   **Data Validation:** Zod schemas for runtime validation, integrated with Drizzle.
 -   **Project Structure:** Monorepo (`client`, `server`, `shared`) with path aliases.
 

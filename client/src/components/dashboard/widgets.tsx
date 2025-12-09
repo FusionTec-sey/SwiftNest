@@ -24,6 +24,7 @@ import {
   Activity
 } from "lucide-react";
 import type { DashboardWidgetConfig } from "@shared/schema";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
 
 interface WidgetProps {
   config: DashboardWidgetConfig;
@@ -100,21 +101,21 @@ export function FinancialSummaryWidget({ config }: WidgetProps) {
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Monthly Rent Due</span>
             <span className="font-medium flex items-center gap-1">
-              ${monthlyRentDue.toLocaleString()}
+              {formatCurrency(monthlyRentDue)}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Received This Month</span>
             <span className="font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
-              ${receivedThisMonth.toLocaleString()}
+              <TrendingUp className="h-3 w-3" aria-hidden="true" />
+              {formatCurrency(receivedThisMonth)}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Overdue</span>
             <span className="font-medium text-red-600 dark:text-red-400 flex items-center gap-1">
-              <TrendingDown className="h-3 w-3" />
-              ${overdueAmount.toLocaleString()}
+              <TrendingDown className="h-3 w-3" aria-hidden="true" />
+              {formatCurrency(overdueAmount)}
             </span>
           </div>
         </div>
@@ -151,20 +152,20 @@ export function RentCollectionWidget({ config }: WidgetProps) {
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Collected</span>
             <span className="font-medium text-green-600 dark:text-green-400">
-              ${receivedThisMonth.toLocaleString()}
+              {formatCurrency(receivedThisMonth)}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Outstanding</span>
             <span className="font-medium text-amber-600 dark:text-amber-400">
-              ${outstanding.toLocaleString()}
+              {formatCurrency(outstanding)}
             </span>
           </div>
           {overdueAmount > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Overdue</span>
               <Badge variant="destructive" className="text-xs">
-                ${overdueAmount.toLocaleString()}
+                {formatCurrency(overdueAmount)}
               </Badge>
             </div>
           )}
@@ -198,14 +199,14 @@ export function PendingExpensesWidget({ config }: WidgetProps) {
       <CardContent>
         <div className="text-2xl font-bold">{pendingExpenses.length}</div>
         <p className="text-xs text-muted-foreground">
-          ${totalPending.toLocaleString()} awaiting approval
+          {formatCurrency(totalPending)} awaiting approval
         </p>
         {pendingExpenses.length > 0 && (
           <div className="mt-3 space-y-1">
             {pendingExpenses.slice(0, 3).map((expense) => (
               <div key={expense.id} className="flex items-center justify-between text-sm">
                 <span className="truncate max-w-[150px]">{expense.description}</span>
-                <Badge variant="outline">${Number(expense.totalAmount).toLocaleString()}</Badge>
+                <Badge variant="outline">{formatCurrency(Number(expense.totalAmount))}</Badge>
               </div>
             ))}
           </div>
@@ -389,10 +390,10 @@ export function RecentActivityWidget({ config }: WidgetProps) {
           )}
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-green-500" />
+              <DollarSign className="h-4 w-4 text-green-500" aria-hidden="true" />
               <span>Received This Month</span>
             </div>
-            <span className="font-medium">${receivedThisMonth.toLocaleString()}</span>
+            <span className="font-medium">{formatCurrency(receivedThisMonth)}</span>
           </div>
         </div>
       </CardContent>

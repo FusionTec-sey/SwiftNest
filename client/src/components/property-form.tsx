@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building, Building2, Home, Landmark, Store, MapPin, Map, Warehouse, Factory, Layers, TreeDeciduous, HomeIcon } from "lucide-react";
+import { Building, Building2, Home, Landmark, Store, MapPin, Map, Warehouse, Factory, Layers, TreeDeciduous, HomeIcon, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { insertPropertySchema, type InsertProperty, type Property } from "@shared/schema";
+import { CURRENCIES } from "@/lib/currency";
 
 interface PropertyFormProps {
   defaultValues?: Partial<Property>;
@@ -56,6 +57,7 @@ export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }
       name: defaultValues?.name || "",
       propertyType: (defaultValues?.propertyType as InsertProperty["propertyType"]) || "APARTMENT",
       occupancyPurpose: (defaultValues?.occupancyPurpose as InsertProperty["occupancyPurpose"]) || "RENTAL",
+      currencyCode: (defaultValues?.currencyCode as InsertProperty["currencyCode"]) || "USD",
       addressLine1: defaultValues?.addressLine1 || "",
       addressLine2: defaultValues?.addressLine2 || "",
       city: defaultValues?.city || "",
@@ -133,34 +135,71 @@ export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }
               />
             </div>
             
-            <FormField
-              control={form.control}
-              name="occupancyPurpose"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Occupancy Purpose</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "RENTAL"}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-occupancy-purpose">
-                        <SelectValue placeholder="Select purpose" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {occupancyPurposes.map((purpose) => (
-                        <SelectItem 
-                          key={purpose.value} 
-                          value={purpose.value}
-                          data-testid={`option-${purpose.value.toLowerCase().replace("_", "-")}`}
-                        >
-                          {purpose.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="occupancyPurpose"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Occupancy Purpose</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || "RENTAL"}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-occupancy-purpose">
+                          <SelectValue placeholder="Select purpose" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {occupancyPurposes.map((purpose) => (
+                          <SelectItem 
+                            key={purpose.value} 
+                            value={purpose.value}
+                            data-testid={`option-${purpose.value.toLowerCase().replace("_", "-")}`}
+                          >
+                            {purpose.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="currencyCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" aria-hidden="true" />
+                      Base Currency
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || "USD"}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-currency">
+                          <SelectValue placeholder="Select currency" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CURRENCIES.map((currency) => (
+                          <SelectItem 
+                            key={currency.code} 
+                            value={currency.code}
+                            data-testid={`option-currency-${currency.code.toLowerCase()}`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-xs">{currency.symbol}</span>
+                              {currency.code} - {currency.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
           </CardContent>
         </Card>
 

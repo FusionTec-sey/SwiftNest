@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Redirect } from "wouter";
-import { Building2, User, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Building2, User, Eye, EyeOff, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import {
   Select,
@@ -24,12 +25,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
-import { insertUserSchema, loginSchema, type InsertUser, type LoginData } from "@shared/schema";
+import { loginSchema, type LoginData } from "@shared/schema";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { z } from "zod";
 
-const registerSchema = insertUserSchema.extend({
+const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
+  accountType: z.enum(["INDIVIDUAL", "ORGANIZATION"]).default("INDIVIDUAL"),
+  organizationName: z.string().optional().nullable(),
+  organizationType: z.string().optional().nullable(),
+  gstId: z.string().optional().nullable(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -85,7 +94,7 @@ export default function AuthPage() {
 
   const handleRegister = (data: RegisterFormData) => {
     const { confirmPassword, ...userData } = data;
-    registerMutation.mutate(userData as InsertUser);
+    registerMutation.mutate(userData);
   };
 
   return (
@@ -126,6 +135,7 @@ export default function AuthPage() {
                               <Input 
                                 type="email"
                                 placeholder="you@example.com" 
+                                autoComplete="email"
                                 {...field} 
                                 data-testid="input-login-email"
                               />
@@ -146,6 +156,7 @@ export default function AuthPage() {
                                 <Input 
                                   type={showPassword ? "text" : "password"}
                                   placeholder="Enter your password" 
+                                  autoComplete="current-password"
                                   {...field} 
                                   data-testid="input-login-password"
                                 />
@@ -250,6 +261,7 @@ export default function AuthPage() {
                             <FormControl>
                               <Input 
                                 placeholder="John Doe" 
+                                autoComplete="name"
                                 {...field} 
                                 data-testid="input-register-name"
                               />
@@ -270,6 +282,7 @@ export default function AuthPage() {
                                 <Input 
                                   type="email"
                                   placeholder="you@example.com" 
+                                  autoComplete="email"
                                   {...field} 
                                   data-testid="input-register-email"
                                 />
@@ -289,6 +302,7 @@ export default function AuthPage() {
                                 <Input 
                                   type="tel"
                                   placeholder="+1 234 567 8900" 
+                                  autoComplete="tel"
                                   {...field} 
                                   data-testid="input-register-phone"
                                 />
@@ -312,6 +326,7 @@ export default function AuthPage() {
                                 <FormControl>
                                   <Input 
                                     placeholder="Acme Properties Ltd." 
+                                    autoComplete="organization"
                                     {...field}
                                     value={field.value || ""}
                                     data-testid="input-org-name"
@@ -379,6 +394,7 @@ export default function AuthPage() {
                                 <Input 
                                   type={showPassword ? "text" : "password"}
                                   placeholder="Create a password" 
+                                  autoComplete="new-password"
                                   {...field} 
                                   data-testid="input-register-password"
                                 />
@@ -397,6 +413,10 @@ export default function AuthPage() {
                                 </Button>
                               </div>
                             </FormControl>
+                            <FormDescription className="flex items-center gap-1 text-xs">
+                              <Info className="h-3 w-3" />
+                              Must be at least 6 characters
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -413,6 +433,7 @@ export default function AuthPage() {
                                 <Input 
                                   type={showConfirmPassword ? "text" : "password"}
                                   placeholder="Confirm your password" 
+                                  autoComplete="new-password"
                                   {...field} 
                                   data-testid="input-register-confirm-password"
                                 />

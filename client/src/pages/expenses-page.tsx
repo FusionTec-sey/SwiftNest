@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -16,6 +16,7 @@ import {
   FileText,
   DollarSign,
   Clock,
+  Check,
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -23,7 +24,12 @@ import {
   Trash2,
   ExternalLink,
   Wrench,
-  Shield
+  Shield,
+  Camera,
+  Upload,
+  X,
+  Image,
+  Loader2
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -110,6 +116,12 @@ const paymentStatuses = [
   { value: "CANCELLED", label: "Cancelled", color: "outline" },
 ];
 
+const approvalStatuses = [
+  { value: "PENDING", label: "Pending Approval", color: "secondary" },
+  { value: "APPROVED", label: "Approved", color: "default" },
+  { value: "REJECTED", label: "Rejected", color: "destructive" },
+];
+
 const paymentMethods = [
   { value: "CASH", label: "Cash" },
   { value: "BANK_TRANSFER", label: "Bank Transfer" },
@@ -170,6 +182,17 @@ function getCategoryBadge(category: string) {
   return <Badge variant="secondary">{config?.label || category}</Badge>;
 }
 
+function getApprovalStatusBadge(status: string) {
+  const config = approvalStatuses.find(s => s.value === status);
+  if (!config) return <Badge variant="outline">{status}</Badge>;
+  
+  return (
+    <Badge variant={config.color as "default" | "secondary" | "destructive" | "outline"}>
+      {config.label}
+    </Badge>
+  );
+}
+
 export default function ExpensesPage() {
   const { toast } = useToast();
   const searchString = useSearch();
@@ -184,6 +207,12 @@ export default function ExpensesPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("all");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [rejectingExpense, setRejectingExpense] = useState<ExpenseWithDetails | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   
   const validOwnerId = filterOwnerId && !isNaN(parseInt(filterOwnerId)) ? parseInt(filterOwnerId) : null;
   const validPropertyId = filterPropertyId && !isNaN(parseInt(filterPropertyId)) ? parseInt(filterPropertyId) : null;
@@ -275,6 +304,8 @@ export default function ExpensesPage() {
       filtered = filtered.filter(e => e.paymentStatus === "UNPAID" || e.paymentStatus === "PARTIALLY_PAID");
     } else if (activeTab === "paid") {
       filtered = filtered.filter(e => e.paymentStatus === "PAID");
+    } else if (activeTab === "pending_approval") {
+      filtered = filtered.filter(e => e.approvalStatus === "PENDING");
     }
     
     return filtered.sort((a, b) => 
@@ -320,10 +351,19 @@ export default function ExpensesPage() {
       };
       return apiRequest("POST", "/api/expenses", payload);
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (data: any, variables) => {
+      if (pendingFiles.length > 0 && data?.id) {
+        setIsUploadingFiles(true);
+        try {
+          await uploadAttachmentsMutation.mutateAsync({ expenseId: data.id, files: pendingFiles });
+        } finally {
+          setIsUploadingFiles(false);
+        }
+      }
       invalidateExpenseQueries(variables.ownerId, variables.propertyId);
       setIsFormOpen(false);
       form.reset();
+      setPendingFiles([]);
       toast({ title: "Expense created successfully" });
     },
     onError: (error: Error) => {
@@ -372,6 +412,105 @@ export default function ExpensesPage() {
     },
   });
 
+  const uploadAttachmentsMutation = useMutation({
+    mutationFn: async ({ expenseId, files }: { expenseId: number; files: File[] }) => {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
+      const response = await fetch(`/api/expenses/${expenseId}/attachments`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to upload attachments");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries(validOwnerId, validPropertyId);
+      setPendingFiles([]);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to upload attachments",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: async ({ expenseId, url }: { expenseId: number; url: string }) => {
+      return apiRequest("DELETE", `/api/expenses/${expenseId}/attachments`, { url });
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries(validOwnerId, validPropertyId);
+      toast({ title: "Attachment removed" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to remove attachment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const approveExpenseMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("PATCH", `/api/expenses/${id}`, { approvalStatus: "APPROVED" });
+    },
+    onSuccess: (_data, id) => {
+      invalidateExpenseQueries(validOwnerId, validPropertyId);
+      toast({ title: "Expense approved" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to approve expense",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectExpenseMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason?: string }) => {
+      return apiRequest("PATCH", `/api/expenses/${id}`, { 
+        approvalStatus: "REJECTED",
+        notes: reason ? `Rejection reason: ${reason}` : undefined
+      });
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries(validOwnerId, validPropertyId);
+      setRejectingExpense(null);
+      setRejectionReason("");
+      toast({ title: "Expense rejected" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to reject expense",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const newFiles = Array.from(files);
+      setPendingFiles((prev) => [...prev, ...newFiles]);
+    }
+    e.target.value = "";
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleOpenForm = (expense?: ExpenseWithDetails) => {
     if (expense) {
       setEditingExpense(expense);
@@ -407,6 +546,7 @@ export default function ExpensesPage() {
         paymentStatus: "UNPAID",
       });
     }
+    setPendingFiles([]);
     setIsFormOpen(true);
   };
 
@@ -549,6 +689,14 @@ export default function ExpensesPage() {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="mb-4">
                 <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
+                <TabsTrigger value="pending_approval" data-testid="tab-pending-approval">
+                  Pending Approval
+                  {allExpenses && allExpenses.filter(e => e.approvalStatus === "PENDING").length > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {allExpenses.filter(e => e.approvalStatus === "PENDING").length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="unpaid" data-testid="tab-unpaid">
                   Unpaid
                   {stats.unpaid > 0 && <Badge variant="destructive" className="ml-2">{stats.unpaid}</Badge>}
@@ -581,7 +729,8 @@ export default function ExpensesPage() {
                           <TableHead>Category</TableHead>
                           <TableHead>Owner / Property</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
-                          <TableHead>Status</TableHead>
+                          <TableHead>Payment</TableHead>
+                          <TableHead>Approval</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -657,8 +806,34 @@ export default function ExpensesPage() {
                                 </span>
                               )}
                             </TableCell>
+                            <TableCell>
+                              {getApprovalStatusBadge(expense.approvalStatus || "PENDING")}
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
+                                {expense.approvalStatus === "PENDING" && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="text-green-600 hover:text-green-700"
+                                      onClick={() => approveExpenseMutation.mutate(expense.id)}
+                                      disabled={approveExpenseMutation.isPending}
+                                      data-testid={`button-approve-expense-${expense.id}`}
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="text-red-600 hover:text-red-700"
+                                      onClick={() => setRejectingExpense(expense)}
+                                      data-testid={`button-reject-expense-${expense.id}`}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
                                 <Button
                                   size="icon"
                                   variant="ghost"
@@ -1060,6 +1235,124 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium mb-4">Receipt / Proof of Payment</h4>
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,.pdf"
+                      multiple
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-expense-files"
+                    />
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-expense-camera"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      data-testid="button-upload-file"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload File
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => cameraInputRef.current?.click()}
+                      data-testid="button-take-photo"
+                    >
+                      <Camera className="h-4 w-4 mr-2" />
+                      Take Photo
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Supported: Images (JPEG, PNG, GIF, WebP) and PDF files up to 10MB
+                  </p>
+                  
+                  {pendingFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Files to upload:</p>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {pendingFiles.map((file, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 p-2 border rounded-md bg-muted/50"
+                          >
+                            {file.type.startsWith("image/") ? (
+                              <Image className="h-4 w-4 text-muted-foreground shrink-0" />
+                            ) : (
+                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                            )}
+                            <span className="text-sm truncate flex-1">{file.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => removePendingFile(index)}
+                              data-testid={`button-remove-pending-file-${index}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {editingExpense?.attachments && editingExpense.attachments.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Existing attachments:</p>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {editingExpense.attachments.map((url, index) => {
+                          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                          return (
+                            <div
+                              key={index}
+                              className="flex items-center gap-2 p-2 border rounded-md bg-muted/50"
+                            >
+                              {isImage ? (
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 flex-1 min-w-0">
+                                  <Image className="h-4 w-4 text-muted-foreground shrink-0" />
+                                  <span className="text-sm truncate text-primary">View image</span>
+                                </a>
+                              ) : (
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 flex-1 min-w-0">
+                                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                                  <span className="text-sm truncate text-primary">View file</span>
+                                </a>
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => deleteAttachmentMutation.mutate({ expenseId: editingExpense.id, url })}
+                                disabled={deleteAttachmentMutation.isPending}
+                                data-testid={`button-delete-attachment-${index}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <FormField
                 control={form.control}
                 name="notes"
@@ -1080,12 +1373,19 @@ export default function ExpensesPage() {
                 </Button>
                 <Button 
                   type="submit" 
-                  disabled={createMutation.isPending || updateMutation.isPending}
+                  disabled={createMutation.isPending || updateMutation.isPending || isUploadingFiles}
                   data-testid="button-submit-expense"
                 >
-                  {(createMutation.isPending || updateMutation.isPending) 
-                    ? "Saving..." 
-                    : editingExpense ? "Update Expense" : "Add Expense"}
+                  {isUploadingFiles ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Uploading files...
+                    </>
+                  ) : (createMutation.isPending || updateMutation.isPending) ? (
+                    "Saving..."
+                  ) : (
+                    editingExpense ? "Update Expense" : "Add Expense"
+                  )}
                 </Button>
               </DialogFooter>
             </form>
@@ -1114,6 +1414,55 @@ export default function ExpensesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!rejectingExpense} onOpenChange={(open) => !open && setRejectingExpense(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Expense</DialogTitle>
+            <DialogDescription>
+              Reject the expense "{rejectingExpense?.description}"? Optionally provide a reason.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="rejection-reason">Rejection Reason (optional)</Label>
+            <Textarea
+              id="rejection-reason"
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Enter reason for rejection..."
+              className="mt-2"
+              data-testid="input-rejection-reason"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectingExpense(null);
+                setRejectionReason("");
+              }}
+              data-testid="button-cancel-reject"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (rejectingExpense) {
+                  rejectExpenseMutation.mutate({
+                    id: rejectingExpense.id,
+                    reason: rejectionReason || undefined,
+                  });
+                }
+              }}
+              disabled={rejectExpenseMutation.isPending}
+              data-testid="button-confirm-reject"
+            >
+              {rejectExpenseMutation.isPending ? "Rejecting..." : "Reject Expense"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

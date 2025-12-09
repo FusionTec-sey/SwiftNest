@@ -52,6 +52,11 @@ if (!fs.existsSync(documentsDir)) {
   fs.mkdirSync(documentsDir, { recursive: true });
 }
 
+const expenseAttachmentsDir = path.join(process.cwd(), "uploads", "expense-attachments");
+if (!fs.existsSync(expenseAttachmentsDir)) {
+  fs.mkdirSync(expenseAttachmentsDir, { recursive: true });
+}
+
 const imageStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadDir);
@@ -83,6 +88,29 @@ const upload = multer({
       return cb(null, true);
     }
     cb(new Error("Only image files are allowed"));
+  },
+});
+
+const expenseAttachmentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, expenseAttachmentsDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const expenseAttachmentUpload = multer({
+  storage: expenseAttachmentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (_req, file, cb) => {
+    const allowedMimes = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only images (JPEG, PNG, GIF, WebP) and PDF files are allowed"));
+    }
   },
 });
 
@@ -4748,6 +4776,80 @@ export async function registerRoutes(
       next(error);
     }
   });
+
+  // Expense attachments upload
+  app.post("/api/expenses/:id/attachments", requireAuth, expenseAttachmentUpload.array("files", 10), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const access = await storage.canUserAccessOwner(expense.ownerId, req.user!.id);
+      if (!access.canAccess || access.role === "VIEWER") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "No files uploaded" });
+      }
+
+      const newAttachmentUrls = files.map((file) => `/uploads/expense-attachments/${file.filename}`);
+      const updatedAttachments = [...(expense.attachments || []), ...newAttachmentUrls];
+
+      const updated = await storage.updateExpense(id, { attachments: updatedAttachments });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete expense attachment
+  app.delete("/api/expenses/:id/attachments", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { url } = req.body;
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const access = await storage.canUserAccessOwner(expense.ownerId, req.user!.id);
+      if (!access.canAccess || access.role === "VIEWER") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updatedAttachments = (expense.attachments || []).filter(a => a !== url);
+      
+      // Delete file from disk
+      if (url.startsWith("/uploads/expense-attachments/")) {
+        const filename = url.replace("/uploads/expense-attachments/", "");
+        const filePath = path.join(expenseAttachmentsDir, filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+
+      const updated = await storage.updateExpense(id, { attachments: updatedAttachments });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Serve expense attachments
+  app.use("/uploads/expense-attachments", express.static(expenseAttachmentsDir));
 
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);

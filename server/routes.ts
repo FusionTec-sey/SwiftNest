@@ -7626,6 +7626,332 @@ export async function registerRoutes(
     }
   });
 
+  // ===========================================
+  // BULK IMPORT ENDPOINTS
+  // ===========================================
+  
+  const bulkImportDir = path.join(process.cwd(), "uploads", "bulk-import");
+  if (!fs.existsSync(bulkImportDir)) {
+    fs.mkdirSync(bulkImportDir, { recursive: true });
+  }
+
+  const bulkImportStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      cb(null, bulkImportDir);
+    },
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    },
+  });
+
+  const bulkImportUpload = multer({
+    storage: bulkImportStorage,
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+    fileFilter: (_req, file, cb) => {
+      const allowedMimes = [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel"
+      ];
+      if (allowedMimes.includes(file.mimetype) || file.originalname.endsWith(".xlsx") || file.originalname.endsWith(".xls")) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only Excel files (.xlsx, .xls) are allowed"));
+      }
+    },
+  });
+
+  // Get reference data for bulk import (property/unit/tenant lists)
+  app.get("/api/bulk-import/reference-data", requireAuth, requireAnyPermission(["property.edit", "property.manage"]), async (req, res, next) => {
+    try {
+      const user = req.user!;
+      const accessiblePropertyIds = await getAccessiblePropertyIds(user);
+      
+      const allProperties = await storage.getPropertiesByUserId(user.id);
+      const properties = allProperties.filter(p => accessiblePropertyIds.includes(p.id));
+      const units: Array<{ id: number; unitName: string; propertyId: number }> = [];
+      const tenants: Array<{ id: number; legalName: string; propertyId: number }> = [];
+      
+      for (const prop of properties) {
+        const propUnits = await storage.getUnitsByPropertyId(prop.id);
+        units.push(...propUnits.map(u => ({ id: u.id, unitName: u.unitName, propertyId: u.propertyId })));
+        
+        const propLeases = await storage.getLeasesByPropertyId(prop.id);
+        for (const lease of propLeases) {
+          const tenant = await storage.getTenantById(lease.tenantId);
+          if (tenant && !tenants.some(t => t.id === tenant.id)) {
+            tenants.push({ id: tenant.id, legalName: tenant.legalName, propertyId: prop.id });
+          }
+        }
+      }
+      
+      res.json({
+        properties: properties.map(p => ({ id: p.id, name: p.name })),
+        units,
+        tenants
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Download bulk import template
+  app.get("/api/bulk-import/template/:entity", requireAuth, requireAnyPermission(["property.edit", "property.manage"]), async (req, res, next) => {
+    try {
+      const { entity } = req.params;
+      const { allTemplates, getTemplateByEntity } = await import("@shared/bulk-import");
+      const XLSX = await import("xlsx");
+      
+      const template = getTemplateByEntity(entity);
+      if (!template) {
+        return res.status(400).json({ message: `Invalid entity: ${entity}. Valid options: ${allTemplates.map(t => t.entity).join(", ")}` });
+      }
+      
+      // Create workbook with Instructions and Data sheets
+      const wb = XLSX.utils.book_new();
+      
+      // Instructions sheet
+      const instructions = [
+        ["BULK IMPORT TEMPLATE: " + template.displayName.toUpperCase()],
+        [""],
+        ["Description:", template.description],
+        [""],
+        ["INSTRUCTIONS:"],
+        ["1. Fill in the Data sheet with your records"],
+        ["2. Required fields are marked with * in the header"],
+        ["3. Do not modify the header row"],
+        ["4. Date format: YYYY-MM-DD (e.g., 2024-01-15)"],
+        ["5. Enum values must match exactly as shown below"],
+        [""],
+        ["COLUMN REFERENCE:"],
+      ];
+      
+      for (const col of template.columns) {
+        const reqText = col.required ? "(Required)" : "(Optional)";
+        instructions.push([`${col.header} ${reqText}: ${col.description}. Example: ${col.example}`]);
+        if (col.enumValues) {
+          instructions.push([`  Valid values: ${col.enumValues.join(", ")}`]);
+        }
+      }
+      
+      const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+      XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
+      
+      // Data sheet with headers
+      const headers = template.columns.map(c => c.required ? `${c.header} *` : c.header);
+      const exampleRow = template.columns.map(c => c.example);
+      const dataSheet = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+      
+      // Set column widths
+      dataSheet["!cols"] = template.columns.map(() => ({ wch: 20 }));
+      
+      XLSX.utils.book_append_sheet(wb, dataSheet, "Data");
+      
+      // Generate buffer and send
+      const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename=${entity}_template.xlsx`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Upload and process bulk import
+  app.post("/api/bulk-import/:entity", requireAuth, requireAnyPermission(["property.edit", "property.manage"]), bulkImportUpload.single("file"), async (req, res, next) => {
+    try {
+      const user = req.user!;
+      const { entity } = req.params;
+      const { getTemplateByEntity } = await import("@shared/bulk-import");
+      type ImportResult = { entity: string; totalRows: number; successCount: number; errorCount: number; errors: Array<{ row: number; message: string }>; createdIds: number[] };
+      const XLSX = await import("xlsx");
+      
+      const template = getTemplateByEntity(entity);
+      if (!template) {
+        return res.status(400).json({ message: `Invalid entity: ${entity}` });
+      }
+      
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      
+      // Parse the Excel file
+      const workbook = XLSX.readFile(req.file.path);
+      const sheetName = workbook.SheetNames.find(n => n.toLowerCase() === "data") || workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: null });
+      
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+      
+      if (rows.length === 0) {
+        return res.status(400).json({ message: "No data rows found in the file" });
+      }
+      
+      const result: ImportResult = {
+        entity,
+        totalRows: rows.length,
+        successCount: 0,
+        errorCount: 0,
+        errors: [],
+        createdIds: []
+      };
+      
+      const accessiblePropertyIds = await getAccessiblePropertyIds(user);
+      
+      // Process each row
+      for (let i = 0; i < rows.length; i++) {
+        const rowNum = i + 2; // Account for header row (1-indexed)
+        const row = rows[i];
+        
+        try {
+          // Map Excel headers to field names
+          const data: Record<string, any> = {};
+          for (const col of template.columns) {
+            const headerVariants = [
+              col.header,
+              `${col.header} *`,
+              col.header.toLowerCase(),
+              col.field
+            ];
+            
+            for (const variant of headerVariants) {
+              if (row[variant] !== undefined && row[variant] !== null && row[variant] !== "") {
+                data[col.field] = row[variant];
+                break;
+              }
+            }
+          }
+          
+          // Validate required fields
+          for (const col of template.columns) {
+            if (col.required && (data[col.field] === undefined || data[col.field] === null || data[col.field] === "")) {
+              throw new Error(`Missing required field: ${col.header}`);
+            }
+          }
+          
+          // Entity-specific validation and creation
+          let createdId: number;
+          
+          switch (entity) {
+            case "properties": {
+              const propertyData = {
+                name: String(data.name),
+                propertyType: String(data.propertyType).toUpperCase(),
+                usageType: data.usageType ? String(data.usageType).toUpperCase() : "LONG_TERM_RENTAL",
+                addressLine1: String(data.addressLine1),
+                addressLine2: data.addressLine2 ? String(data.addressLine2) : null,
+                city: String(data.city),
+                state: String(data.state),
+                country: String(data.country),
+                pincode: String(data.pincode),
+                portfolioTag: data.portfolioTag ? String(data.portfolioTag) : null,
+                ownerUserId: user.id
+              };
+              
+              const validated = insertPropertySchema.parse(propertyData);
+              const property = await storage.createProperty({
+                ...validated,
+                ownerUserId: user.id
+              });
+              createdId = property.id;
+              break;
+            }
+            
+            case "units": {
+              const propertyId = parseInt(String(data.propertyId));
+              if (!accessiblePropertyIds.includes(propertyId)) {
+                throw new Error(`Property ID ${propertyId} not found or not accessible`);
+              }
+              
+              const unitData = {
+                propertyId,
+                unitName: String(data.unitName),
+                floor: data.floor ? String(data.floor) : null,
+                areaSqFt: data.areaSqFt ? parseInt(String(data.areaSqFt)) : null,
+                status: data.status ? String(data.status).toUpperCase() : "VACANT"
+              };
+              
+              const unit = await storage.createUnit(unitData);
+              createdId = unit.id;
+              break;
+            }
+            
+            case "tenants": {
+              const propertyId = parseInt(String(data.propertyId));
+              if (!accessiblePropertyIds.includes(propertyId)) {
+                throw new Error(`Property ID ${propertyId} not found or not accessible`);
+              }
+              
+              const tenantData = {
+                propertyId,
+                legalName: String(data.legalName),
+                tenantType: data.tenantType ? String(data.tenantType).toUpperCase() : "INDIVIDUAL",
+                email: data.email ? String(data.email) : null,
+                phone: String(data.phone),
+                emergencyContactName: data.emergencyContactName ? String(data.emergencyContactName) : null,
+                emergencyContactPhone: data.emergencyContactPhone ? String(data.emergencyContactPhone) : null,
+                createdByUserId: user.id
+              };
+              
+              const tenant = await storage.createTenant(tenantData);
+              createdId = tenant.id;
+              break;
+            }
+            
+            case "leases": {
+              const propertyId = parseInt(String(data.propertyId));
+              if (!accessiblePropertyIds.includes(propertyId)) {
+                throw new Error(`Property ID ${propertyId} not found or not accessible`);
+              }
+              
+              const tenantId = parseInt(String(data.tenantId));
+              const tenant = await storage.getTenantById(tenantId);
+              if (!tenant) {
+                throw new Error(`Tenant ID ${tenantId} not found`);
+              }
+              
+              const leaseData = {
+                propertyId,
+                unitId: data.unitId ? parseInt(String(data.unitId)) : null,
+                tenantId,
+                rentAmount: String(data.rentAmount),
+                securityDeposit: data.securityDeposit ? String(data.securityDeposit) : null,
+                startDate: new Date(data.startDate),
+                endDate: new Date(data.endDate),
+                rentFrequency: data.rentFrequency ? String(data.rentFrequency).toUpperCase() : "MONTHLY",
+                status: data.status ? String(data.status).toUpperCase() : "ACTIVE",
+                createdByUserId: user.id
+              };
+              
+              const lease = await storage.createLease(leaseData);
+              createdId = lease.id;
+              break;
+            }
+            
+            default:
+              throw new Error(`Unsupported entity: ${entity}`);
+          }
+          
+          result.successCount++;
+          result.createdIds.push(createdId);
+          
+        } catch (error: any) {
+          result.errorCount++;
+          result.errors.push({
+            row: rowNum,
+            message: error.message || "Unknown error"
+          });
+        }
+      }
+      
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

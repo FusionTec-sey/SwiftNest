@@ -205,9 +205,11 @@ export default function RentCollectionPage() {
 
   const getInvoiceStatus = (invoice: RentInvoice) => {
     if (invoice.status === "PAID") return { label: "Paid", variant: "default" as const, icon: CheckCircle2 };
-    if (invoice.status === "PARTIALLY_PAID") return { label: "Partial", variant: "secondary" as const, icon: Clock };
+    if (invoice.status === "PARTIALLY_PAID") return { label: "Partially Paid", variant: "secondary" as const, icon: Clock };
     if (new Date(invoice.dueDate) < new Date()) return { label: "Overdue", variant: "destructive" as const, icon: AlertCircle };
-    return { label: invoice.status, variant: "outline" as const, icon: Clock };
+    if (invoice.status === "ISSUED") return { label: "Awaiting Payment", variant: "outline" as const, icon: Clock };
+    if (invoice.status === "DRAFT") return { label: "Draft", variant: "secondary" as const, icon: Clock };
+    return { label: invoice.status.replace(/_/g, " "), variant: "outline" as const, icon: Clock };
   };
 
   const handleDownloadPDF = async (invoiceId: number) => {
@@ -456,9 +458,9 @@ export default function RentCollectionPage() {
                             </TableCell>
                             <TableCell className="hidden md:table-cell">{formatDate(invoice.dueDate)}</TableCell>
                             <TableCell>
-                              <Badge variant={status.variant} className="gap-1">
+                              <Badge variant={status.variant} className="gap-1" data-testid={`badge-invoice-status-${invoice.id}`}>
                                 <StatusIcon className="h-3 w-3" />
-                                <span className="hidden sm:inline">{status.label}</span>
+                                {status.label}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">

@@ -599,8 +599,14 @@ export default function LeaseDetailPage() {
                           "secondary"
                         }
                         className="text-xs"
+                        data-testid={`badge-invoice-status-${invoice.id}`}
                       >
-                        {invoice.status}
+                        {invoice.status === "PAID" ? "Paid" : 
+                         invoice.status === "ISSUED" ? "Awaiting Payment" :
+                         invoice.status === "OVERDUE" ? "Overdue" :
+                         invoice.status === "PARTIALLY_PAID" ? "Partially Paid" :
+                         invoice.status === "DRAFT" ? "Draft" :
+                         invoice.status.replace(/_/g, " ")}
                       </Badge>
                     </div>
                   </div>

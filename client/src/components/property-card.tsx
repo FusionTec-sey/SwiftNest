@@ -65,6 +65,12 @@ const occupancyPurposeLabels: Record<string, { label: string; icon: typeof User 
   VACANT_LAND: { label: "Vacant Land", icon: TreeDeciduous },
 };
 
+const usageTypeLabels: Record<string, string> = {
+  LONG_TERM_RENTAL: "Long-Term Rental",
+  SHORT_TERM_RENTAL: "Short-Term Rental",
+  OWNER_OCCUPIED: "Owner Occupied",
+};
+
 export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideEdit }: PropertyCardProps) {
   const Icon = propertyTypeIcons[property.propertyType] || Building;
   const typeColorClass = propertyTypeColors[property.propertyType] || "bg-muted text-muted-foreground";
@@ -102,22 +108,13 @@ export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideE
               <Icon className="h-3 w-3" />
               {property.propertyType.replace("_", " ")}
             </Badge>
-            {property.occupancyPurpose && (
+            {property.usageType && (
               <Badge 
                 variant="outline" 
                 className="gap-1"
-                data-testid={`badge-occupancy-${property.id}`}
+                data-testid={`badge-usage-type-${property.id}`}
               >
-                {(() => {
-                  const purpose = occupancyPurposeLabels[property.occupancyPurpose];
-                  const PurposeIcon = purpose?.icon || Key;
-                  return (
-                    <>
-                      <PurposeIcon className="h-3 w-3" />
-                      {purpose?.label || property.occupancyPurpose}
-                    </>
-                  );
-                })()}
+                {usageTypeLabels[property.usageType] || property.usageType.replace(/_/g, " ")}
               </Badge>
             )}
           </div>

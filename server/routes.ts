@@ -2220,6 +2220,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leases/expiring", requireAuth, async (req, res, next) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const expiringLeases = await storage.getExpiringLeases(req.user!.id, days);
+      res.json(expiringLeases);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/leases/:id", requireAuth, async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
@@ -5752,6 +5762,57 @@ export async function registerRoutes(
       }
       await storage.deleteOnboardingProcess(id);
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Check and auto-advance onboarding stage
+  app.post("/api/onboarding/:id/auto-advance", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      
+      const process = await storage.getOnboardingProcessById(id);
+      if (!process) {
+        return res.status(404).json({ message: "Onboarding process not found" });
+      }
+
+      let advanced = false;
+      let newStage = process.currentStage;
+
+      // Auto-advance logic based on current stage
+      if (process.currentStage === 'INSPECTION_SCHEDULED') {
+        // Check if inspection is complete (has checklist items and no pending items)
+        const checklistItems = await storage.getChecklistItemsByOnboarding(id);
+        if (checklistItems.length > 0) {
+          // All items have been inspected
+          await storage.updateOnboardingStage(id, 'INSPECTION_COMPLETED', new Date());
+          advanced = true;
+          newStage = 'INSPECTION_COMPLETED';
+        }
+      } else if (process.currentStage === 'HANDOVER_SCHEDULED') {
+        // Check if handover is complete (all items acknowledged by tenant)
+        const handoverItems = await storage.getHandoverItemsByOnboarding(id);
+        if (handoverItems.length > 0) {
+          const allAcknowledged = handoverItems.every((item: any) => item.acknowledgedByTenant === 1);
+          if (allAcknowledged) {
+            await storage.updateOnboardingStage(id, 'HANDOVER_COMPLETED', new Date());
+            advanced = true;
+            newStage = 'HANDOVER_COMPLETED';
+          }
+        }
+      }
+
+      const updated = await storage.getOnboardingProcessById(id);
+      res.json({ 
+        advanced, 
+        previousStage: process.currentStage, 
+        currentStage: newStage,
+        process: updated 
+      });
     } catch (error) {
       next(error);
     }

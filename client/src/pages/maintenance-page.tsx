@@ -24,6 +24,8 @@ export default function MaintenancePage() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<TaskWithDetails | null>(null);
+  const [issueExpenseDialogOpen, setIssueExpenseDialogOpen] = useState(false);
+  const [issueForExpense, setIssueForExpense] = useState<IssueWithDetails | null>(null);
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseVendor, setExpenseVendor] = useState("");
@@ -237,6 +239,42 @@ export default function MaintenancePage() {
     TODO: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
     COMPLETED: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
     ON_HOLD: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  };
+
+  const openIssueExpenseDialog = (issue: IssueWithDetails) => {
+    setIssueForExpense(issue);
+    const laborCost = parseFloat(issue.costLabor || "0");
+    const materialCost = parseFloat(issue.costMaterials || "0");
+    const totalCost = laborCost + materialCost;
+    setExpenseAmount(totalCost > 0 ? String(totalCost) : "");
+    setExpenseDescription(`Maintenance Issue: ${issue.title}`);
+    setExpenseVendor("");
+    setSelectedOwnerId("");
+    setIssueExpenseDialogOpen(true);
+  };
+
+  const createIssueExpense = async () => {
+    if (!issueForExpense || !expenseAmount || !selectedOwnerId) return;
+
+    await createExpenseMutation.mutateAsync({
+      ownerId: parseInt(selectedOwnerId),
+      propertyId: propertyId,
+      maintenanceIssueId: issueForExpense.id,
+      category: "MAINTENANCE",
+      expenseDate: new Date().toISOString().split("T")[0],
+      description: expenseDescription || `Maintenance Issue: ${issueForExpense.title}`,
+      amount: expenseAmount,
+      taxAmount: "0",
+      vendorName: expenseVendor || undefined,
+      paymentStatus: "UNPAID",
+    });
+
+    setIssueExpenseDialogOpen(false);
+    setIssueForExpense(null);
+    setExpenseAmount("");
+    setExpenseDescription("");
+    setExpenseVendor("");
+    setSelectedOwnerId("");
   };
 
   return (
@@ -707,9 +745,22 @@ export default function MaintenancePage() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <Badge className={statusColors[issue.status || "OPEN"]} variant="secondary">
-                                {issue.status}
-                              </Badge>
+                              <>
+                                <Badge className={statusColors[issue.status || "OPEN"]} variant="secondary">
+                                  {issue.status}
+                                </Badge>
+                                {canEdit && (issue.status === "CLOSED" || issue.status === "RESOLVED") && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => openIssueExpenseDialog(issue)}
+                                    data-testid={`button-create-expense-issue-${issue.id}`}
+                                  >
+                                    <Wallet className="h-4 w-4 mr-1" />
+                                    Create Expense
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -1014,6 +1065,97 @@ export default function MaintenancePage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
               )}
               Record Expense and Complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={issueExpenseDialogOpen} onOpenChange={setIssueExpenseDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" aria-hidden="true" />
+              Create Expense from Issue
+            </DialogTitle>
+            <DialogDescription>
+              {issueForExpense?.title}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Record an expense for this resolved maintenance issue.
+            </p>
+            
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="issue-expense-owner">Owner (required)</Label>
+                <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
+                  <SelectTrigger id="issue-expense-owner" data-testid="select-issue-expense-owner">
+                    <SelectValue placeholder="Select owner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {owners.map((owner) => (
+                      <SelectItem key={owner.id} value={String(owner.id)}>
+                        {owner.legalName} ({owner.ownerType})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="issue-expense-amount">Amount</Label>
+                <Input
+                  id="issue-expense-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  data-testid="input-issue-expense-amount"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="issue-expense-description">Description</Label>
+                <Input
+                  id="issue-expense-description"
+                  value={expenseDescription}
+                  onChange={(e) => setExpenseDescription(e.target.value)}
+                  data-testid="input-issue-expense-description"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="issue-expense-vendor">Vendor (optional)</Label>
+                <Input
+                  id="issue-expense-vendor"
+                  value={expenseVendor}
+                  onChange={(e) => setExpenseVendor(e.target.value)}
+                  placeholder="Vendor name"
+                  data-testid="input-issue-expense-vendor"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setIssueExpenseDialogOpen(false)}
+              data-testid="button-cancel-issue-expense"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={createIssueExpense}
+              disabled={!selectedOwnerId || !expenseAmount || parseFloat(expenseAmount) <= 0 || createExpenseMutation.isPending}
+              data-testid="button-create-issue-expense"
+            >
+              {createExpenseMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Create Expense
             </Button>
           </DialogFooter>
         </DialogContent>

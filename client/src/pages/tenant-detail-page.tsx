@@ -21,7 +21,9 @@ import {
   Shield,
   AlertTriangle,
   CheckCircle,
+  CheckCircle2,
   Clock,
+  Loader2,
   XCircle,
   Edit,
   Save,
@@ -734,6 +736,25 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
     },
   });
 
+  // Auto-advance stage mutation
+  const autoAdvanceMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/onboarding/${process.id}/auto-advance`, {});
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "onboarding"] });
+      if (data.advanced) {
+        toast({ 
+          title: "Stage advanced", 
+          description: `Onboarding advanced from ${data.previousStage} to ${data.currentStage}` 
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleAddChecklist = () => {
     if (!newChecklistItem.roomType || !newChecklistItem.itemName || !newChecklistItem.conditionRating) {
       toast({ title: "Missing fields", description: "Room type, item name, and condition rating are required.", variant: "destructive" });
@@ -769,8 +790,24 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
             <ClipboardCheck className="h-5 w-5" />
             Onboarding Process #{process.id}
           </DialogTitle>
-          <DialogDescription>
-            Current Stage: {process.currentStage || 'Not Started'} | Status: {process.status}
+          <DialogDescription className="flex items-center justify-between gap-2 flex-wrap">
+            <span>Current Stage: {process.currentStage || 'Not Started'} | Status: {process.status}</span>
+            {process.status !== 'COMPLETED' && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => autoAdvanceMutation.mutate()}
+                disabled={autoAdvanceMutation.isPending}
+                data-testid="button-auto-advance"
+              >
+                {autoAdvanceMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                )}
+                Check Auto-Advance
+              </Button>
+            )}
           </DialogDescription>
         </DialogHeader>
 

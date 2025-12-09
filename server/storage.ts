@@ -441,6 +441,7 @@ export interface IStorage {
   getLeaseById(id: number): Promise<LeaseWithDetails | undefined>;
   getActiveLeasesByPropertyId(propertyId: number): Promise<LeaseWithDetails[]>;
   getActiveLeasesDueForInvoicing(userId: number): Promise<Lease[]>;
+  getExpiringLeases(userId: number, days: number): Promise<LeaseWithDetails[]>;
   createLease(lease: InsertLease & { createdByUserId: number }): Promise<Lease>;
   updateLease(id: number, lease: Partial<Lease>): Promise<Lease | undefined>;
   updateLeaseStatus(id: number, status: string): Promise<Lease | undefined>;
@@ -2280,6 +2281,29 @@ export class DatabaseStorage implements IStorage {
         )
       ));
     return activeLeases;
+  }
+
+  async getExpiringLeases(userId: number, days: number): Promise<LeaseWithDetails[]> {
+    const now = new Date();
+    const futureDate = new Date();
+    futureDate.setDate(now.getDate() + days);
+    
+    const userProperties = await this.getPropertiesByUserId(userId);
+    const propertyIds = userProperties.map(p => p.id);
+    if (propertyIds.length === 0) return [];
+    
+    const expiringLeases = await db
+      .select()
+      .from(leases)
+      .where(and(
+        eq(leases.status, "ACTIVE"),
+        inArray(leases.propertyId, propertyIds),
+        lte(leases.endDate, futureDate),
+        gte(leases.endDate, now)
+      ))
+      .orderBy(leases.endDate);
+    
+    return Promise.all(expiringLeases.map((l) => this.enrichLease(l)));
   }
 
   async createLease(lease: InsertLease & { createdByUserId: number }): Promise<Lease> {

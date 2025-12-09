@@ -16,6 +16,7 @@ import {
   FileCheck,
   ShieldCheck,
   Wallet,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -51,10 +52,11 @@ const operationsNavItems = [
 ];
 
 const financeNavItems = [
-  { href: "/accounting", label: "Accounting", icon: Calculator },
-  { href: "/expenses", label: "Expenses", icon: Wallet },
-  { href: "/assets", label: "Assets", icon: Package },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/accounting", label: "Accounting", icon: Calculator, adminOnly: false },
+  { href: "/expenses", label: "Expenses", icon: Wallet, adminOnly: false },
+  { href: "/assets", label: "Assets", icon: Package, adminOnly: false },
+  { href: "/exchange-rates", label: "Exchange Rates", icon: ArrowLeftRight, adminOnly: true },
+  { href: "/reports", label: "Reports", icon: BarChart3, adminOnly: false },
 ];
 
 export function AppSidebar() {
@@ -75,7 +77,7 @@ export function AppSidebar() {
     return location === href || location.startsWith(href + "/");
   };
 
-  const renderNavItem = (item: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }) => {
+  const renderNavItem = (item: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; adminOnly?: boolean }) => {
     const Icon = item.icon;
     return (
       <SidebarMenuItem key={item.href}>
@@ -151,7 +153,9 @@ export function AppSidebar() {
           <SidebarGroupLabel>Finance</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {financeNavItems.map(renderNavItem)}
+              {financeNavItems
+                .filter(item => !item.adminOnly || user?.isSuperAdmin === 1)
+                .map(renderNavItem)}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

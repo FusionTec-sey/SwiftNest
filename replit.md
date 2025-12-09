@@ -74,10 +74,16 @@ Default admin/test account for all testing:
     -   **Multi-Currency Support (Phase 1 - Foundation):**
         -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR
         -   **Exchange Rates Table:** `exchange_rates` table with baseCurrency, quoteCurrency, rate (decimal 18,8), effectiveDate, source tracking, and CRUD API endpoints
+        -   **Exchange Rates Page:** Admin-only management page at `/exchange-rates` with full CRUD operations for currency exchange rates
         -   **Property Base Currency:** Each property has a `currencyCode` field (default USD) that sets the base currency for all transactions
         -   **Currency Utility:** `client/src/lib/currency.ts` provides `formatCurrency()` and `formatCurrencyCompact()` helpers with proper symbol/decimal handling
+        -   **Financial Pages:** All 8 financial pages (expenses, rent-collection, leases, lease-detail, accounting, assets, loans, reports) use centralized currency formatting
+        -   **Expenses Page:** Currency selector with property-based defaults and table display with currency codes
+        -   **Rent Collection Page:** Property currency support for invoices, payments, and lease rent display
+        -   **Accounting Page:** Loan amounts display with proper currency codes from loan.currency field
         -   **Dashboard Widgets:** All financial amounts use formatCurrency for consistent display
         -   **Property Form:** Currency selector in property creation/edit form with 30 currency options
+        -   **Phase 2 Roadmap:** Dual-amount tracking, exchange rate snapshots at transaction time, currency selectors in all transaction forms
 -   **Data Validation:** Zod schemas for runtime validation, integrated with Drizzle.
 -   **Project Structure:** Monorepo (`client`, `server`, `shared`) with path aliases.
 

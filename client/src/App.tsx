@@ -32,6 +32,7 @@ import SettingsPage from "@/pages/settings-page";
 import CompliancePage from "@/pages/compliance-page";
 import ExpensesPage from "@/pages/expenses-page";
 import AdminPage from "@/pages/admin-page";
+import ExchangeRatesPage from "@/pages/exchange-rates-page";
 
 function ProtectedRoutes() {
   return (
@@ -56,6 +57,7 @@ function ProtectedRoutes() {
       <Route path="/reports" component={ReportsPage} />
       <Route path="/expenses" component={ExpensesPage} />
       <Route path="/compliance" component={CompliancePage} />
+      <Route path="/exchange-rates" component={ExchangeRatesPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />

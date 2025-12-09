@@ -834,7 +834,7 @@ export default function AccountingPage() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
                             <span className="text-muted-foreground">Principal</span>
-                            <p className="font-medium">{formatCurrency(loan.principal)}</p>
+                            <p className="font-medium">{formatCurrency(loan.principal, loan.currency || "USD")}</p>
                           </div>
                           <div>
                             <span className="text-muted-foreground">Interest Rate</span>
@@ -846,7 +846,7 @@ export default function AccountingPage() {
                           </div>
                           <div>
                             <span className="text-muted-foreground">Outstanding</span>
-                            <p className="font-medium">{formatCurrency(loan.outstandingBalance || loan.principal)}</p>
+                            <p className="font-medium">{formatCurrency(loan.outstandingBalance || loan.principal, loan.currency || "USD")}</p>
                           </div>
                         </div>
                       </CardContent>

@@ -142,6 +142,7 @@ const expenseFormSchema = z.object({
     "TRAVEL", "OFFICE_SUPPLIES", "OTHER"
   ]),
   description: z.string().min(1, "Description is required"),
+  currencyCode: z.string().default("USD"),
   amount: z.string().min(1, "Amount is required").refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Amount must be positive"),
   taxAmount: z.string().optional().default("0"),
   expenseDate: z.date({ required_error: "Expense date is required" }),
@@ -229,6 +230,7 @@ export default function ExpensesPage() {
       unitId: null,
       category: "OTHER",
       description: "",
+      currencyCode: "USD",
       amount: "",
       taxAmount: "0",
       expenseDate: new Date(),
@@ -512,6 +514,7 @@ export default function ExpensesPage() {
         unitId: expense.unitId || null,
         category: expense.category as ExpenseFormData["category"],
         description: expense.description,
+        currencyCode: (expense as any).currencyCode || "USD",
         amount: expense.amount,
         taxAmount: expense.taxAmount || "0",
         expenseDate: new Date(expense.expenseDate),
@@ -526,12 +529,17 @@ export default function ExpensesPage() {
         notes: expense.notes || "",
       });
     } else {
+      // Get default currency from selected property if available
+      const selectedProperty = validPropertyId ? properties?.find(p => p.id === validPropertyId) : null;
+      const defaultCurrency = selectedProperty?.currencyCode || "USD";
+      
       setEditingExpense(null);
       form.reset({
         ownerId: validOwnerId || 0,
         propertyId: validPropertyId || null,
         category: "OTHER",
         description: "",
+        currencyCode: defaultCurrency,
         amount: "",
         taxAmount: "0",
         expenseDate: new Date(),
@@ -783,10 +791,10 @@ export default function ExpensesPage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-medium">
-                              {formatCurrency(expense.totalAmount)}
+                              {formatCurrency(expense.totalAmount, (expense as any).currencyCode || "USD")}
                               {expense.taxAmount && parseFloat(expense.taxAmount) > 0 && (
                                 <span className="block text-xs text-muted-foreground">
-                                  Tax: {formatCurrency(expense.taxAmount)}
+                                  Tax: {formatCurrency(expense.taxAmount, (expense as any).currencyCode || "USD")}
                                 </span>
                               )}
                             </TableCell>
@@ -1004,7 +1012,32 @@ export default function ExpensesPage() {
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <FormField
+                  control={form.control}
+                  name="currencyCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-currency">
+                            <SelectValue placeholder="Currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {CURRENCIES.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>
+                              {c.symbol} {c.code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="amount"
@@ -1050,7 +1083,8 @@ export default function ExpensesPage() {
                     <span className="text-xs text-muted-foreground">Total</span>
                     <p className="font-semibold" data-testid="text-total-amount">
                       {formatCurrency(
-                        (parseFloat(form.watch("amount") || "0") + parseFloat(form.watch("taxAmount") || "0"))
+                        (parseFloat(form.watch("amount") || "0") + parseFloat(form.watch("taxAmount") || "0")),
+                        form.watch("currencyCode") || "USD"
                       )}
                     </p>
                   </div>

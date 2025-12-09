@@ -194,6 +194,11 @@ export default function RentCollectionPage() {
     return properties?.find((p) => p.id === propertyId)?.name || "Unknown Property";
   };
 
+  const getPropertyCurrency = (propertyId: number | null | undefined) => {
+    if (!propertyId) return "USD";
+    return properties?.find((p) => p.id === propertyId)?.currencyCode || "USD";
+  };
+
   const getTenantName = (tenantId: number) => {
     return tenants?.find((t) => t.id === tenantId)?.legalName || "Unknown Tenant";
   };
@@ -373,7 +378,7 @@ export default function RentCollectionPage() {
                           <div className="text-xs text-muted-foreground sm:hidden">{lease ? getPropertyName(lease.propertyId) : "-"}</div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-destructive">{formatDate(invoice.dueDate)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(remaining)}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(remaining, getPropertyCurrency(lease?.propertyId))}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button
@@ -457,9 +462,9 @@ export default function RentCollectionPage() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="font-medium">{formatCurrency(invoice.totalAmount)}</div>
+                              <div className="font-medium">{formatCurrency(invoice.totalAmount, getPropertyCurrency(lease?.propertyId))}</div>
                               {parseFloat(invoice.amountPaid || "0") > 0 && (
-                                <div className="text-xs text-muted-foreground">Paid: {formatCurrency(invoice.amountPaid || "0")}</div>
+                                <div className="text-xs text-muted-foreground">Paid: {formatCurrency(invoice.amountPaid || "0", getPropertyCurrency(lease?.propertyId))}</div>
                               )}
                             </TableCell>
                             <TableCell className="text-right">
@@ -530,7 +535,7 @@ export default function RentCollectionPage() {
                           </TableCell>
                           <TableCell className="hidden sm:table-cell">{getTenantName(lease.tenantId)}</TableCell>
                           <TableCell>
-                            <div>{formatCurrency(lease.rentAmount)}</div>
+                            <div>{formatCurrency(lease.rentAmount, getPropertyCurrency(lease.propertyId))}</div>
                             <div className="text-xs text-muted-foreground md:hidden">Day {lease.paymentDueDay || 1}</div>
                           </TableCell>
                           <TableCell className="hidden md:table-cell">Day {lease.paymentDueDay || 1}</TableCell>

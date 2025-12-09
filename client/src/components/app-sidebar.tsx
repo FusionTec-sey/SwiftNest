@@ -198,6 +198,21 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive("/system-settings")}
+                  tooltip="System Settings"
+                >
+                  <Link 
+                    href="/system-settings" 
+                    data-testid="sidebar-link-system-settings"
+                  >
+                    <Settings className="h-4 w-4" aria-hidden="true" />
+                    <span>System Settings</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {user?.isSuperAdmin === 1 && (
                 <SidebarMenuItem>
                   <SidebarMenuButton

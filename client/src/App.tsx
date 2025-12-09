@@ -29,6 +29,7 @@ import ReportsPage from "@/pages/reports-page";
 import InvitePage from "@/pages/invite-page";
 import RentCollectionPage from "@/pages/rent-collection-page";
 import SettingsPage from "@/pages/settings-page";
+import SystemSettingsPage from "@/pages/system-settings-page";
 import CompliancePage from "@/pages/compliance-page";
 import ExpensesPage from "@/pages/expenses-page";
 import AdminPage from "@/pages/admin-page";
@@ -60,6 +61,7 @@ function ProtectedRoutes() {
       <Route path="/compliance" component={CompliancePage} />
       <Route path="/exchange-rates" component={ExchangeRatesPage} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/system-settings" component={SystemSettingsPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>

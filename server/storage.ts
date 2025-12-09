@@ -156,7 +156,10 @@ import {
   type InsertConditionChecklistItem,
   type HandoverItem,
   type InsertHandoverItem,
-  type OnboardingProcessWithDetails
+  type OnboardingProcessWithDetails,
+  systemSettings,
+  type SystemSetting,
+  type InsertSystemSetting
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -5081,6 +5084,109 @@ export class DatabaseStorage implements IStorage {
 
   async deleteHandoverItem(id: number): Promise<void> {
     await db.delete(handoverItems).where(eq(handoverItems.id, id));
+  }
+
+  // =====================================================
+  // SYSTEM SETTINGS
+  // =====================================================
+
+  async getSettingsByUser(userId: number): Promise<SystemSetting[]> {
+    return db.select().from(systemSettings)
+      .where(eq(systemSettings.userId, userId))
+      .orderBy(systemSettings.category, systemSettings.key);
+  }
+
+  async getSettingsByCategory(userId: number, category: string): Promise<SystemSetting[]> {
+    return db.select().from(systemSettings)
+      .where(and(
+        eq(systemSettings.userId, userId),
+        eq(systemSettings.category, category as any)
+      ))
+      .orderBy(systemSettings.key);
+  }
+
+  async getSettingByKey(userId: number, key: string): Promise<SystemSetting | undefined> {
+    const [setting] = await db.select().from(systemSettings)
+      .where(and(
+        eq(systemSettings.userId, userId),
+        eq(systemSettings.key, key)
+      ));
+    return setting || undefined;
+  }
+
+  async upsertSetting(userId: number, key: string, data: Partial<InsertSystemSetting>): Promise<SystemSetting> {
+    const existing = await this.getSettingByKey(userId, key);
+    
+    if (existing) {
+      const [updated] = await db.update(systemSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(systemSettings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(systemSettings).values({
+        ...data,
+        userId,
+        key,
+        category: data.category || "FINANCIAL",
+        value: data.value || {}
+      } as InsertSystemSetting).returning();
+      return created;
+    }
+  }
+
+  async updateSettings(userId: number, settings: { key: string; category: string; value: any; label?: string; description?: string }[]): Promise<SystemSetting[]> {
+    const results: SystemSetting[] = [];
+    for (const setting of settings) {
+      const result = await this.upsertSetting(userId, setting.key, {
+        category: setting.category as any,
+        value: setting.value,
+        label: setting.label,
+        description: setting.description
+      });
+      results.push(result);
+    }
+    return results;
+  }
+
+  async deleteSetting(id: number): Promise<void> {
+    await db.delete(systemSettings).where(eq(systemSettings.id, id));
+  }
+
+  async initializeDefaultSettings(userId: number): Promise<void> {
+    const existing = await this.getSettingsByUser(userId);
+    if (existing.length > 0) return;
+
+    const defaults = [
+      { key: "late_fee_enabled", category: "FINANCIAL", value: false, label: "Enable Late Fees", description: "Apply late fees to overdue invoices" },
+      { key: "late_fee_percent", category: "FINANCIAL", value: "5", label: "Late Fee Percentage", description: "Default late fee percentage" },
+      { key: "late_fee_grace_days", category: "FINANCIAL", value: 5, label: "Grace Period Days", description: "Days before late fee applies" },
+      { key: "invoice_prefix", category: "FINANCIAL", value: "INV-", label: "Invoice Number Prefix", description: "Prefix for invoice numbers" },
+      { key: "expense_approval_threshold", category: "FINANCIAL", value: "1000", label: "Expense Approval Threshold", description: "Expenses above this amount require approval" },
+      { key: "default_currency", category: "FINANCIAL", value: "USD", label: "Default Currency", description: "Default currency for new properties" },
+      { key: "default_rent_frequency", category: "LEASE_DEFAULTS", value: "MONTHLY", label: "Default Rent Frequency", description: "Default rent payment frequency" },
+      { key: "default_payment_due_day", category: "LEASE_DEFAULTS", value: 1, label: "Default Payment Due Day", description: "Day of month rent is due" },
+      { key: "default_deposit_months", category: "LEASE_DEFAULTS", value: 2, label: "Security Deposit Months", description: "Default security deposit in months" },
+      { key: "renewal_reminder_days", category: "LEASE_DEFAULTS", value: 60, label: "Renewal Reminder Days", description: "Days before lease end to send reminder" },
+      { key: "notice_period_days", category: "LEASE_DEFAULTS", value: 30, label: "Notice Period Days", description: "Required notice period for lease termination" },
+      { key: "maintenance_sla_hours", category: "OPERATIONS", value: 24, label: "Maintenance SLA Hours", description: "Target resolution time for maintenance issues" },
+      { key: "onboarding_auto_advance", category: "OPERATIONS", value: true, label: "Onboarding Auto-Advance", description: "Automatically advance onboarding stages" },
+      { key: "require_photo_for_issues", category: "OPERATIONS", value: false, label: "Require Photos for Issues", description: "Require photo attachments when reporting issues" },
+      { key: "require_photo_for_onboarding", category: "OPERATIONS", value: true, label: "Require Photos for Onboarding", description: "Require condition photos during move-in" },
+      { key: "auto_generate_invoices", category: "AUTOMATION", value: true, label: "Auto-Generate Invoices", description: "Automatically generate rent invoices" },
+      { key: "invoice_generate_days_before", category: "AUTOMATION", value: 5, label: "Invoice Generation Lead Days", description: "Days before due date to generate invoice" },
+      { key: "compliance_reminder_days", category: "AUTOMATION", value: 30, label: "Compliance Reminder Days", description: "Days before expiry to send compliance alerts" },
+      { key: "auto_calculate_late_fees", category: "AUTOMATION", value: false, label: "Auto-Calculate Late Fees", description: "Automatically calculate and apply late fees" }
+    ];
+
+    for (const setting of defaults) {
+      await this.upsertSetting(userId, setting.key, {
+        category: setting.category as any,
+        value: setting.value,
+        label: setting.label,
+        description: setting.description
+      });
+    }
   }
 }
 

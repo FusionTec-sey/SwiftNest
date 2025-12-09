@@ -5137,6 +5137,125 @@ export async function registerRoutes(
   });
 
   // =====================================================
+  // SYSTEM SETTINGS API
+  // =====================================================
+
+  // Get all settings for current user
+  app.get("/api/settings", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Initialize defaults if no settings exist
+      await storage.initializeDefaultSettings(userId);
+      
+      const settings = await storage.getSettingsByUser(userId);
+      
+      // Convert to object format for easier frontend consumption
+      const settingsMap: Record<string, any> = {};
+      for (const setting of settings) {
+        settingsMap[setting.key] = {
+          value: setting.value,
+          category: setting.category,
+          label: setting.label,
+          description: setting.description
+        };
+      }
+      
+      res.json(settingsMap);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get settings by category
+  app.get("/api/settings/:category", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { category } = req.params;
+      
+      const validCategories = ["FINANCIAL", "LEASE_DEFAULTS", "OPERATIONS", "AUTOMATION", "NOTIFICATIONS"];
+      if (!validCategories.includes(category.toUpperCase())) {
+        return res.status(400).json({ message: "Invalid category" });
+      }
+      
+      const settings = await storage.getSettingsByCategory(userId, category.toUpperCase());
+      
+      const settingsMap: Record<string, any> = {};
+      for (const setting of settings) {
+        settingsMap[setting.key] = {
+          value: setting.value,
+          category: setting.category,
+          label: setting.label,
+          description: setting.description
+        };
+      }
+      
+      res.json(settingsMap);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update settings (batch update)
+  app.put("/api/settings", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { settings } = req.body;
+      
+      if (!Array.isArray(settings)) {
+        return res.status(400).json({ message: "Settings must be an array" });
+      }
+      
+      const updated = await storage.updateSettings(userId, settings);
+      
+      // Return updated settings as map
+      const settingsMap: Record<string, any> = {};
+      for (const setting of updated) {
+        settingsMap[setting.key] = {
+          value: setting.value,
+          category: setting.category,
+          label: setting.label,
+          description: setting.description
+        };
+      }
+      
+      res.json(settingsMap);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update single setting
+  app.put("/api/settings/:key", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { key } = req.params;
+      const { value, category, label, description } = req.body;
+      
+      if (value === undefined) {
+        return res.status(400).json({ message: "Value is required" });
+      }
+      
+      const setting = await storage.upsertSetting(userId, key, {
+        value,
+        category: category || "FINANCIAL",
+        label,
+        description
+      });
+      
+      res.json({
+        key: setting.key,
+        value: setting.value,
+        category: setting.category,
+        label: setting.label,
+        description: setting.description
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
   // EXCHANGE RATES API
   // =====================================================
 

@@ -1884,6 +1884,78 @@ export type DashboardWidgetDefinition = {
 };
 
 // =====================================================
+// SYSTEM SETTINGS
+// =====================================================
+
+export const settingCategoryEnum = pgEnum("setting_category", [
+  "FINANCIAL",
+  "LEASE_DEFAULTS",
+  "OPERATIONS",
+  "AUTOMATION",
+  "NOTIFICATIONS"
+]);
+
+export const systemSettings = pgTable("system_settings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  category: settingCategoryEnum("category").notNull(),
+  key: text("key").notNull(),
+  value: jsonb("value").notNull(),
+  label: text("label"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("system_settings_user_idx").on(table.userId),
+  index("system_settings_category_idx").on(table.category),
+  index("system_settings_key_idx").on(table.userId, table.key),
+]);
+
+export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
+
+// Default settings structure
+export type FinancialSettings = {
+  defaultLateFeeEnabled: boolean;
+  defaultLateFeePercent: string;
+  defaultLateFeeGraceDays: number;
+  invoiceNumberPrefix: string;
+  invoiceNumberNext: number;
+  expenseApprovalThreshold: string;
+  defaultCurrency: string;
+};
+
+export type LeaseDefaultSettings = {
+  defaultRentFrequency: string;
+  defaultPaymentDueDay: number;
+  defaultSecurityDepositMonths: number;
+  renewalReminderDays: number;
+  noticePeriodDays: number;
+};
+
+export type OperationsSettings = {
+  maintenanceDefaultSLAHours: number;
+  onboardingAutoAdvance: boolean;
+  requirePhotoForIssues: boolean;
+  requirePhotoForOnboarding: boolean;
+  defaultMaintenanceCategory: string;
+};
+
+export type AutomationSettings = {
+  autoGenerateRentInvoices: boolean;
+  rentInvoiceGenerateDaysBefore: number;
+  complianceReminderLeadDays: number;
+  leaseRenewalReminderDays: number;
+  autoCalculateLateFees: boolean;
+};
+
+// =====================================================
 // INSERT SCHEMAS FOR ENTERPRISE MODULES
 // =====================================================
 

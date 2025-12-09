@@ -1294,6 +1294,14 @@ export const expensePaymentMethodEnum = pgEnum("expense_payment_method", [
   "OTHER"
 ]);
 
+// Expense approval status enum
+export const expenseApprovalStatusEnum = pgEnum("expense_approval_status", [
+  "PENDING",               // Submitted, awaiting approval
+  "APPROVED",              // Approved by authorized user
+  "REJECTED",              // Rejected by authorized user
+  "CANCELLED"              // Cancelled by submitter
+]);
+
 // Expenses table
 export const expenses = pgTable("expenses", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -1324,7 +1332,12 @@ export const expenses = pgTable("expenses", {
   // Attachments (receipt images, invoices)
   attachments: text("attachments").array().default([]),
   notes: text("notes"),
-  // Accounting integration
+  // Approval workflow
+  approvalStatus: expenseApprovalStatusEnum("approval_status").notNull().default("PENDING"),
+  approvedByUserId: integer("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  // Accounting integration (only populated after approval)
   ledgerEntryId: integer("ledger_entry_id"),
   // Audit fields
   createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
@@ -1336,6 +1349,7 @@ export const expenses = pgTable("expenses", {
   index("expenses_category_idx").on(table.category),
   index("expenses_date_idx").on(table.expenseDate),
   index("expenses_status_idx").on(table.paymentStatus),
+  index("expenses_approval_idx").on(table.approvalStatus),
   index("expenses_maintenance_issue_idx").on(table.maintenanceIssueId),
   index("expenses_maintenance_task_idx").on(table.maintenanceTaskId),
   index("expenses_compliance_idx").on(table.complianceDocumentId),

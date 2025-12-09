@@ -8,7 +8,6 @@ import {
   UserCircle,
   Calculator,
   Gauge,
-  Landmark,
   Package,
   BarChart3,
   Settings,
@@ -54,7 +53,6 @@ const operationsNavItems = [
 const financeNavItems = [
   { href: "/accounting", label: "Accounting", icon: Calculator },
   { href: "/expenses", label: "Expenses", icon: Wallet },
-  { href: "/loans", label: "Loans", icon: Landmark },
   { href: "/assets", label: "Assets", icon: Package },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];

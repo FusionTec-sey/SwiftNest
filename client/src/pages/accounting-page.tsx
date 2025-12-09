@@ -16,6 +16,9 @@ import {
   Eye,
   PieChart,
   BarChart3,
+  Landmark,
+  Calendar,
+  Percent,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -60,7 +63,17 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { ChartOfAccount, LedgerEntryWithLines } from "@shared/schema";
+import type { ChartOfAccount, LedgerEntryWithLines, Loan, Owner, Property } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const accountFormSchema = z.object({
   code: z.string().min(1, "Account code is required"),
@@ -91,6 +104,25 @@ const journalEntryFormSchema = z.object({
 
 type JournalEntryFormData = z.infer<typeof journalEntryFormSchema>;
 
+const loanFormSchema = z.object({
+  ownerId: z.number().min(1, "Owner is required"),
+  propertyId: z.number().optional(),
+  lenderName: z.string().min(1, "Lender name is required"),
+  loanReference: z.string().optional(),
+  currency: z.string().default("SCR"),
+  principal: z.string().min(1, "Principal amount is required"),
+  interestRate: z.string().min(1, "Interest rate is required"),
+  compounding: z.enum(["SIMPLE", "COMPOUND"]).default("SIMPLE"),
+  termMonths: z.number().min(1, "Term is required"),
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().optional(),
+  paymentFrequency: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]).default("MONTHLY"),
+  amortizationMethod: z.enum(["STRAIGHT_LINE", "REDUCING_BALANCE"]).default("REDUCING_BALANCE"),
+  notes: z.string().optional(),
+});
+
+type LoanFormData = z.infer<typeof loanFormSchema>;
+
 const formatCurrency = (amount: string | number) => {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   return new Intl.NumberFormat("en-US", {
@@ -112,13 +144,29 @@ export default function AccountingPage() {
   const { toast } = useToast();
   const [isAccountFormOpen, setIsAccountFormOpen] = useState(false);
   const [isJournalFormOpen, setIsJournalFormOpen] = useState(false);
+  const [isLoanFormOpen, setIsLoanFormOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loanSearchTerm, setLoanSearchTerm] = useState("");
   const [selectedModule, setSelectedModule] = useState("RENT");
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [viewingEntry, setViewingEntry] = useState<LedgerEntryWithLines | null>(null);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [deletingLoan, setDeletingLoan] = useState<Loan | null>(null);
 
   const { data: accounts, isLoading: accountsLoading } = useQuery<ChartOfAccount[]>({
     queryKey: ["/api/accounts"],
+  });
+
+  const { data: loans, isLoading: loansLoading } = useQuery<Loan[]>({
+    queryKey: ["/api/loans"],
+  });
+
+  const { data: owners } = useQuery<Owner[]>({
+    queryKey: ["/api/owners"],
+  });
+
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
   });
 
   const { data: ledgerEntries, isLoading: entriesLoading } = useQuery<LedgerEntryWithLines[]>({
@@ -166,6 +214,25 @@ export default function AccountingPage() {
   const { fields, append, remove } = useFieldArray({
     control: journalForm.control,
     name: "lines",
+  });
+
+  const loanForm = useForm<LoanFormData>({
+    resolver: zodResolver(loanFormSchema),
+    defaultValues: {
+      ownerId: 0,
+      lenderName: "",
+      loanReference: "",
+      currency: "SCR",
+      principal: "",
+      interestRate: "",
+      compounding: "SIMPLE",
+      termMonths: 12,
+      startDate: "",
+      endDate: "",
+      paymentFrequency: "MONTHLY",
+      amortizationMethod: "REDUCING_BALANCE",
+      notes: "",
+    },
   });
 
   const createAccountMutation = useMutation({
@@ -271,6 +338,108 @@ export default function AccountingPage() {
     },
   });
 
+  const createLoanMutation = useMutation({
+    mutationFn: async (data: LoanFormData) => {
+      if (editingLoan) {
+        return apiRequest("PATCH", `/api/loans/${editingLoan.id}`, data);
+      }
+      return apiRequest("POST", "/api/loans", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
+      setIsLoanFormOpen(false);
+      setEditingLoan(null);
+      loanForm.reset();
+      toast({
+        title: editingLoan ? "Loan updated" : "Loan created",
+        description: editingLoan
+          ? "The loan has been updated successfully."
+          : "A new loan has been created.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save the loan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteLoanMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/loans/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
+      setDeletingLoan(null);
+      toast({
+        title: "Loan deleted",
+        description: "The loan has been deleted.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete the loan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openNewLoanForm = () => {
+    setEditingLoan(null);
+    loanForm.reset({
+      ownerId: 0,
+      lenderName: "",
+      loanReference: "",
+      currency: "SCR",
+      principal: "",
+      interestRate: "",
+      compounding: "SIMPLE",
+      termMonths: 12,
+      startDate: "",
+      endDate: "",
+      paymentFrequency: "MONTHLY",
+      amortizationMethod: "REDUCING_BALANCE",
+      notes: "",
+    });
+    setIsLoanFormOpen(true);
+  };
+
+  const openEditLoanForm = (loan: Loan) => {
+    setEditingLoan(loan);
+    loanForm.reset({
+      ownerId: loan.ownerId,
+      propertyId: loan.propertyId || undefined,
+      lenderName: loan.lenderName,
+      loanReference: loan.loanReference || "",
+      currency: loan.currency || "SCR",
+      principal: loan.principal,
+      interestRate: loan.interestRate,
+      compounding: (loan.compounding as "SIMPLE" | "COMPOUND") || "SIMPLE",
+      termMonths: loan.termMonths,
+      startDate: loan.startDate ? new Date(loan.startDate).toISOString().split("T")[0] : "",
+      endDate: loan.endDate ? new Date(loan.endDate).toISOString().split("T")[0] : "",
+      paymentFrequency: (loan.paymentFrequency as "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY") || "MONTHLY",
+      amortizationMethod: (loan.amortizationMethod as "STRAIGHT_LINE" | "REDUCING_BALANCE") || "REDUCING_BALANCE",
+      notes: loan.notes || "",
+    });
+    setIsLoanFormOpen(true);
+  };
+
+  const filteredLoans = loans?.filter(
+    (loan) =>
+      loan.lenderName.toLowerCase().includes(loanSearchTerm.toLowerCase()) ||
+      loan.loanReference?.toLowerCase().includes(loanSearchTerm.toLowerCase())
+  );
+
+  const loanStats = {
+    total: loans?.length || 0,
+    totalPrincipal: loans?.reduce((sum, loan) => sum + parseFloat(loan.principal || "0"), 0) || 0,
+    totalOutstanding: loans?.reduce((sum, loan) => sum + parseFloat(loan.outstandingBalance || loan.principal || "0"), 0) || 0,
+  };
+
   const groupedAccounts = accounts?.reduce(
     (acc, account) => {
       if (!acc[account.accountType]) {
@@ -360,6 +529,10 @@ export default function AccountingPage() {
             <TabsTrigger value="ledger" data-testid="tab-ledger">
               <BookOpen className="h-4 w-4 mr-2" />
               Ledger Entries
+            </TabsTrigger>
+            <TabsTrigger value="loans" data-testid="tab-loans">
+              <Landmark className="h-4 w-4 mr-2" />
+              Loans
             </TabsTrigger>
             <TabsTrigger value="reports" data-testid="tab-reports">
               <BarChart3 className="h-4 w-4 mr-2" />
@@ -571,6 +744,130 @@ export default function AccountingPage() {
                 description={`No journal entries found for the ${selectedModule.toLowerCase()} module. Create a new journal entry to get started.`}
                 actionLabel="New Journal Entry"
                 onAction={() => setIsJournalFormOpen(true)}
+              />
+            )}
+          </TabsContent>
+
+          <TabsContent value="loans" className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search loans..."
+                  value={loanSearchTerm}
+                  onChange={(e) => setLoanSearchTerm(e.target.value)}
+                  className="pl-10"
+                  data-testid="input-search-loans"
+                />
+              </div>
+              <Button onClick={openNewLoanForm} data-testid="button-add-loan">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Loan
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Loans</CardTitle>
+                  <Landmark className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{loanStats.total}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Principal</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(loanStats.totalPrincipal)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
+                  <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(loanStats.totalOutstanding)}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {loansLoading ? (
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-24" />
+                ))}
+              </div>
+            ) : filteredLoans && filteredLoans.length > 0 ? (
+              <div className="grid gap-4">
+                {filteredLoans.map((loan) => {
+                  const owner = owners?.find((o) => o.id === loan.ownerId);
+                  const property = properties?.find((p) => p.id === loan.propertyId);
+                  return (
+                    <Card key={loan.id} data-testid={`card-loan-${loan.id}`}>
+                      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
+                        <div>
+                          <CardTitle className="text-lg">{loan.lenderName}</CardTitle>
+                          <CardDescription>
+                            {loan.loanReference && <span className="mr-2">Ref: {loan.loanReference}</span>}
+                            {owner && <Badge variant="outline">{owner.legalName}</Badge>}
+                            {property && <Badge variant="secondary" className="ml-2">{property.name}</Badge>}
+                          </CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => openEditLoanForm(loan)}
+                            data-testid={`button-edit-loan-${loan.id}`}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setDeletingLoan(loan)}
+                            data-testid={`button-delete-loan-${loan.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Principal</span>
+                            <p className="font-medium">{formatCurrency(loan.principal)}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Interest Rate</span>
+                            <p className="font-medium">{loan.interestRate}%</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Term</span>
+                            <p className="font-medium">{loan.termMonths} months</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Outstanding</span>
+                            <p className="font-medium">{formatCurrency(loan.outstandingBalance || loan.principal)}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Landmark}
+                title="No loans found"
+                description="Add your first loan to track financing for your properties."
+                actionLabel="Add Loan"
+                onAction={openNewLoanForm}
               />
             )}
           </TabsContent>
@@ -1065,6 +1362,277 @@ export default function AccountingPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isLoanFormOpen} onOpenChange={setIsLoanFormOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingLoan ? "Edit Loan" : "Add New Loan"}</DialogTitle>
+            <DialogDescription>
+              {editingLoan ? "Update the loan details below." : "Enter the loan details below."}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...loanForm}>
+            <form onSubmit={loanForm.handleSubmit((data) => createLoanMutation.mutate(data))} className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  control={loanForm.control}
+                  name="ownerId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Owner</FormLabel>
+                      <Select onValueChange={(v) => field.onChange(parseInt(v))} value={field.value ? String(field.value) : ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-loan-owner">
+                            <SelectValue placeholder="Select owner" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {owners?.map((owner) => (
+                            <SelectItem key={owner.id} value={String(owner.id)}>
+                              {owner.legalName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={loanForm.control}
+                  name="propertyId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Property (Optional)</FormLabel>
+                      <Select onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)} value={field.value ? String(field.value) : ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-loan-property">
+                            <SelectValue placeholder="Select property" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {properties?.map((property) => (
+                            <SelectItem key={property.id} value={String(property.id)}>
+                              {property.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  control={loanForm.control}
+                  name="lenderName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Lender Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., Bank of America" data-testid="input-loan-lender" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={loanForm.control}
+                  name="loanReference"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Loan Reference (Optional)</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., LOAN-2024-001" data-testid="input-loan-reference" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-4">
+                <FormField
+                  control={loanForm.control}
+                  name="principal"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Principal Amount</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" step="0.01" placeholder="0.00" data-testid="input-loan-principal" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={loanForm.control}
+                  name="interestRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Interest Rate (%)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" step="0.01" placeholder="5.00" data-testid="input-loan-rate" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={loanForm.control}
+                  name="termMonths"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Term (Months)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" onChange={(e) => field.onChange(parseInt(e.target.value))} data-testid="input-loan-term" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  control={loanForm.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Start Date</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="date" data-testid="input-loan-start" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={loanForm.control}
+                  name="paymentFrequency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Frequency</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-loan-frequency">
+                            <SelectValue placeholder="Select frequency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="WEEKLY">Weekly</SelectItem>
+                          <SelectItem value="BIWEEKLY">Bi-weekly</SelectItem>
+                          <SelectItem value="MONTHLY">Monthly</SelectItem>
+                          <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                          <SelectItem value="YEARLY">Yearly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormField
+                  control={loanForm.control}
+                  name="compounding"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Interest Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-loan-compounding">
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="SIMPLE">Simple Interest</SelectItem>
+                          <SelectItem value="COMPOUND">Compound Interest</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={loanForm.control}
+                  name="amortizationMethod"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amortization Method</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-loan-amortization">
+                            <SelectValue placeholder="Select method" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="STRAIGHT_LINE">Straight Line</SelectItem>
+                          <SelectItem value="REDUCING_BALANCE">Reducing Balance</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={loanForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} placeholder="Additional notes about this loan" data-testid="input-loan-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsLoanFormOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createLoanMutation.isPending} data-testid="button-submit-loan">
+                  {createLoanMutation.isPending ? "Saving..." : editingLoan ? "Update Loan" : "Create Loan"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deletingLoan} onOpenChange={() => setDeletingLoan(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Loan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this loan from {deletingLoan?.lenderName}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingLoan && deleteLoanMutation.mutate(deletingLoan.id)}
+              disabled={deleteLoanMutation.isPending}
+              data-testid="button-confirm-delete-loan"
+            >
+              {deleteLoanMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

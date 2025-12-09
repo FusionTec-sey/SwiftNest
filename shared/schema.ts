@@ -2115,6 +2115,208 @@ export type AutomationSettings = {
 };
 
 // =====================================================
+// SHORT-TERM RENTAL TABLES
+// =====================================================
+
+// Turnover status enum
+export const turnoverStatusEnum = pgEnum("turnover_status", [
+  "PENDING",        // Checkout expected, not started
+  "CLEANING",       // Cleaning in progress
+  "INSPECTION",     // Quality check needed
+  "READY",          // Ready for next guest
+  "BLOCKED"         // Unit not available
+]);
+
+// Guest check-in/out status
+export const guestStatusEnum = pgEnum("guest_status", [
+  "EXPECTED",       // Booking confirmed, not arrived
+  "CHECKED_IN",     // Guest has arrived
+  "CHECKED_OUT",    // Guest has departed
+  "NO_SHOW",        // Guest didn't arrive
+  "CANCELLED"       // Booking cancelled
+]);
+
+// Turnovers table - track unit status between stays
+export const turnovers = pgTable("turnovers", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  status: turnoverStatusEnum("status").default("PENDING").notNull(),
+  
+  // Guest info
+  checkoutDate: date("checkout_date").notNull(),
+  nextCheckinDate: date("next_checkin_date"),
+  guestName: text("guest_name"),
+  guestNotes: text("guest_notes"),
+  
+  // Cleaning assignment
+  assignedToMemberId: integer("assigned_to_member_id").references(() => maintenanceTeamMembers.id, { onDelete: "set null" }),
+  cleaningStartedAt: timestamp("cleaning_started_at"),
+  cleaningCompletedAt: timestamp("cleaning_completed_at"),
+  
+  // Inspection
+  inspectedByUserId: integer("inspected_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  inspectionNotes: text("inspection_notes"),
+  inspectionPhotos: text("inspection_photos").array(),
+  passedInspection: integer("passed_inspection").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("turnovers_property_idx").on(table.propertyId),
+  index("turnovers_status_idx").on(table.status),
+  index("turnovers_checkout_date_idx").on(table.checkoutDate),
+]);
+
+// Cleaning checklist templates
+export const cleaningTemplates = pgTable("cleaning_templates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  roomType: text("room_type"), // Optional: BEDROOM, BATHROOM, KITCHEN, LIVING_AREA, EXTERIOR
+  isDefault: integer("is_default").default(0),
+  items: jsonb("items").default([]).$type<{ task: string; order: number; isRequired: boolean }[]>(),
+  estimatedMinutes: integer("estimated_minutes"),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("cleaning_templates_property_idx").on(table.propertyId),
+]);
+
+// Cleaning tasks - individual tasks for a turnover
+export const cleaningTasks = pgTable("cleaning_tasks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  turnoverId: integer("turnover_id").notNull().references(() => turnovers.id, { onDelete: "cascade" }),
+  templateId: integer("template_id").references(() => cleaningTemplates.id, { onDelete: "set null" }),
+  taskName: text("task_name").notNull(),
+  roomType: text("room_type"),
+  isCompleted: integer("is_completed").default(0),
+  completedByMemberId: integer("completed_by_member_id").references(() => maintenanceTeamMembers.id, { onDelete: "set null" }),
+  completedAt: timestamp("completed_at"),
+  notes: text("notes"),
+  order: integer("order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("cleaning_tasks_turnover_idx").on(table.turnoverId),
+  index("cleaning_tasks_completed_idx").on(table.isCompleted),
+]);
+
+// Guest check-ins - quick registration for short-term stays
+export const guestCheckins = pgTable("guest_checkins", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  turnoverId: integer("turnover_id").references(() => turnovers.id, { onDelete: "set null" }),
+  
+  // Guest info
+  guestName: text("guest_name").notNull(),
+  guestEmail: text("guest_email"),
+  guestPhone: text("guest_phone"),
+  numberOfGuests: integer("number_of_guests").default(1),
+  
+  // Stay details
+  status: guestStatusEnum("status").default("EXPECTED").notNull(),
+  expectedCheckinDate: date("expected_checkin_date").notNull(),
+  expectedCheckoutDate: date("expected_checkout_date").notNull(),
+  actualCheckinTime: timestamp("actual_checkin_time"),
+  actualCheckoutTime: timestamp("actual_checkout_time"),
+  
+  // Access & notes
+  accessCode: text("access_code"),
+  specialRequests: text("special_requests"),
+  internalNotes: text("internal_notes"),
+  
+  // Verification
+  idVerified: integer("id_verified").default(0),
+  signatureReceived: integer("signature_received").default(0),
+  
+  checkedInByUserId: integer("checked_in_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  checkedOutByUserId: integer("checked_out_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("guest_checkins_property_idx").on(table.propertyId),
+  index("guest_checkins_status_idx").on(table.status),
+  index("guest_checkins_dates_idx").on(table.expectedCheckinDate, table.expectedCheckoutDate),
+]);
+
+// =====================================================
+// SHORT-TERM RENTAL INSERT SCHEMAS
+// =====================================================
+
+export const insertTurnoverSchema = createInsertSchema(turnovers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  propertyId: z.number().min(1, "Property is required"),
+  checkoutDate: z.string().or(z.date()).transform((val) => typeof val === 'string' ? val : val.toISOString().split('T')[0]),
+  nextCheckinDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? val : val.toISOString().split('T')[0];
+  }),
+});
+
+export const insertCleaningTemplateSchema = createInsertSchema(cleaningTemplates).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  propertyId: z.number().min(1, "Property is required"),
+  name: z.string().min(1, "Name is required"),
+});
+
+export const insertCleaningTaskSchema = createInsertSchema(cleaningTasks).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  turnoverId: z.number().min(1, "Turnover is required"),
+  taskName: z.string().min(1, "Task name is required"),
+});
+
+export const insertGuestCheckinSchema = createInsertSchema(guestCheckins).omit({
+  id: true,
+  checkedInByUserId: true,
+  checkedOutByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  propertyId: z.number().min(1, "Property is required"),
+  guestName: z.string().min(1, "Guest name is required"),
+  expectedCheckinDate: z.string().or(z.date()).transform((val) => typeof val === 'string' ? val : val.toISOString().split('T')[0]),
+  expectedCheckoutDate: z.string().or(z.date()).transform((val) => typeof val === 'string' ? val : val.toISOString().split('T')[0]),
+});
+
+// Short-term rental types
+export type Turnover = typeof turnovers.$inferSelect;
+export type InsertTurnover = z.infer<typeof insertTurnoverSchema>;
+export type CleaningTemplate = typeof cleaningTemplates.$inferSelect;
+export type InsertCleaningTemplate = z.infer<typeof insertCleaningTemplateSchema>;
+export type CleaningTask = typeof cleaningTasks.$inferSelect;
+export type InsertCleaningTask = z.infer<typeof insertCleaningTaskSchema>;
+export type GuestCheckin = typeof guestCheckins.$inferSelect;
+export type InsertGuestCheckin = z.infer<typeof insertGuestCheckinSchema>;
+
+// Extended types for short-term rentals
+export type TurnoverWithDetails = Turnover & {
+  property?: Property | null;
+  unit?: Unit | null;
+  assignedMember?: MaintenanceTeamMember | null;
+  cleaningTasks?: CleaningTask[];
+  guestCheckin?: GuestCheckin | null;
+};
+
+export type GuestCheckinWithDetails = GuestCheckin & {
+  property?: Property | null;
+  unit?: Unit | null;
+  turnover?: Turnover | null;
+};
+
+// =====================================================
 // INSERT SCHEMAS FOR ENTERPRISE MODULES
 // =====================================================
 

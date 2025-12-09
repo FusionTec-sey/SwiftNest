@@ -168,7 +168,21 @@ import {
   type OnboardingProcessWithDetails,
   systemSettings,
   type SystemSetting,
-  type InsertSystemSetting
+  type InsertSystemSetting,
+  turnovers,
+  cleaningTemplates,
+  cleaningTasks,
+  guestCheckins,
+  type Turnover,
+  type InsertTurnover,
+  type CleaningTemplate,
+  type InsertCleaningTemplate,
+  type CleaningTask,
+  type InsertCleaningTask,
+  type GuestCheckin,
+  type InsertGuestCheckin,
+  type TurnoverWithDetails,
+  type GuestCheckinWithDetails
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -627,6 +641,41 @@ export interface IStorage {
   deleteExpense(id: number): Promise<void>;
   getExpenseSummaryByOwner(ownerId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]>;
   getExpenseSummaryByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]>;
+
+  // =====================================================
+  // SHORT-TERM RENTAL MODULE
+  // =====================================================
+  
+  // Turnovers
+  getTurnoversByPropertyId(propertyId: number): Promise<TurnoverWithDetails[]>;
+  getTurnoverById(id: number): Promise<TurnoverWithDetails | undefined>;
+  createTurnover(turnover: InsertTurnover): Promise<Turnover>;
+  updateTurnover(id: number, turnover: Partial<InsertTurnover>): Promise<Turnover | undefined>;
+  deleteTurnover(id: number): Promise<void>;
+  
+  // Cleaning Templates
+  getCleaningTemplatesByPropertyId(propertyId: number): Promise<CleaningTemplate[]>;
+  getCleaningTemplateById(id: number): Promise<CleaningTemplate | undefined>;
+  createCleaningTemplate(template: InsertCleaningTemplate & { createdByUserId: number }): Promise<CleaningTemplate>;
+  updateCleaningTemplate(id: number, template: Partial<InsertCleaningTemplate>): Promise<CleaningTemplate | undefined>;
+  deleteCleaningTemplate(id: number): Promise<void>;
+  
+  // Cleaning Tasks
+  getCleaningTasksByTurnoverId(turnoverId: number): Promise<CleaningTask[]>;
+  createCleaningTask(task: InsertCleaningTask): Promise<CleaningTask>;
+  updateCleaningTask(id: number, task: Partial<InsertCleaningTask>): Promise<CleaningTask | undefined>;
+  completeCleaningTask(id: number, memberId: number): Promise<CleaningTask | undefined>;
+  deleteCleaningTask(id: number): Promise<void>;
+  applyTemplateToTurnover(turnoverId: number, templateId: number): Promise<CleaningTask[]>;
+  
+  // Guest Check-ins
+  getGuestCheckinsByPropertyId(propertyId: number): Promise<GuestCheckinWithDetails[]>;
+  getGuestCheckinById(id: number): Promise<GuestCheckinWithDetails | undefined>;
+  createGuestCheckin(checkin: InsertGuestCheckin): Promise<GuestCheckin>;
+  updateGuestCheckin(id: number, checkin: Partial<InsertGuestCheckin>): Promise<GuestCheckin | undefined>;
+  performGuestCheckin(id: number, userId: number): Promise<GuestCheckin | undefined>;
+  performGuestCheckout(id: number, userId: number): Promise<GuestCheckin | undefined>;
+  deleteGuestCheckin(id: number): Promise<void>;
 
   // =====================================================
   // DASHBOARD LAYOUTS MODULE
@@ -4562,6 +4611,215 @@ export class DatabaseStorage implements IStorage {
       total: Number(r.total),
       count: Number(r.count),
     }));
+  }
+
+  // =====================================================
+  // SHORT-TERM RENTAL MODULE
+  // =====================================================
+
+  // Turnovers
+  async getTurnoversByPropertyId(propertyId: number): Promise<TurnoverWithDetails[]> {
+    const results = await db.select().from(turnovers)
+      .leftJoin(units, eq(turnovers.unitId, units.id))
+      .leftJoin(maintenanceTeamMembers, eq(turnovers.assignedToMemberId, maintenanceTeamMembers.id))
+      .where(eq(turnovers.propertyId, propertyId))
+      .orderBy(desc(turnovers.checkoutDate));
+    
+    return results.map(r => ({
+      ...r.turnovers,
+      unit: r.units || null,
+      assignedMember: r.maintenance_team_members || null,
+    }));
+  }
+
+  async getTurnoverById(id: number): Promise<TurnoverWithDetails | undefined> {
+    const [result] = await db.select().from(turnovers)
+      .leftJoin(units, eq(turnovers.unitId, units.id))
+      .leftJoin(maintenanceTeamMembers, eq(turnovers.assignedToMemberId, maintenanceTeamMembers.id))
+      .where(eq(turnovers.id, id));
+    
+    if (!result) return undefined;
+    
+    const tasks = await db.select().from(cleaningTasks).where(eq(cleaningTasks.turnoverId, id));
+    
+    return {
+      ...result.turnovers,
+      unit: result.units || null,
+      assignedMember: result.maintenance_team_members || null,
+      cleaningTasks: tasks,
+    };
+  }
+
+  async createTurnover(turnover: InsertTurnover): Promise<Turnover> {
+    const [created] = await db.insert(turnovers).values(turnover).returning();
+    return created;
+  }
+
+  async updateTurnover(id: number, turnover: Partial<InsertTurnover>): Promise<Turnover | undefined> {
+    const [updated] = await db.update(turnovers)
+      .set({ ...turnover, updatedAt: new Date() })
+      .where(eq(turnovers.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteTurnover(id: number): Promise<void> {
+    await db.delete(turnovers).where(eq(turnovers.id, id));
+  }
+
+  // Cleaning Templates
+  async getCleaningTemplatesByPropertyId(propertyId: number): Promise<CleaningTemplate[]> {
+    return db.select().from(cleaningTemplates)
+      .where(eq(cleaningTemplates.propertyId, propertyId))
+      .orderBy(desc(cleaningTemplates.createdAt));
+  }
+
+  async getCleaningTemplateById(id: number): Promise<CleaningTemplate | undefined> {
+    const [template] = await db.select().from(cleaningTemplates).where(eq(cleaningTemplates.id, id));
+    return template || undefined;
+  }
+
+  async createCleaningTemplate(template: InsertCleaningTemplate & { createdByUserId: number }): Promise<CleaningTemplate> {
+    const [created] = await db.insert(cleaningTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateCleaningTemplate(id: number, template: Partial<InsertCleaningTemplate>): Promise<CleaningTemplate | undefined> {
+    const [updated] = await db.update(cleaningTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(eq(cleaningTemplates.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteCleaningTemplate(id: number): Promise<void> {
+    await db.delete(cleaningTemplates).where(eq(cleaningTemplates.id, id));
+  }
+
+  // Cleaning Tasks
+  async getCleaningTasksByTurnoverId(turnoverId: number): Promise<CleaningTask[]> {
+    return db.select().from(cleaningTasks)
+      .where(eq(cleaningTasks.turnoverId, turnoverId))
+      .orderBy(cleaningTasks.order);
+  }
+
+  async createCleaningTask(task: InsertCleaningTask): Promise<CleaningTask> {
+    const [created] = await db.insert(cleaningTasks).values(task).returning();
+    return created;
+  }
+
+  async updateCleaningTask(id: number, task: Partial<InsertCleaningTask>): Promise<CleaningTask | undefined> {
+    const [updated] = await db.update(cleaningTasks)
+      .set(task)
+      .where(eq(cleaningTasks.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async completeCleaningTask(id: number, memberId: number): Promise<CleaningTask | undefined> {
+    const [updated] = await db.update(cleaningTasks)
+      .set({ isCompleted: 1, completedByMemberId: memberId, completedAt: new Date() })
+      .where(eq(cleaningTasks.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteCleaningTask(id: number): Promise<void> {
+    await db.delete(cleaningTasks).where(eq(cleaningTasks.id, id));
+  }
+
+  async applyTemplateToTurnover(turnoverId: number, templateId: number): Promise<CleaningTask[]> {
+    const template = await this.getCleaningTemplateById(templateId);
+    if (!template || !template.items) return [];
+    
+    const items = template.items as { task: string; order: number; isRequired: boolean }[];
+    const tasks: CleaningTask[] = [];
+    
+    for (const item of items) {
+      const task = await this.createCleaningTask({
+        turnoverId,
+        templateId,
+        taskName: item.task,
+        roomType: template.roomType || null,
+        order: item.order,
+      });
+      tasks.push(task);
+    }
+    
+    return tasks;
+  }
+
+  // Guest Check-ins
+  async getGuestCheckinsByPropertyId(propertyId: number): Promise<GuestCheckinWithDetails[]> {
+    const results = await db.select().from(guestCheckins)
+      .leftJoin(units, eq(guestCheckins.unitId, units.id))
+      .leftJoin(turnovers, eq(guestCheckins.turnoverId, turnovers.id))
+      .where(eq(guestCheckins.propertyId, propertyId))
+      .orderBy(desc(guestCheckins.expectedCheckinDate));
+    
+    return results.map(r => ({
+      ...r.guest_checkins,
+      unit: r.units || null,
+      turnover: r.turnovers || null,
+    }));
+  }
+
+  async getGuestCheckinById(id: number): Promise<GuestCheckinWithDetails | undefined> {
+    const [result] = await db.select().from(guestCheckins)
+      .leftJoin(units, eq(guestCheckins.unitId, units.id))
+      .leftJoin(turnovers, eq(guestCheckins.turnoverId, turnovers.id))
+      .where(eq(guestCheckins.id, id));
+    
+    if (!result) return undefined;
+    
+    return {
+      ...result.guest_checkins,
+      unit: result.units || null,
+      turnover: result.turnovers || null,
+    };
+  }
+
+  async createGuestCheckin(checkin: InsertGuestCheckin): Promise<GuestCheckin> {
+    const [created] = await db.insert(guestCheckins).values(checkin).returning();
+    return created;
+  }
+
+  async updateGuestCheckin(id: number, checkin: Partial<InsertGuestCheckin>): Promise<GuestCheckin | undefined> {
+    const [updated] = await db.update(guestCheckins)
+      .set({ ...checkin, updatedAt: new Date() })
+      .where(eq(guestCheckins.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async performGuestCheckin(id: number, userId: number): Promise<GuestCheckin | undefined> {
+    const [updated] = await db.update(guestCheckins)
+      .set({ 
+        status: "CHECKED_IN", 
+        actualCheckinTime: new Date(), 
+        checkedInByUserId: userId,
+        updatedAt: new Date() 
+      })
+      .where(eq(guestCheckins.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async performGuestCheckout(id: number, userId: number): Promise<GuestCheckin | undefined> {
+    const [updated] = await db.update(guestCheckins)
+      .set({ 
+        status: "CHECKED_OUT", 
+        actualCheckoutTime: new Date(), 
+        checkedOutByUserId: userId,
+        updatedAt: new Date() 
+      })
+      .where(eq(guestCheckins.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteGuestCheckin(id: number): Promise<void> {
+    await db.delete(guestCheckins).where(eq(guestCheckins.id, id));
   }
 
   // =====================================================

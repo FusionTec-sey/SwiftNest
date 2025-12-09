@@ -23,6 +23,9 @@ import {
   CalendarDays,
   FolderOpen,
   Briefcase,
+  RefreshCw,
+  SprayCan,
+  LogIn,
 } from "lucide-react";
 import {
   Sidebar,
@@ -49,6 +52,12 @@ const propertyOperationsNavItems = [
   { href: "tasks", label: "Tasks", icon: ClipboardList },
   { href: "documents", label: "Documents", icon: FolderOpen },
   { href: "calendar", label: "Calendar", icon: CalendarDays },
+];
+
+const shortTermRentalNavItems = [
+  { href: "turnovers", label: "Turnovers", icon: RefreshCw },
+  { href: "cleaning", label: "Cleaning Checklists", icon: SprayCan },
+  { href: "guest-checkin", label: "Guest Check-in", icon: LogIn },
 ];
 
 const portfolioNavItems = [
@@ -189,6 +198,20 @@ export function AppSidebar() {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
+
+            {activeProperty?.usageType === "SHORT_TERM_RENTAL" && (
+              <>
+                <SidebarSeparator />
+                <SidebarGroup>
+                  <SidebarGroupLabel>Short-term Rental</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {shortTermRentalNavItems.map(renderPropertyNavItem)}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              </>
+            )}
 
           </>
         )}

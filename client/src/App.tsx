@@ -36,6 +36,9 @@ import ExpensesPage from "@/pages/expenses-page";
 import AdminPage from "@/pages/admin-page";
 import ExchangeRatesPage from "@/pages/exchange-rates-page";
 import PropertyOperationsPage from "@/pages/property-operations-page";
+import TurnoversPage from "@/pages/turnovers-page";
+import CleaningPage from "@/pages/cleaning-page";
+import GuestCheckinPage from "@/pages/guest-checkin-page";
 
 function ProtectedRoutes() {
   return (
@@ -53,6 +56,9 @@ function ProtectedRoutes() {
       <Route path="/properties/:id/tenants" component={PropertyOperationsPage} />
       <Route path="/properties/:id/leases" component={PropertyOperationsPage} />
       <Route path="/properties/:id/rent" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/turnovers" component={TurnoversPage} />
+      <Route path="/properties/:id/cleaning" component={CleaningPage} />
+      <Route path="/properties/:id/guest-checkin" component={GuestCheckinPage} />
       <Route path="/properties/:id" component={PropertyDetailPage} />
       <Route path="/tenants" component={TenantsPage} />
       <Route path="/tenants/:id" component={TenantDetailPage} />

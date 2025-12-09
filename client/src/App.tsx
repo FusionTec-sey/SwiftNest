@@ -39,6 +39,8 @@ import PropertyOperationsPage from "@/pages/property-operations-page";
 import TurnoversPage from "@/pages/turnovers-page";
 import CleaningPage from "@/pages/cleaning-page";
 import GuestCheckinPage from "@/pages/guest-checkin-page";
+import MaintenanceSchedulePage from "@/pages/maintenance-schedule-page";
+import AppliancesPage from "@/pages/appliances-page";
 
 function ProtectedRoutes() {
   return (
@@ -59,6 +61,8 @@ function ProtectedRoutes() {
       <Route path="/properties/:id/turnovers" component={TurnoversPage} />
       <Route path="/properties/:id/cleaning" component={CleaningPage} />
       <Route path="/properties/:id/guest-checkin" component={GuestCheckinPage} />
+      <Route path="/properties/:id/home-maintenance" component={MaintenanceSchedulePage} />
+      <Route path="/properties/:id/appliances" component={AppliancesPage} />
       <Route path="/properties/:id" component={PropertyDetailPage} />
       <Route path="/tenants" component={TenantsPage} />
       <Route path="/tenants/:id" component={TenantDetailPage} />

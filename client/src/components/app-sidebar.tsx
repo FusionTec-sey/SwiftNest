@@ -26,6 +26,8 @@ import {
   RefreshCw,
   SprayCan,
   LogIn,
+  Refrigerator,
+  Clock,
 } from "lucide-react";
 import {
   Sidebar,
@@ -58,6 +60,11 @@ const shortTermRentalNavItems = [
   { href: "turnovers", label: "Turnovers", icon: RefreshCw },
   { href: "cleaning", label: "Cleaning Checklists", icon: SprayCan },
   { href: "guest-checkin", label: "Guest Check-in", icon: LogIn },
+];
+
+const ownerOccupiedNavItems = [
+  { href: "home-maintenance", label: "Home Maintenance", icon: Clock },
+  { href: "appliances", label: "Appliances", icon: Refrigerator },
 ];
 
 const portfolioNavItems = [
@@ -207,6 +214,20 @@ export function AppSidebar() {
                   <SidebarGroupContent>
                     <SidebarMenu>
                       {shortTermRentalNavItems.map(renderPropertyNavItem)}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              </>
+            )}
+
+            {activeProperty?.usageType === "OWNER_OCCUPIED" && (
+              <>
+                <SidebarSeparator />
+                <SidebarGroup>
+                  <SidebarGroupLabel>Home Management</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {ownerOccupiedNavItems.map(renderPropertyNavItem)}
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>

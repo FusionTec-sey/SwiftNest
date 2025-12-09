@@ -2317,6 +2317,166 @@ export type GuestCheckinWithDetails = GuestCheckin & {
 };
 
 // =====================================================
+// OWNER-OCCUPIED TABLES
+// =====================================================
+
+// Maintenance frequency enum
+export const maintenanceFrequencyEnum = pgEnum("maintenance_frequency", [
+  "WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "BIANNUALLY", "ANNUALLY", "AS_NEEDED"
+]);
+
+// Maintenance season enum
+export const maintenanceSeasonEnum = pgEnum("maintenance_season", [
+  "SPRING", "SUMMER", "FALL", "WINTER", "ALL_YEAR"
+]);
+
+// Appliance category enum
+export const applianceCategoryEnum = pgEnum("appliance_category", [
+  "KITCHEN", "LAUNDRY", "HVAC", "PLUMBING", "ELECTRICAL", "OUTDOOR", "SECURITY", "ENTERTAINMENT", "OTHER"
+]);
+
+// Home Maintenance Schedules - recurring maintenance tasks for personal properties
+export const homeMaintenanceSchedules = pgTable("home_maintenance_schedules", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // e.g., "HVAC", "Plumbing", "Exterior", "Interior", "Lawn", "Pool", etc.
+  frequency: maintenanceFrequencyEnum("frequency").notNull().default("ANNUALLY"),
+  preferredSeason: maintenanceSeasonEnum("preferred_season").default("ALL_YEAR"),
+  estimatedCost: decimal("estimated_cost", { precision: 12, scale: 2 }),
+  lastCompletedDate: date("last_completed_date"),
+  nextDueDate: date("next_due_date"),
+  reminderDaysBefore: integer("reminder_days_before").default(14),
+  notes: text("notes"),
+  isActive: integer("is_active").default(1).notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("home_maintenance_property_idx").on(table.propertyId),
+  index("home_maintenance_next_due_idx").on(table.nextDueDate),
+  index("home_maintenance_category_idx").on(table.category),
+]);
+
+// Appliances - track home appliances with warranty and service info
+export const appliances = pgTable("appliances", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  brand: text("brand"),
+  model: text("model"),
+  serialNumber: text("serial_number"),
+  category: applianceCategoryEnum("category").notNull().default("OTHER"),
+  location: text("location"), // e.g., "Kitchen", "Master Bedroom", "Garage"
+  purchaseDate: date("purchase_date"),
+  purchasePrice: decimal("purchase_price", { precision: 12, scale: 2 }),
+  purchaseStore: text("purchase_store"),
+  warrantyStartDate: date("warranty_start_date"),
+  warrantyEndDate: date("warranty_end_date"),
+  warrantyDetails: text("warranty_details"),
+  serviceProviderName: text("service_provider_name"),
+  serviceProviderPhone: text("service_provider_phone"),
+  serviceProviderEmail: text("service_provider_email"),
+  notes: text("notes"),
+  isActive: integer("is_active").default(1).notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("appliances_property_idx").on(table.propertyId),
+  index("appliances_warranty_idx").on(table.warrantyEndDate),
+  index("appliances_category_idx").on(table.category),
+]);
+
+// Appliance Service History - track maintenance/repairs on appliances
+export const applianceServiceHistory = pgTable("appliance_service_history", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  applianceId: integer("appliance_id").notNull().references(() => appliances.id, { onDelete: "cascade" }),
+  serviceDate: date("service_date").notNull(),
+  serviceType: text("service_type").notNull(), // e.g., "Repair", "Maintenance", "Inspection", "Replacement"
+  description: text("description"),
+  servicedBy: text("serviced_by"),
+  cost: decimal("cost", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("service_history_appliance_idx").on(table.applianceId),
+  index("service_history_date_idx").on(table.serviceDate),
+]);
+
+// OWNER-OCCUPIED INSERT SCHEMAS
+export const insertHomeMaintenanceScheduleSchema = createInsertSchema(homeMaintenanceSchedules).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  propertyId: z.number().min(1, "Property is required"),
+  title: z.string().min(1, "Title is required"),
+  category: z.string().min(1, "Category is required"),
+  estimatedCost: z.string().or(z.number()).optional().nullable().transform(val => val ? String(val) : null),
+  lastCompletedDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? val : val.toISOString().split('T')[0];
+  }),
+  nextDueDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? val : val.toISOString().split('T')[0];
+  }),
+});
+
+export const insertApplianceSchema = createInsertSchema(appliances).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  propertyId: z.number().min(1, "Property is required"),
+  name: z.string().min(1, "Appliance name is required"),
+  purchasePrice: z.string().or(z.number()).optional().nullable().transform(val => val ? String(val) : null),
+  purchaseDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? val : val.toISOString().split('T')[0];
+  }),
+  warrantyStartDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? val : val.toISOString().split('T')[0];
+  }),
+  warrantyEndDate: z.string().or(z.date()).optional().nullable().transform((val) => {
+    if (!val) return null;
+    return typeof val === 'string' ? val : val.toISOString().split('T')[0];
+  }),
+});
+
+export const insertApplianceServiceHistorySchema = createInsertSchema(applianceServiceHistory).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+}).extend({
+  applianceId: z.number().min(1, "Appliance is required"),
+  serviceDate: z.string().or(z.date()).transform((val) => typeof val === 'string' ? val : val.toISOString().split('T')[0]),
+  serviceType: z.string().min(1, "Service type is required"),
+});
+
+// Owner-occupied types
+export type HomeMaintenanceSchedule = typeof homeMaintenanceSchedules.$inferSelect;
+export type InsertHomeMaintenanceSchedule = z.infer<typeof insertHomeMaintenanceScheduleSchema>;
+export type Appliance = typeof appliances.$inferSelect;
+export type InsertAppliance = z.infer<typeof insertApplianceSchema>;
+export type ApplianceServiceHistory = typeof applianceServiceHistory.$inferSelect;
+export type InsertApplianceServiceHistory = z.infer<typeof insertApplianceServiceHistorySchema>;
+
+// Extended types for owner-occupied
+export type ApplianceWithDetails = Appliance & {
+  property?: Property | null;
+  unit?: Unit | null;
+  serviceHistory?: ApplianceServiceHistory[];
+};
+
+// =====================================================
 // INSERT SCHEMAS FOR ENTERPRISE MODULES
 // =====================================================
 

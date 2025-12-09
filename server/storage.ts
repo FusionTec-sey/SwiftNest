@@ -182,7 +182,17 @@ import {
   type GuestCheckin,
   type InsertGuestCheckin,
   type TurnoverWithDetails,
-  type GuestCheckinWithDetails
+  type GuestCheckinWithDetails,
+  homeMaintenanceSchedules,
+  appliances,
+  applianceServiceHistory,
+  type HomeMaintenanceSchedule,
+  type InsertHomeMaintenanceSchedule,
+  type Appliance,
+  type InsertAppliance,
+  type ApplianceServiceHistory,
+  type InsertApplianceServiceHistory,
+  type ApplianceWithDetails
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -676,6 +686,30 @@ export interface IStorage {
   performGuestCheckin(id: number, userId: number): Promise<GuestCheckin | undefined>;
   performGuestCheckout(id: number, userId: number): Promise<GuestCheckin | undefined>;
   deleteGuestCheckin(id: number): Promise<void>;
+
+  // =====================================================
+  // OWNER-OCCUPIED MODULE
+  // =====================================================
+  
+  // Home Maintenance Schedules
+  getHomeMaintenanceSchedulesByPropertyId(propertyId: number): Promise<HomeMaintenanceSchedule[]>;
+  getHomeMaintenanceScheduleById(id: number): Promise<HomeMaintenanceSchedule | undefined>;
+  createHomeMaintenanceSchedule(schedule: InsertHomeMaintenanceSchedule & { createdByUserId: number }): Promise<HomeMaintenanceSchedule>;
+  updateHomeMaintenanceSchedule(id: number, schedule: Partial<InsertHomeMaintenanceSchedule>): Promise<HomeMaintenanceSchedule | undefined>;
+  deleteHomeMaintenanceSchedule(id: number): Promise<void>;
+  markMaintenanceComplete(id: number): Promise<HomeMaintenanceSchedule | undefined>;
+  
+  // Appliances
+  getAppliancesByPropertyId(propertyId: number): Promise<ApplianceWithDetails[]>;
+  getApplianceById(id: number): Promise<ApplianceWithDetails | undefined>;
+  createAppliance(appliance: InsertAppliance & { createdByUserId: number }): Promise<Appliance>;
+  updateAppliance(id: number, appliance: Partial<InsertAppliance>): Promise<Appliance | undefined>;
+  deleteAppliance(id: number): Promise<void>;
+  
+  // Appliance Service History
+  getServiceHistoryByApplianceId(applianceId: number): Promise<ApplianceServiceHistory[]>;
+  createServiceHistory(history: InsertApplianceServiceHistory & { createdByUserId: number }): Promise<ApplianceServiceHistory>;
+  deleteServiceHistory(id: number): Promise<void>;
 
   // =====================================================
   // DASHBOARD LAYOUTS MODULE
@@ -4820,6 +4854,244 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGuestCheckin(id: number): Promise<void> {
     await db.delete(guestCheckins).where(eq(guestCheckins.id, id));
+  }
+
+  // =====================================================
+  // OWNER-OCCUPIED MODULE
+  // =====================================================
+
+  async getHomeMaintenanceSchedulesByPropertyId(propertyId: number): Promise<HomeMaintenanceSchedule[]> {
+    return db.select()
+      .from(homeMaintenanceSchedules)
+      .where(and(
+        eq(homeMaintenanceSchedules.propertyId, propertyId),
+        eq(homeMaintenanceSchedules.isActive, 1)
+      ))
+      .orderBy(homeMaintenanceSchedules.nextDueDate);
+  }
+
+  async getHomeMaintenanceScheduleById(id: number): Promise<HomeMaintenanceSchedule | undefined> {
+    const [schedule] = await db.select()
+      .from(homeMaintenanceSchedules)
+      .where(eq(homeMaintenanceSchedules.id, id));
+    return schedule || undefined;
+  }
+
+  async createHomeMaintenanceSchedule(schedule: InsertHomeMaintenanceSchedule & { createdByUserId: number }): Promise<HomeMaintenanceSchedule> {
+    const [created] = await db.insert(homeMaintenanceSchedules).values({
+      propertyId: schedule.propertyId,
+      title: schedule.title,
+      description: schedule.description || null,
+      category: schedule.category,
+      frequency: schedule.frequency || "ANNUALLY",
+      preferredSeason: schedule.preferredSeason || "ALL_YEAR",
+      estimatedCost: schedule.estimatedCost || null,
+      lastCompletedDate: schedule.lastCompletedDate || null,
+      nextDueDate: schedule.nextDueDate || null,
+      reminderDaysBefore: schedule.reminderDaysBefore || 14,
+      notes: schedule.notes || null,
+      isActive: 1,
+      createdByUserId: schedule.createdByUserId,
+    }).returning();
+    return created;
+  }
+
+  async updateHomeMaintenanceSchedule(id: number, schedule: Partial<InsertHomeMaintenanceSchedule>): Promise<HomeMaintenanceSchedule | undefined> {
+    const updateData: any = { updatedAt: new Date() };
+    if (schedule.title !== undefined) updateData.title = schedule.title;
+    if (schedule.description !== undefined) updateData.description = schedule.description;
+    if (schedule.category !== undefined) updateData.category = schedule.category;
+    if (schedule.frequency !== undefined) updateData.frequency = schedule.frequency;
+    if (schedule.preferredSeason !== undefined) updateData.preferredSeason = schedule.preferredSeason;
+    if (schedule.estimatedCost !== undefined) updateData.estimatedCost = schedule.estimatedCost;
+    if (schedule.lastCompletedDate !== undefined) updateData.lastCompletedDate = schedule.lastCompletedDate;
+    if (schedule.nextDueDate !== undefined) updateData.nextDueDate = schedule.nextDueDate;
+    if (schedule.reminderDaysBefore !== undefined) updateData.reminderDaysBefore = schedule.reminderDaysBefore;
+    if (schedule.notes !== undefined) updateData.notes = schedule.notes;
+    if (schedule.isActive !== undefined) updateData.isActive = schedule.isActive;
+
+    const [updated] = await db.update(homeMaintenanceSchedules)
+      .set(updateData)
+      .where(eq(homeMaintenanceSchedules.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteHomeMaintenanceSchedule(id: number): Promise<void> {
+    await db.update(homeMaintenanceSchedules)
+      .set({ isActive: 0, updatedAt: new Date() })
+      .where(eq(homeMaintenanceSchedules.id, id));
+  }
+
+  async markMaintenanceComplete(id: number): Promise<HomeMaintenanceSchedule | undefined> {
+    const schedule = await this.getHomeMaintenanceScheduleById(id);
+    if (!schedule) return undefined;
+
+    const today = new Date();
+    let nextDueDate: Date | null = null;
+
+    // Calculate next due date based on frequency
+    if (schedule.frequency) {
+      nextDueDate = new Date(today);
+      switch (schedule.frequency) {
+        case "WEEKLY":
+          nextDueDate.setDate(nextDueDate.getDate() + 7);
+          break;
+        case "BIWEEKLY":
+          nextDueDate.setDate(nextDueDate.getDate() + 14);
+          break;
+        case "MONTHLY":
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+          break;
+        case "QUARTERLY":
+          nextDueDate.setMonth(nextDueDate.getMonth() + 3);
+          break;
+        case "BIANNUALLY":
+          nextDueDate.setMonth(nextDueDate.getMonth() + 6);
+          break;
+        case "ANNUALLY":
+          nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
+          break;
+        case "AS_NEEDED":
+          nextDueDate = null;
+          break;
+      }
+    }
+
+    const [updated] = await db.update(homeMaintenanceSchedules)
+      .set({
+        lastCompletedDate: today.toISOString().split('T')[0],
+        nextDueDate: nextDueDate ? nextDueDate.toISOString().split('T')[0] : null,
+        updatedAt: new Date()
+      })
+      .where(eq(homeMaintenanceSchedules.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getAppliancesByPropertyId(propertyId: number): Promise<ApplianceWithDetails[]> {
+    const applianceList = await db.select()
+      .from(appliances)
+      .where(and(
+        eq(appliances.propertyId, propertyId),
+        eq(appliances.isActive, 1)
+      ))
+      .orderBy(appliances.name);
+
+    const result: ApplianceWithDetails[] = [];
+    for (const appliance of applianceList) {
+      const serviceHistoryList = await db.select()
+        .from(applianceServiceHistory)
+        .where(eq(applianceServiceHistory.applianceId, appliance.id))
+        .orderBy(desc(applianceServiceHistory.serviceDate));
+      
+      result.push({
+        ...appliance,
+        serviceHistory: serviceHistoryList
+      });
+    }
+    return result;
+  }
+
+  async getApplianceById(id: number): Promise<ApplianceWithDetails | undefined> {
+    const [appliance] = await db.select()
+      .from(appliances)
+      .where(eq(appliances.id, id));
+    if (!appliance) return undefined;
+
+    const serviceHistoryList = await db.select()
+      .from(applianceServiceHistory)
+      .where(eq(applianceServiceHistory.applianceId, id))
+      .orderBy(desc(applianceServiceHistory.serviceDate));
+
+    return {
+      ...appliance,
+      serviceHistory: serviceHistoryList
+    };
+  }
+
+  async createAppliance(appliance: InsertAppliance & { createdByUserId: number }): Promise<Appliance> {
+    const [created] = await db.insert(appliances).values({
+      propertyId: appliance.propertyId,
+      unitId: appliance.unitId || null,
+      name: appliance.name,
+      brand: appliance.brand || null,
+      model: appliance.model || null,
+      serialNumber: appliance.serialNumber || null,
+      category: appliance.category || "OTHER",
+      location: appliance.location || null,
+      purchaseDate: appliance.purchaseDate || null,
+      purchasePrice: appliance.purchasePrice || null,
+      purchaseStore: appliance.purchaseStore || null,
+      warrantyStartDate: appliance.warrantyStartDate || null,
+      warrantyEndDate: appliance.warrantyEndDate || null,
+      warrantyDetails: appliance.warrantyDetails || null,
+      serviceProviderName: appliance.serviceProviderName || null,
+      serviceProviderPhone: appliance.serviceProviderPhone || null,
+      serviceProviderEmail: appliance.serviceProviderEmail || null,
+      notes: appliance.notes || null,
+      isActive: 1,
+      createdByUserId: appliance.createdByUserId,
+    }).returning();
+    return created;
+  }
+
+  async updateAppliance(id: number, appliance: Partial<InsertAppliance>): Promise<Appliance | undefined> {
+    const updateData: any = { updatedAt: new Date() };
+    if (appliance.name !== undefined) updateData.name = appliance.name;
+    if (appliance.brand !== undefined) updateData.brand = appliance.brand;
+    if (appliance.model !== undefined) updateData.model = appliance.model;
+    if (appliance.serialNumber !== undefined) updateData.serialNumber = appliance.serialNumber;
+    if (appliance.category !== undefined) updateData.category = appliance.category;
+    if (appliance.location !== undefined) updateData.location = appliance.location;
+    if (appliance.purchaseDate !== undefined) updateData.purchaseDate = appliance.purchaseDate;
+    if (appliance.purchasePrice !== undefined) updateData.purchasePrice = appliance.purchasePrice;
+    if (appliance.purchaseStore !== undefined) updateData.purchaseStore = appliance.purchaseStore;
+    if (appliance.warrantyStartDate !== undefined) updateData.warrantyStartDate = appliance.warrantyStartDate;
+    if (appliance.warrantyEndDate !== undefined) updateData.warrantyEndDate = appliance.warrantyEndDate;
+    if (appliance.warrantyDetails !== undefined) updateData.warrantyDetails = appliance.warrantyDetails;
+    if (appliance.serviceProviderName !== undefined) updateData.serviceProviderName = appliance.serviceProviderName;
+    if (appliance.serviceProviderPhone !== undefined) updateData.serviceProviderPhone = appliance.serviceProviderPhone;
+    if (appliance.serviceProviderEmail !== undefined) updateData.serviceProviderEmail = appliance.serviceProviderEmail;
+    if (appliance.notes !== undefined) updateData.notes = appliance.notes;
+    if (appliance.isActive !== undefined) updateData.isActive = appliance.isActive;
+
+    const [updated] = await db.update(appliances)
+      .set(updateData)
+      .where(eq(appliances.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteAppliance(id: number): Promise<void> {
+    await db.update(appliances)
+      .set({ isActive: 0, updatedAt: new Date() })
+      .where(eq(appliances.id, id));
+  }
+
+  async getServiceHistoryByApplianceId(applianceId: number): Promise<ApplianceServiceHistory[]> {
+    return db.select()
+      .from(applianceServiceHistory)
+      .where(eq(applianceServiceHistory.applianceId, applianceId))
+      .orderBy(desc(applianceServiceHistory.serviceDate));
+  }
+
+  async createServiceHistory(history: InsertApplianceServiceHistory & { createdByUserId: number }): Promise<ApplianceServiceHistory> {
+    const [created] = await db.insert(applianceServiceHistory).values({
+      applianceId: history.applianceId,
+      serviceDate: history.serviceDate,
+      serviceType: history.serviceType,
+      description: history.description || null,
+      servicedBy: history.servicedBy || null,
+      cost: history.cost || null,
+      notes: history.notes || null,
+      createdByUserId: history.createdByUserId,
+    }).returning();
+    return created;
+  }
+
+  async deleteServiceHistory(id: number): Promise<void> {
+    await db.delete(applianceServiceHistory).where(eq(applianceServiceHistory.id, id));
   }
 
   // =====================================================

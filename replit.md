@@ -34,6 +34,8 @@ Preferred communication style: Simple, everyday language.
     -   **Inventory Management:** Tree-based tracking system for items, categories, and warehouse locations with movement audit trails.
     -   **Tenant Onboarding Workflow:** Staged process for new tenant move-ins, including condition checklists with photo attachments, digital signatures, integration with maintenance for damage reporting, and inventory handover.
     -   **Tenant Outboarding Workflow:** Complete move-out process with 5 stages (Notice Received, Exit Inspection, Inventory Return, Deposit Settlement, Final Checkout). Features exit condition checklist comparing against move-in records, automated deposit deduction tracking with itemized reasons (damage, cleaning, unpaid rent, etc.), refund calculation, and lease status updates upon completion.
+    -   **Short-Term Rental Module:** Turnover management with cleaning assignments, cleaning checklists with category-based templates, and guest check-in tracking with guest counts and arrivals.
+    -   **Owner-Occupied Module:** Home maintenance schedule tracking with recurring tasks (frequency-based), appliance and warranty management with service history tracking.
     -   **Multi-Currency Support (Foundation):** Support for 30 world currencies, `exchange_rates` table, property-specific base currencies, and consistent currency formatting across financial pages.
     -   **Automation Features:** Integration between maintenance and expenses, onboarding auto-advance, lease renewal reminders, rent invoice auto-generation, and late fee calculation.
 -   **Data Validation:** Zod schemas for runtime validation.

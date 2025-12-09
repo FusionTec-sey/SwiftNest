@@ -11,6 +11,40 @@ export const occupancyPurposeEnum = pgEnum("occupancy_purpose", ["OWNER_OCCUPIED
 export const unitStatusEnum = pgEnum("unit_status", ["VACANT", "OCCUPIED"]);
 export const nodeTypeEnum = pgEnum("node_type", ["BUILDING", "FLOOR", "FLAT", "VILLA", "ROOM", "BED", "SECTION", "PLOT", "CUSTOM"]);
 
+// Currency enum - major world currencies
+export const currencyCodeEnum = pgEnum("currency_code", [
+  "USD", // US Dollar
+  "EUR", // Euro
+  "GBP", // British Pound
+  "INR", // Indian Rupee
+  "AED", // UAE Dirham
+  "SCR", // Seychellois Rupee
+  "CAD", // Canadian Dollar
+  "AUD", // Australian Dollar
+  "SGD", // Singapore Dollar
+  "CHF", // Swiss Franc
+  "JPY", // Japanese Yen
+  "CNY", // Chinese Yuan
+  "ZAR", // South African Rand
+  "NZD", // New Zealand Dollar
+  "HKD", // Hong Kong Dollar
+  "SAR", // Saudi Riyal
+  "QAR", // Qatari Riyal
+  "KWD", // Kuwaiti Dinar
+  "BHD", // Bahraini Dinar
+  "OMR", // Omani Rial
+  "MYR", // Malaysian Ringgit
+  "THB", // Thai Baht
+  "IDR", // Indonesian Rupiah
+  "PHP", // Philippine Peso
+  "MXN", // Mexican Peso
+  "BRL", // Brazilian Real
+  "RUB", // Russian Ruble
+  "KRW", // South Korean Won
+  "TRY", // Turkish Lira
+  "PKR"  // Pakistani Rupee
+]);
+
 // Users table
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -31,6 +65,26 @@ export const users = pgTable("users", {
   index("users_email_idx").on(table.email),
 ]);
 
+// =====================================================
+// EXCHANGE RATES TABLE
+// =====================================================
+
+export const exchangeRates = pgTable("exchange_rates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  baseCurrency: currencyCodeEnum("base_currency").notNull(),
+  quoteCurrency: currencyCodeEnum("quote_currency").notNull(),
+  rate: decimal("rate", { precision: 18, scale: 8 }).notNull(), // High precision for currency conversion
+  effectiveDate: date("effective_date").notNull(),
+  source: text("source").default("MANUAL"), // e.g., "MANUAL", "ECB", "FIXER", etc.
+  isActive: integer("is_active").default(1).notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("exchange_rates_base_quote_idx").on(table.baseCurrency, table.quoteCurrency),
+  index("exchange_rates_effective_date_idx").on(table.effectiveDate),
+]);
+
 // Properties table
 export const properties = pgTable("properties", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -39,6 +93,7 @@ export const properties = pgTable("properties", {
   name: text("name").notNull(),
   propertyType: propertyTypeEnum("property_type").notNull(),
   occupancyPurpose: occupancyPurposeEnum("occupancy_purpose").default("RENTAL"),
+  currencyCode: currencyCodeEnum("currency_code").default("USD"), // Property's base currency for financial transactions
   addressLine1: text("address_line1").notNull(),
   addressLine2: text("address_line2"),
   city: text("city").notNull(),
@@ -426,6 +481,61 @@ export const insertUserSchema = createInsertSchema(users).omit({
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
   name: z.string().min(2, "Name must be at least 2 characters"),
 });
+
+// Exchange rates schema
+export const insertExchangeRateSchema = createInsertSchema(exchangeRates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  rate: z.string().min(1, "Exchange rate is required"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+});
+export type InsertExchangeRate = z.infer<typeof insertExchangeRateSchema>;
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+
+// Supported currency codes list for UI
+export const CURRENCY_CODES = [
+  "USD", "EUR", "GBP", "INR", "AED", "SCR", "CAD", "AUD", "SGD", "CHF",
+  "JPY", "CNY", "ZAR", "NZD", "HKD", "SAR", "QAR", "KWD", "BHD", "OMR",
+  "MYR", "THB", "IDR", "PHP", "MXN", "BRL", "RUB", "KRW", "TRY", "PKR"
+] as const;
+
+export type CurrencyCode = typeof CURRENCY_CODES[number];
+
+// Currency metadata for display
+export const CURRENCY_INFO: Record<CurrencyCode, { name: string; symbol: string; decimals: number }> = {
+  USD: { name: "US Dollar", symbol: "$", decimals: 2 },
+  EUR: { name: "Euro", symbol: "€", decimals: 2 },
+  GBP: { name: "British Pound", symbol: "£", decimals: 2 },
+  INR: { name: "Indian Rupee", symbol: "₹", decimals: 2 },
+  AED: { name: "UAE Dirham", symbol: "د.إ", decimals: 2 },
+  SCR: { name: "Seychellois Rupee", symbol: "₨", decimals: 2 },
+  CAD: { name: "Canadian Dollar", symbol: "C$", decimals: 2 },
+  AUD: { name: "Australian Dollar", symbol: "A$", decimals: 2 },
+  SGD: { name: "Singapore Dollar", symbol: "S$", decimals: 2 },
+  CHF: { name: "Swiss Franc", symbol: "CHF", decimals: 2 },
+  JPY: { name: "Japanese Yen", symbol: "¥", decimals: 0 },
+  CNY: { name: "Chinese Yuan", symbol: "¥", decimals: 2 },
+  ZAR: { name: "South African Rand", symbol: "R", decimals: 2 },
+  NZD: { name: "New Zealand Dollar", symbol: "NZ$", decimals: 2 },
+  HKD: { name: "Hong Kong Dollar", symbol: "HK$", decimals: 2 },
+  SAR: { name: "Saudi Riyal", symbol: "﷼", decimals: 2 },
+  QAR: { name: "Qatari Riyal", symbol: "﷼", decimals: 2 },
+  KWD: { name: "Kuwaiti Dinar", symbol: "د.ك", decimals: 3 },
+  BHD: { name: "Bahraini Dinar", symbol: ".د.ب", decimals: 3 },
+  OMR: { name: "Omani Rial", symbol: "﷼", decimals: 3 },
+  MYR: { name: "Malaysian Ringgit", symbol: "RM", decimals: 2 },
+  THB: { name: "Thai Baht", symbol: "฿", decimals: 2 },
+  IDR: { name: "Indonesian Rupiah", symbol: "Rp", decimals: 0 },
+  PHP: { name: "Philippine Peso", symbol: "₱", decimals: 2 },
+  MXN: { name: "Mexican Peso", symbol: "$", decimals: 2 },
+  BRL: { name: "Brazilian Real", symbol: "R$", decimals: 2 },
+  RUB: { name: "Russian Ruble", symbol: "₽", decimals: 2 },
+  KRW: { name: "South Korean Won", symbol: "₩", decimals: 0 },
+  TRY: { name: "Turkish Lira", symbol: "₺", decimals: 2 },
+  PKR: { name: "Pakistani Rupee", symbol: "₨", decimals: 2 },
+};
 
 export const insertPropertySchema = createInsertSchema(properties).omit({
   id: true,
@@ -868,6 +978,10 @@ export const rentInvoices = pgTable("rent_invoices", {
   otherCharges: decimal("other_charges", { precision: 12, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
   amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default("0"),
+  // Multi-currency support
+  currencyCode: currencyCodeEnum("currency_code").default("USD"), // Transaction currency
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).default("1"), // Rate at transaction time
+  totalAmountBase: decimal("total_amount_base", { precision: 12, scale: 2 }), // Amount in property's base currency
   status: invoiceStatusEnum("status").notNull().default("DRAFT"),
   dueDate: timestamp("due_date").notNull(),
   issuedAt: timestamp("issued_at"),
@@ -893,6 +1007,10 @@ export const payments = pgTable("payments", {
   payerId: integer("payer_id").notNull(),
   paymentDate: timestamp("payment_date").notNull(),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  // Multi-currency support
+  currencyCode: currencyCodeEnum("currency_code").default("USD"), // Payment currency
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).default("1"), // Rate at payment time
+  amountBase: decimal("amount_base", { precision: 12, scale: 2 }), // Amount in property's base currency
   paymentMethod: paymentMethodEnum("payment_method").notNull().default("BANK_TRANSFER"),
   reference: text("reference"),
   appliedToType: appliedToTypeEnum("applied_to_type").notNull(),
@@ -965,6 +1083,11 @@ export const ledgerLines = pgTable("ledger_lines", {
   accountId: integer("account_id").notNull().references(() => chartOfAccounts.id),
   debit: decimal("debit", { precision: 14, scale: 2 }).default("0"),
   credit: decimal("credit", { precision: 14, scale: 2 }).default("0"),
+  // Multi-currency support - original transaction currency
+  currencyCode: currencyCodeEnum("currency_code").default("USD"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).default("1"),
+  debitBase: decimal("debit_base", { precision: 14, scale: 2 }).default("0"), // Debit in reporting currency
+  creditBase: decimal("credit_base", { precision: 14, scale: 2 }).default("0"), // Credit in reporting currency
   relatedType: text("related_type"),
   relatedId: integer("related_id"),
   memo: text("memo"),
@@ -1318,6 +1441,10 @@ export const expenses = pgTable("expenses", {
   amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
   taxAmount: decimal("tax_amount", { precision: 14, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 14, scale: 2 }).notNull(),
+  // Multi-currency support
+  currencyCode: currencyCodeEnum("currency_code").default("USD"), // Expense currency
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).default("1"), // Rate at expense time
+  totalAmountBase: decimal("total_amount_base", { precision: 14, scale: 2 }), // Amount in property's base currency
   expenseDate: timestamp("expense_date").notNull(),
   // Vendor information
   vendorName: text("vendor_name"),

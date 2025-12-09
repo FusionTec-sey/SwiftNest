@@ -41,6 +41,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/use-auth";
@@ -96,6 +97,14 @@ export function AppSidebar() {
   const { user, logoutMutation } = useAuth();
   const { activeProperty, activePropertyId } = useActiveProperty();
   const [location] = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  // Close sidebar on mobile when navigating
+  const closeMobileSidebar = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   const getInitials = (name: string) => {
     return name
@@ -128,6 +137,7 @@ export function AppSidebar() {
         >
           <Link 
             href={item.href} 
+            onClick={closeMobileSidebar}
             data-testid={`sidebar-link-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
@@ -151,6 +161,7 @@ export function AppSidebar() {
         >
           <Link 
             href={fullHref} 
+            onClick={closeMobileSidebar}
             data-testid={`sidebar-link-property-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
@@ -167,7 +178,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild tooltip="SwiftNest">
-              <Link href="/" data-testid="sidebar-logo" aria-label="SwiftNest Home">
+              <Link href="/" onClick={closeMobileSidebar} data-testid="sidebar-logo" aria-label="SwiftNest Home">
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary" aria-hidden="true">
                   <Building2 className="h-5 w-5 text-primary-foreground" />
                 </div>
@@ -265,6 +276,7 @@ export function AppSidebar() {
                 >
                   <Link 
                     href="/properties/deleted" 
+                    onClick={closeMobileSidebar}
                     data-testid="sidebar-link-deleted-properties"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -280,6 +292,7 @@ export function AppSidebar() {
                 >
                   <Link 
                     href="/settings" 
+                    onClick={closeMobileSidebar}
                     data-testid="sidebar-link-settings"
                   >
                     <Settings className="h-4 w-4" aria-hidden="true" />
@@ -296,6 +309,7 @@ export function AppSidebar() {
                   >
                     <Link 
                       href="/admin" 
+                      onClick={closeMobileSidebar}
                       data-testid="sidebar-link-admin"
                     >
                       <ShieldCheck className="h-4 w-4" aria-hidden="true" />

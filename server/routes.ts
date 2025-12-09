@@ -1576,7 +1576,7 @@ export async function registerRoutes(
       if (!access.canAccess) {
         return res.status(403).json({ message: "Access denied" });
       }
-      if (!access.isOwner && access.role !== "EDITOR") {
+      if (!access.isOwner && access.role !== "EDITOR" && access.role !== "SUPER_ADMIN") {
         return res.status(403).json({ message: "Only owners and editors can create schedules" });
       }
 
@@ -1610,7 +1610,7 @@ export async function registerRoutes(
       if (!access.canAccess) {
         return res.status(403).json({ message: "Access denied" });
       }
-      if (!access.isOwner && access.role !== "EDITOR") {
+      if (!access.isOwner && access.role !== "EDITOR" && access.role !== "SUPER_ADMIN") {
         return res.status(403).json({ message: "Only owners and editors can update schedules" });
       }
 

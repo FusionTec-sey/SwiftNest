@@ -22,6 +22,7 @@ export default function MaintenancePage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<TaskWithDetails | null>(null);
   const [issueExpenseDialogOpen, setIssueExpenseDialogOpen] = useState(false);
@@ -29,7 +30,7 @@ export default function MaintenancePage() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseVendor, setExpenseVendor] = useState("");
-  const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
+  const [selectedOwnerId, setSelectedOwnerId] = useState("");
 
   const { data: property, isLoading: propertyLoading } = useQuery<Property & { units: any[]; userRole: string; isOwner: boolean }>({
     queryKey: ["/api/properties", propertyId],
@@ -199,6 +200,35 @@ export default function MaintenancePage() {
     },
   });
 
+  const createScheduleMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", `/api/properties/${propertyId}/maintenance/schedules`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/properties/${propertyId}/maintenance/schedules`] });
+      setScheduleDialogOpen(false);
+      toast({ title: "Recurring schedule created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create schedule", variant: "destructive" });
+    },
+  });
+
+  const runScheduleMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      return apiRequest("POST", `/api/maintenance/schedules/${scheduleId}/run`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/properties/${propertyId}/maintenance/tasks`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/properties/${propertyId}/maintenance/schedules`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/properties/${propertyId}/maintenance/stats`] });
+      toast({ title: "Task created from schedule" });
+    },
+    onError: () => {
+      toast({ title: "Failed to run schedule", variant: "destructive" });
+    },
+  });
+
   if (propertyLoading || statsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -215,7 +245,7 @@ export default function MaintenancePage() {
     );
   }
 
-  const canEdit = property.isOwner || property.userRole === "EDITOR";
+  const canEdit = property.isOwner || property.userRole === "EDITOR" || property.userRole === "SUPER_ADMIN";
 
   const severityColors: Record<string, string> = {
     LOW: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -930,42 +960,76 @@ export default function MaintenancePage() {
 
           <TabsContent value="schedules" className="space-y-4">
             <Card>
-              <CardHeader>
-                <CardTitle>Maintenance Schedules</CardTitle>
-                <CardDescription>Recurring maintenance schedules</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+                <div>
+                  <CardTitle>Recurring Schedules</CardTitle>
+                  <CardDescription>Automatically create tasks on a recurring basis</CardDescription>
+                </div>
+                {canEdit && (
+                  <Button onClick={() => setScheduleDialogOpen(true)} data-testid="button-create-schedule">
+                    <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+                    Create Schedule
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {schedules.length === 0 ? (
                   <div className="text-center py-8">
-                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true" />
                     <p className="text-muted-foreground">No schedules set up</p>
+                    {canEdit && (
+                      <Button variant="outline" className="mt-4" onClick={() => setScheduleDialogOpen(true)} data-testid="button-create-schedule-empty">
+                        Create a Recurring Schedule
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {schedules.map((schedule) => (
-                      <div key={schedule.id} className="flex items-center justify-between gap-4 border rounded-lg p-4">
+                      <div key={schedule.id} className="flex items-center justify-between gap-4 border rounded-lg p-4 flex-wrap">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-medium" data-testid={`text-schedule-title-${schedule.id}`}>{schedule.title}</h3>
+                            <Badge variant="secondary">{schedule.cadence}</Badge>
                             {!schedule.isActive && (
                               <Badge variant="outline">Inactive</Badge>
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">{schedule.description || "No description"}</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Category: {schedule.category} | Cadence: {schedule.cadence}
+                            Category: {schedule.category} | Priority: {schedule.priority}
                           </p>
                         </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          {schedule.nextRunAt && (
-                            <Badge variant="outline">
-                              Next: {new Date(schedule.nextRunAt).toLocaleDateString()}
-                            </Badge>
-                          )}
-                          {schedule.lastRunAt && (
-                            <span className="text-xs text-muted-foreground">
-                              Last: {new Date(schedule.lastRunAt).toLocaleDateString()}
-                            </span>
+                        <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+                          <div className="flex flex-col items-end gap-1">
+                            {schedule.nextRunAt && (
+                              <Badge variant="outline">
+                                Next: {new Date(schedule.nextRunAt).toLocaleDateString()}
+                              </Badge>
+                            )}
+                            {schedule.lastRunAt && (
+                              <span className="text-xs text-muted-foreground">
+                                Last: {new Date(schedule.lastRunAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          {canEdit && schedule.isActive && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => runScheduleMutation.mutate(schedule.id)}
+                              disabled={runScheduleMutation.isPending}
+                              data-testid={`button-run-schedule-${schedule.id}`}
+                            >
+                              {runScheduleMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <>
+                                  <Clock className="h-4 w-4 mr-1" aria-hidden="true" />
+                                  Run Now
+                                </>
+                              )}
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -1158,6 +1222,147 @@ export default function MaintenancePage() {
               Create Expense
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" aria-hidden="true" />
+              Create Recurring Schedule
+            </DialogTitle>
+            <DialogDescription>
+              Set up automatic task creation on a schedule
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.target as HTMLFormElement;
+              const formData = new FormData(form);
+              createScheduleMutation.mutate({
+                title: formData.get("title"),
+                description: formData.get("description"),
+                category: formData.get("category"),
+                priority: formData.get("priority"),
+                cadence: formData.get("cadence"),
+                estimatedDurationMinutes: formData.get("duration") ? parseInt(formData.get("duration") as string) : null,
+                defaultAssignedMemberId: formData.get("assignee") ? parseInt(formData.get("assignee") as string) : null,
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="schedule-title">Title</Label>
+              <Input
+                id="schedule-title"
+                name="title"
+                placeholder="e.g., Monthly HVAC Filter Change"
+                required
+                data-testid="input-schedule-title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-description">Description</Label>
+              <Textarea
+                id="schedule-description"
+                name="description"
+                placeholder="Describe what needs to be done..."
+                data-testid="input-schedule-description"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="schedule-category">Category</Label>
+                <Select name="category" defaultValue="GENERAL">
+                  <SelectTrigger id="schedule-category" data-testid="select-schedule-category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ELECTRICAL">Electrical</SelectItem>
+                    <SelectItem value="PLUMBING">Plumbing</SelectItem>
+                    <SelectItem value="HVAC">HVAC</SelectItem>
+                    <SelectItem value="STRUCTURAL">Structural</SelectItem>
+                    <SelectItem value="CLEANING">Cleaning</SelectItem>
+                    <SelectItem value="PEST_CONTROL">Pest Control</SelectItem>
+                    <SelectItem value="APPLIANCE">Appliance</SelectItem>
+                    <SelectItem value="GENERAL">General</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-priority">Priority</Label>
+                <Select name="priority" defaultValue="MEDIUM">
+                  <SelectTrigger id="schedule-priority" data-testid="select-schedule-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="URGENT">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="schedule-cadence">Frequency</Label>
+                <Select name="cadence" defaultValue="MONTHLY">
+                  <SelectTrigger id="schedule-cadence" data-testid="select-schedule-cadence">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DAILY">Daily</SelectItem>
+                    <SelectItem value="WEEKLY">Weekly</SelectItem>
+                    <SelectItem value="MONTHLY">Monthly</SelectItem>
+                    <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                    <SelectItem value="YEARLY">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-duration">Est. Duration (min)</Label>
+                <Input
+                  id="schedule-duration"
+                  name="duration"
+                  type="number"
+                  min="0"
+                  placeholder="60"
+                  data-testid="input-schedule-duration"
+                />
+              </div>
+            </div>
+            {team.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="schedule-assignee">Default Assignee (optional)</Label>
+                <Select name="assignee">
+                  <SelectTrigger id="schedule-assignee" data-testid="select-schedule-assignee">
+                    <SelectValue placeholder="Select team member..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {team.map((member) => (
+                      <SelectItem key={member.id} value={String(member.id)}>
+                        {member.user?.name || "Unknown"} ({member.role})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createScheduleMutation.isPending} data-testid="button-submit-schedule">
+                {createScheduleMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                )}
+                Create Schedule
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

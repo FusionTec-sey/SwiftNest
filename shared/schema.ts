@@ -2542,6 +2542,10 @@ export const insertLeaseSchema = createInsertSchema(leases).omit({
   updatedAt: true,
 }).extend({
   rentAmount: z.string().or(z.number()).transform(val => String(val)),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+  nextInvoiceDate: z.coerce.date().optional().nullable(),
+  lastInvoiceGeneratedAt: z.coerce.date().optional().nullable(),
 });
 
 // Rent invoice schemas

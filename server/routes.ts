@@ -444,7 +444,8 @@ export async function registerRoutes(
       }
 
       const access = await storage.canUserAccessProperty(propertyId, req.user!.id);
-      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+      const canEdit = access.isOwner || access.role === "EDITOR" || access.role === "SUPER_ADMIN";
+      if (!access.canAccess || !canEdit) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -475,7 +476,8 @@ export async function registerRoutes(
       }
 
       const access = await storage.canUserAccessProperty(unit.propertyId, req.user!.id);
-      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+      const canEdit = access.isOwner || access.role === "EDITOR" || access.role === "SUPER_ADMIN";
+      if (!access.canAccess || !canEdit) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -506,7 +508,8 @@ export async function registerRoutes(
       }
 
       const access = await storage.canUserAccessProperty(unit.propertyId, req.user!.id);
-      if (!access.canAccess || (!access.isOwner && access.role !== "EDITOR")) {
+      const canEdit = access.isOwner || access.role === "EDITOR" || access.role === "SUPER_ADMIN";
+      if (!access.canAccess || !canEdit) {
         return res.status(403).json({ message: "Access denied" });
       }
 

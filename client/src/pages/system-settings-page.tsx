@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import { 
   Settings, 
   DollarSign, 
@@ -17,7 +18,8 @@ import {
   Wrench, 
   Zap,
   Save,
-  Loader2
+  Loader2,
+  ShieldX
 } from "lucide-react";
 
 type SettingValue = {
@@ -31,11 +33,25 @@ type SettingsMap = Record<string, SettingValue>;
 
 export default function SystemSettingsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("financial");
 
   const { data: settings, isLoading } = useQuery<SettingsMap>({
     queryKey: ["/api/settings"],
+    enabled: !!user?.isSuperAdmin,
   });
+
+  if (!user?.isSuperAdmin) {
+    return (
+      <AppLayout breadcrumbs={[{ label: "System Settings", href: "/system-settings" }]}>
+        <div className="flex flex-col items-center justify-center h-64 gap-4">
+          <ShieldX className="h-16 w-16 text-muted-foreground" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">You need admin privileges to access system settings.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   if (isLoading) {
     return (

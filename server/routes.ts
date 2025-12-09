@@ -5140,8 +5140,8 @@ export async function registerRoutes(
   // SYSTEM SETTINGS API
   // =====================================================
 
-  // Get all settings for current user
-  app.get("/api/settings", requireAuth, async (req, res, next) => {
+  // Get all settings for current user (admin only)
+  app.get("/api/settings", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
       const userId = req.user!.id;
       
@@ -5167,8 +5167,8 @@ export async function registerRoutes(
     }
   });
 
-  // Get settings by category
-  app.get("/api/settings/:category", requireAuth, async (req, res, next) => {
+  // Get settings by category (admin only)
+  app.get("/api/settings/:category", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
       const userId = req.user!.id;
       const { category } = req.params;
@@ -5196,8 +5196,8 @@ export async function registerRoutes(
     }
   });
 
-  // Update settings (batch update)
-  app.put("/api/settings", requireAuth, async (req, res, next) => {
+  // Update settings (batch update, admin only)
+  app.put("/api/settings", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
       const userId = req.user!.id;
       const { settings } = req.body;
@@ -5225,8 +5225,8 @@ export async function registerRoutes(
     }
   });
 
-  // Update single setting
-  app.put("/api/settings/:key", requireAuth, async (req, res, next) => {
+  // Update single setting (admin only)
+  app.put("/api/settings/:key", requireAuth, superAdminMiddleware, async (req, res, next) => {
     try {
       const userId = req.user!.id;
       const { key } = req.params;

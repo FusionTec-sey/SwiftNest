@@ -16,7 +16,13 @@ import {
   Receipt,
   Building2,
   MapPin,
-  ArrowLeft
+  ArrowLeft,
+  RefreshCw,
+  SprayCan,
+  LogIn,
+  Clock,
+  Thermometer,
+  Shield
 } from "lucide-react";
 
 const usageTypeLabels: Record<string, { label: string; description: string }> = {
@@ -193,6 +199,63 @@ export default function PropertyOperationsPage() {
     },
   ];
 
+  const shortTermCards = [
+    {
+      title: "Turnovers",
+      description: "Guest check-in/out and room turnovers",
+      icon: RefreshCw,
+      href: `${basePath}/turnovers`,
+      path: "turnovers",
+      comingSoon: true,
+    },
+    {
+      title: "Cleaning Checklists",
+      description: "Cleaning tasks and quality control",
+      icon: SprayCan,
+      href: `${basePath}/cleaning`,
+      path: "cleaning",
+      comingSoon: true,
+    },
+    {
+      title: "Quick Check-in",
+      description: "Express guest arrival and departure",
+      icon: LogIn,
+      href: `${basePath}/check-in`,
+      path: "check-in",
+      comingSoon: true,
+    },
+  ];
+
+  const ownerOccupiedCards = [
+    {
+      title: "Home Maintenance",
+      description: "Scheduled maintenance and reminders",
+      icon: Clock,
+      href: `${basePath}/home-maintenance`,
+      path: "home-maintenance",
+      comingSoon: true,
+    },
+    {
+      title: "Appliances & Warranties",
+      description: "Track appliances, manuals, and warranty dates",
+      icon: Thermometer,
+      href: `${basePath}/appliances`,
+      path: "appliances",
+      comingSoon: true,
+    },
+    {
+      title: "Insurance & Protection",
+      description: "Home insurance and coverage tracking",
+      icon: Shield,
+      href: `${basePath}/insurance`,
+      path: "insurance",
+      comingSoon: true,
+    },
+  ];
+
+  const isShortTermRental = property.usageType === "SHORT_TERM_RENTAL";
+  const isOwnerOccupied = property.usageType === "OWNER_OCCUPIED";
+
   return (
     <div className="container max-w-4xl py-8 px-4 space-y-8">
       <div className="flex items-start gap-4">
@@ -241,6 +304,36 @@ export default function PropertyOperationsPage() {
           <h2 className="text-lg font-semibold">Tenants & Leases</h2>
           <div className="grid gap-3">
             {tenantCards.map((card) => (
+              <OperationCard
+                key={card.path}
+                {...card}
+                isActive={currentPath === card.path}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isShortTermRental && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">Guest Operations</h2>
+          <div className="grid gap-3">
+            {shortTermCards.map((card) => (
+              <OperationCard
+                key={card.path}
+                {...card}
+                isActive={currentPath === card.path}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isOwnerOccupied && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">Home Management</h2>
+          <div className="grid gap-3">
+            {ownerOccupiedCards.map((card) => (
               <OperationCard
                 key={card.path}
                 {...card}

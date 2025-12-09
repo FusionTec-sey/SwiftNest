@@ -29,7 +29,12 @@ Default admin/test account for all testing:
     -   `AppSidebar`: Collapsible navigation sidebar with grouped menu items (Overview, People, Operations, Finance, System).
 -   **UI/UX Features:**
     -   Responsive sidebar navigation that collapses to icon-only mode.
-    -   Dashboard with alerts (overdue rent, expiring leases), quick actions, and financial summary cards.
+    -   **Permission-Aware Dashboard:** Dynamic widget system with role-based defaults:
+        -   Widget Registry (`client/src/lib/widget-registry.ts`): Defines 10 widget types with required permissions
+        -   Widgets: property_overview, financial_summary, rent_collection, pending_expenses, maintenance_overview, compliance_alerts, quick_actions, recent_activity, occupancy_chart, tenant_summary
+        -   Permission Filtering: Widgets only display if user has ALL required permissions
+        -   Default Layouts: Role-specific widget configurations for SUPER_ADMIN, PROPERTY_MANAGER, ACCOUNTANT, MAINTENANCE_SUPERVISOR, COMPLIANCE_OFFICER, VIEWER
+        -   Dashboard Endpoints: `/api/dashboard/layout`, `/api/dashboard/summary`, `/api/dashboard/pending-tasks`
     -   Form layouts with section headers and responsive grids (2-column on desktop, stacked on mobile).
     -   Responsive data tables with horizontal scroll and column hiding on smaller screens.
     -   Accessibility: aria-hidden on decorative icons, aria-labels on toggles, role attributes on landmarks.

@@ -3521,6 +3521,16 @@ export async function registerRoutes(
     }
   });
 
+  // Dashboard Summary (alias for widgets)
+  app.get("/api/dashboard/summary", requireAuth, async (req, res, next) => {
+    try {
+      const summary = await storage.getDashboardSummary(req.user!.id);
+      res.json(summary);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // Dashboard Pending Tasks - aggregates actionable items across properties
   app.get("/api/dashboard/pending-tasks", requireAuth, async (req, res, next) => {
     try {
@@ -4865,6 +4875,170 @@ export async function registerRoutes(
 
   // Serve expense attachments
   app.use("/uploads/expense-attachments", express.static(expenseAttachmentsDir));
+
+  // =====================================================
+  // DASHBOARD LAYOUT API
+  // =====================================================
+
+  // Get effective dashboard layout for current user
+  app.get("/api/dashboard/layout", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Check for user-specific layout first
+      const userLayout = await storage.getDashboardLayoutByUser(userId);
+      if (userLayout) {
+        return res.json({
+          layoutId: userLayout.id,
+          layoutName: userLayout.name,
+          source: "USER",
+          widgets: userLayout.widgets,
+        });
+      }
+
+      // Fall back to role-based layout
+      const userRoleId = await storage.getUserPrimaryRoleId(userId);
+      if (userRoleId) {
+        const roleLayout = await storage.getDefaultLayoutForRole(userRoleId);
+        if (roleLayout) {
+          return res.json({
+            layoutId: roleLayout.id,
+            layoutName: roleLayout.name,
+            source: "ROLE",
+            widgets: roleLayout.widgets,
+          });
+        }
+      }
+
+      // Return default layout (computed on client based on permissions)
+      res.json({
+        layoutId: null,
+        layoutName: "Default Layout",
+        source: "DEFAULT",
+        widgets: [],
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get all dashboard layouts (admin only)
+  app.get("/api/dashboard/layouts", requireAuth, requirePermission("dashboard.manage"), async (req, res, next) => {
+    try {
+      const layouts = await storage.getAllDashboardLayouts();
+      res.json(layouts);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get dashboard layout by ID
+  app.get("/api/dashboard/layouts/:id", requireAuth, requirePermission("dashboard.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid layout ID" });
+      }
+
+      const layout = await storage.getDashboardLayoutById(id);
+      if (!layout) {
+        return res.status(404).json({ message: "Layout not found" });
+      }
+
+      res.json(layout);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create dashboard layout (admin only)
+  app.post("/api/dashboard/layouts", requireAuth, requirePermission("dashboard.manage"), async (req, res, next) => {
+    try {
+      const { name, scope, roleId, userId, widgets, isDefault } = req.body;
+
+      if (!name || !scope || !widgets) {
+        return res.status(400).json({ message: "Name, scope, and widgets are required" });
+      }
+
+      if (scope === "ROLE" && !roleId) {
+        return res.status(400).json({ message: "Role ID is required for role-scoped layouts" });
+      }
+
+      if (scope === "USER" && !userId) {
+        return res.status(400).json({ message: "User ID is required for user-scoped layouts" });
+      }
+
+      const layout = await storage.createDashboardLayout({
+        name,
+        scope,
+        roleId: scope === "ROLE" ? roleId : null,
+        userId: scope === "USER" ? userId : null,
+        widgets,
+        isDefault: isDefault ? 1 : 0,
+        createdByUserId: req.user!.id,
+      });
+
+      res.status(201).json(layout);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update dashboard layout (admin only)
+  app.patch("/api/dashboard/layouts/:id", requireAuth, requirePermission("dashboard.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid layout ID" });
+      }
+
+      const existing = await storage.getDashboardLayoutById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Layout not found" });
+      }
+
+      const { name, widgets, isDefault } = req.body;
+      const updated = await storage.updateDashboardLayout(id, {
+        name,
+        widgets,
+        isDefault: isDefault !== undefined ? (isDefault ? 1 : 0) : undefined,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete dashboard layout (admin only)
+  app.delete("/api/dashboard/layouts/:id", requireAuth, requirePermission("dashboard.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid layout ID" });
+      }
+
+      const existing = await storage.getDashboardLayoutById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Layout not found" });
+      }
+
+      await storage.deleteDashboardLayout(id);
+      res.json({ message: "Layout deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get all roles (for admin to assign layouts)
+  app.get("/api/dashboard/roles", requireAuth, requirePermission("dashboard.manage"), async (req, res, next) => {
+    try {
+      const allRoles = await storage.getAllRoles();
+      res.json(allRoles);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);

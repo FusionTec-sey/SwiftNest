@@ -1430,6 +1430,54 @@ export const userRoleAssignments = pgTable("user_role_assignments", {
 // This is handled via a separate field rather than modifying the users table
 
 // =====================================================
+// DASHBOARD WIDGET SYSTEM
+// =====================================================
+
+// Widget size enum for grid layout
+export const widgetSizeEnum = pgEnum("widget_size", ["SMALL", "MEDIUM", "LARGE", "FULL"]);
+
+// Dashboard layout scope - whether it applies to a role globally or a specific user
+export const layoutScopeEnum = pgEnum("layout_scope", ["ROLE", "USER"]);
+
+// Dashboard Layouts table - stores widget configurations per role or user
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  scope: layoutScopeEnum("scope").notNull().default("ROLE"),
+  roleId: integer("role_id").references(() => roles.id, { onDelete: "cascade" }), // NULL for user-specific layouts
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }), // NULL for role-based layouts
+  widgets: jsonb("widgets").notNull().$type<DashboardWidgetConfig[]>(),
+  isDefault: integer("is_default").default(0).notNull(), // Default layout for new users with this role
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("dashboard_layouts_role_idx").on(table.roleId),
+  index("dashboard_layouts_user_idx").on(table.userId),
+]);
+
+// Widget configuration type (stored in JSONB)
+export type DashboardWidgetConfig = {
+  id: string; // Unique instance ID
+  widgetType: string; // References widget registry key
+  title?: string; // Optional custom title
+  size: "SMALL" | "MEDIUM" | "LARGE" | "FULL";
+  order: number; // Display order
+  settings?: Record<string, unknown>; // Widget-specific settings
+};
+
+// Widget registry definition (used in code, not stored in DB)
+export type DashboardWidgetDefinition = {
+  type: string; // Unique identifier
+  title: string; // Default title
+  description: string;
+  defaultSize: "SMALL" | "MEDIUM" | "LARGE" | "FULL";
+  requiredPermissions: string[]; // Any of these permissions grants access
+  availableSizes: ("SMALL" | "MEDIUM" | "LARGE" | "FULL")[];
+  category: "OVERVIEW" | "FINANCIAL" | "MAINTENANCE" | "COMPLIANCE" | "ACTIVITY" | "QUICK_ACTIONS";
+};
+
+// =====================================================
 // INSERT SCHEMAS FOR ENTERPRISE MODULES
 // =====================================================
 
@@ -1876,4 +1924,28 @@ export type UserWithRoles = {
 export type UserPermissions = {
   global: string[]; // Permission keys for global access
   byProperty: Record<number, string[]>; // Permission keys per property ID
+};
+
+// =====================================================
+// DASHBOARD WIDGET TYPES
+// =====================================================
+
+export type DashboardLayout = typeof dashboardLayouts.$inferSelect;
+export type InsertDashboardLayout = {
+  name: string;
+  scope: "ROLE" | "USER";
+  roleId?: number | null;
+  userId?: number | null;
+  widgets: DashboardWidgetConfig[];
+  isDefault?: number;
+  createdByUserId?: number | null;
+};
+
+// Effective layout returned to client
+export type EffectiveDashboardLayout = {
+  layoutId: number | null; // null if using defaults
+  layoutName: string;
+  source: "USER" | "ROLE" | "DEFAULT";
+  widgets: DashboardWidgetConfig[];
+  availableWidgets: DashboardWidgetDefinition[];
 };

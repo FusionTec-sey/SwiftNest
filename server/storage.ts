@@ -124,7 +124,11 @@ import {
   expenses,
   type Expense,
   type InsertExpense,
-  type ExpenseWithDetails
+  type ExpenseWithDetails,
+  dashboardLayouts,
+  type DashboardLayout,
+  type InsertDashboardLayout,
+  type DashboardWidgetConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -582,6 +586,19 @@ export interface IStorage {
   deleteExpense(id: number): Promise<void>;
   getExpenseSummaryByOwner(ownerId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]>;
   getExpenseSummaryByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<{ category: string; total: number; count: number }[]>;
+
+  // =====================================================
+  // DASHBOARD LAYOUTS MODULE
+  // =====================================================
+  getDashboardLayoutById(id: number): Promise<DashboardLayout | undefined>;
+  getDashboardLayoutsByRole(roleId: number): Promise<DashboardLayout[]>;
+  getDashboardLayoutByUser(userId: number): Promise<DashboardLayout | undefined>;
+  getDefaultLayoutForRole(roleId: number): Promise<DashboardLayout | undefined>;
+  getAllDashboardLayouts(): Promise<DashboardLayout[]>;
+  createDashboardLayout(layout: InsertDashboardLayout): Promise<DashboardLayout>;
+  updateDashboardLayout(id: number, layout: Partial<InsertDashboardLayout>): Promise<DashboardLayout | undefined>;
+  deleteDashboardLayout(id: number): Promise<void>;
+  getUserPrimaryRoleId(userId: number): Promise<number | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4383,6 +4400,92 @@ export class DatabaseStorage implements IStorage {
       total: Number(r.total),
       count: Number(r.count),
     }));
+  }
+
+  // =====================================================
+  // DASHBOARD LAYOUTS MODULE
+  // =====================================================
+
+  async getDashboardLayoutById(id: number): Promise<DashboardLayout | undefined> {
+    const [layout] = await db.select().from(dashboardLayouts).where(eq(dashboardLayouts.id, id));
+    return layout || undefined;
+  }
+
+  async getDashboardLayoutsByRole(roleId: number): Promise<DashboardLayout[]> {
+    return db.select().from(dashboardLayouts).where(
+      and(eq(dashboardLayouts.scope, "ROLE"), eq(dashboardLayouts.roleId, roleId))
+    );
+  }
+
+  async getDashboardLayoutByUser(userId: number): Promise<DashboardLayout | undefined> {
+    const [layout] = await db.select().from(dashboardLayouts).where(
+      and(eq(dashboardLayouts.scope, "USER"), eq(dashboardLayouts.userId, userId))
+    );
+    return layout || undefined;
+  }
+
+  async getDefaultLayoutForRole(roleId: number): Promise<DashboardLayout | undefined> {
+    const [layout] = await db.select().from(dashboardLayouts).where(
+      and(
+        eq(dashboardLayouts.scope, "ROLE"),
+        eq(dashboardLayouts.roleId, roleId),
+        eq(dashboardLayouts.isDefault, 1)
+      )
+    );
+    return layout || undefined;
+  }
+
+  async getAllDashboardLayouts(): Promise<DashboardLayout[]> {
+    return db.select().from(dashboardLayouts).orderBy(desc(dashboardLayouts.createdAt));
+  }
+
+  async createDashboardLayout(layout: InsertDashboardLayout): Promise<DashboardLayout> {
+    const [created] = await db.insert(dashboardLayouts).values({
+      name: layout.name,
+      scope: layout.scope,
+      roleId: layout.roleId || null,
+      userId: layout.userId || null,
+      widgets: layout.widgets,
+      isDefault: layout.isDefault || 0,
+      createdByUserId: layout.createdByUserId || null,
+    }).returning();
+    return created;
+  }
+
+  async updateDashboardLayout(id: number, layout: Partial<InsertDashboardLayout>): Promise<DashboardLayout | undefined> {
+    const updateData: any = { updatedAt: new Date() };
+    if (layout.name !== undefined) updateData.name = layout.name;
+    if (layout.widgets !== undefined) updateData.widgets = layout.widgets;
+    if (layout.isDefault !== undefined) updateData.isDefault = layout.isDefault;
+
+    const [updated] = await db.update(dashboardLayouts)
+      .set(updateData)
+      .where(eq(dashboardLayouts.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteDashboardLayout(id: number): Promise<void> {
+    await db.delete(dashboardLayouts).where(eq(dashboardLayouts.id, id));
+  }
+
+  async getUserPrimaryRoleId(userId: number): Promise<number | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    
+    if (user?.isSuperAdmin === 1) {
+      const [superAdminRole] = await db.select().from(roles).where(eq(roles.name, "SUPER_ADMIN"));
+      return superAdminRole?.id;
+    }
+
+    const [assignment] = await db.select()
+      .from(userRoleAssignments)
+      .where(and(
+        eq(userRoleAssignments.userId, userId),
+        eq(userRoleAssignments.isActive, 1)
+      ))
+      .orderBy(desc(userRoleAssignments.createdAt));
+
+    return assignment?.roleId;
   }
 }
 

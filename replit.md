@@ -93,6 +93,9 @@ Default admin/test account for all testing:
         -   **Frontend:** Tenant detail page (`/tenants/:id`) with tabbed UI:
             -   Overview tab: Contact info, KYC verification, active leases, documents
             -   Onboarding tab: Visual stage stepper with 5 stages, start/complete stage buttons, process cards
+            -   **Onboarding Detail Dialog:** Click "View Details" to access:
+                -   Inspection Checklist tab: Add/delete room condition items with ratings
+                -   Handover Items tab: Link inventory items (keys, remotes, appliances) to tenant
         -   **Permission:** Uses `tenant.manage` permission for CRUD operations
     -   **Multi-Currency Support (Phase 1 - Foundation):**
         -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR

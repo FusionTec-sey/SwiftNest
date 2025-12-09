@@ -5115,7 +5115,7 @@ export async function registerRoutes(
   });
 
   // Create exchange rate (admin only)
-  app.post("/api/exchange-rates", requireAuth, requirePermission("accounting.manage"), async (req, res, next) => {
+  app.post("/api/exchange-rates", requireAuth, requirePermission("finance.manage_accounts"), async (req, res, next) => {
     try {
       const { baseCurrency, quoteCurrency, rate, effectiveDate, source, isActive } = req.body;
 
@@ -5140,7 +5140,7 @@ export async function registerRoutes(
   });
 
   // Update exchange rate
-  app.patch("/api/exchange-rates/:id", requireAuth, requirePermission("accounting.manage"), async (req, res, next) => {
+  app.patch("/api/exchange-rates/:id", requireAuth, requirePermission("finance.manage_accounts"), async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -5167,7 +5167,7 @@ export async function registerRoutes(
   });
 
   // Delete exchange rate
-  app.delete("/api/exchange-rates/:id", requireAuth, requirePermission("accounting.manage"), async (req, res, next) => {
+  app.delete("/api/exchange-rates/:id", requireAuth, requirePermission("finance.manage_accounts"), async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {

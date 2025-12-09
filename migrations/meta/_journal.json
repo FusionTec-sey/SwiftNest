@@ -15,6 +15,13 @@
       "when": 1765265164389,
       "tag": "0001_add_currency_support",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765269650326,
+      "tag": "0002_dear_jane_foster",
+      "breakpoints": true
     }
   ]
 }

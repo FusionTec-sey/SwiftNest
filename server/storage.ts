@@ -131,7 +131,22 @@ import {
   type DashboardWidgetConfig,
   exchangeRates,
   type ExchangeRate,
-  type InsertExchangeRate
+  type InsertExchangeRate,
+  inventoryCategories,
+  warehouseLocations,
+  inventoryItems,
+  inventoryMovements,
+  type InventoryCategory,
+  type InsertInventoryCategory,
+  type WarehouseLocation,
+  type InsertWarehouseLocation,
+  type InventoryItem,
+  type InsertInventoryItem,
+  type InventoryMovement,
+  type InsertInventoryMovement,
+  type InventoryCategoryWithChildren,
+  type InventoryItemWithDetails,
+  type InventoryMovementWithDetails
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -614,6 +629,41 @@ export interface IStorage {
   updateExchangeRate(id: number, rate: Partial<InsertExchangeRate>): Promise<ExchangeRate | undefined>;
   deleteExchangeRate(id: number): Promise<void>;
   convertAmount(amount: number, fromCurrency: string, toCurrency: string, date?: Date): Promise<{ convertedAmount: number; rate: number } | undefined>;
+
+  // =====================================================
+  // INVENTORY MODULE
+  // =====================================================
+  // Categories
+  getAllInventoryCategories(): Promise<InventoryCategory[]>;
+  getInventoryCategoryById(id: number): Promise<InventoryCategory | undefined>;
+  getInventoryCategoriesTree(): Promise<InventoryCategoryWithChildren[]>;
+  createInventoryCategory(category: InsertInventoryCategory): Promise<InventoryCategory>;
+  updateInventoryCategory(id: number, category: Partial<InsertInventoryCategory>): Promise<InventoryCategory | undefined>;
+  deleteInventoryCategory(id: number): Promise<void>;
+
+  // Warehouse Locations
+  getAllWarehouseLocations(): Promise<WarehouseLocation[]>;
+  getWarehouseLocationById(id: number): Promise<WarehouseLocation | undefined>;
+  createWarehouseLocation(location: InsertWarehouseLocation): Promise<WarehouseLocation>;
+  updateWarehouseLocation(id: number, location: Partial<InsertWarehouseLocation>): Promise<WarehouseLocation | undefined>;
+  deleteWarehouseLocation(id: number): Promise<void>;
+
+  // Inventory Items
+  getAllInventoryItems(): Promise<InventoryItem[]>;
+  getInventoryItemById(id: number): Promise<InventoryItem | undefined>;
+  getInventoryItemWithDetails(id: number): Promise<InventoryItemWithDetails | undefined>;
+  getInventoryItemsByProperty(propertyId: number): Promise<InventoryItem[]>;
+  getInventoryItemsByWarehouse(warehouseId: number): Promise<InventoryItem[]>;
+  getInventoryItemsByCategory(categoryId: number): Promise<InventoryItem[]>;
+  createInventoryItem(item: InsertInventoryItem & { createdByUserId: number }): Promise<InventoryItem>;
+  updateInventoryItem(id: number, item: Partial<InsertInventoryItem>): Promise<InventoryItem | undefined>;
+  deleteInventoryItem(id: number): Promise<void>;
+
+  // Inventory Movements
+  getInventoryMovementsByItem(itemId: number): Promise<InventoryMovement[]>;
+  createInventoryMovement(movement: InsertInventoryMovement & { performedByUserId: number }): Promise<InventoryMovement>;
+  issueInventoryItem(itemId: number, data: { propertyId?: number; unitId?: number; tenantId?: number; quantity: number; notes?: string; performedByUserId: number }): Promise<InventoryMovement>;
+  returnInventoryItem(itemId: number, data: { warehouseId?: number; quantity: number; conditionAfter?: string; damageNotes?: string; notes?: string; performedByUserId: number }): Promise<InventoryMovement>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4590,6 +4640,218 @@ export class DatabaseStorage implements IStorage {
     }
 
     return undefined;
+  }
+
+  // =====================================================
+  // INVENTORY MODULE IMPLEMENTATIONS
+  // =====================================================
+
+  async getAllInventoryCategories(): Promise<InventoryCategory[]> {
+    return db.select().from(inventoryCategories).orderBy(inventoryCategories.sortOrder);
+  }
+
+  async getInventoryCategoryById(id: number): Promise<InventoryCategory | undefined> {
+    const [category] = await db.select().from(inventoryCategories).where(eq(inventoryCategories.id, id));
+    return category || undefined;
+  }
+
+  async getInventoryCategoriesTree(): Promise<InventoryCategoryWithChildren[]> {
+    const allCategories = await this.getAllInventoryCategories();
+    
+    const buildTree = (parentId: number | null): InventoryCategoryWithChildren[] => {
+      return allCategories
+        .filter(c => c.parentId === parentId)
+        .map(c => ({
+          ...c,
+          children: buildTree(c.id)
+        }));
+    };
+    
+    return buildTree(null);
+  }
+
+  async createInventoryCategory(category: InsertInventoryCategory): Promise<InventoryCategory> {
+    const [created] = await db.insert(inventoryCategories).values(category).returning();
+    return created;
+  }
+
+  async updateInventoryCategory(id: number, category: Partial<InsertInventoryCategory>): Promise<InventoryCategory | undefined> {
+    const updateData: any = { ...category, updatedAt: new Date() };
+    const [updated] = await db.update(inventoryCategories)
+      .set(updateData)
+      .where(eq(inventoryCategories.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteInventoryCategory(id: number): Promise<void> {
+    await db.delete(inventoryCategories).where(eq(inventoryCategories.id, id));
+  }
+
+  // Warehouse Locations
+  async getAllWarehouseLocations(): Promise<WarehouseLocation[]> {
+    return db.select().from(warehouseLocations).orderBy(warehouseLocations.name);
+  }
+
+  async getWarehouseLocationById(id: number): Promise<WarehouseLocation | undefined> {
+    const [location] = await db.select().from(warehouseLocations).where(eq(warehouseLocations.id, id));
+    return location || undefined;
+  }
+
+  async createWarehouseLocation(location: InsertWarehouseLocation): Promise<WarehouseLocation> {
+    const [created] = await db.insert(warehouseLocations).values(location).returning();
+    return created;
+  }
+
+  async updateWarehouseLocation(id: number, location: Partial<InsertWarehouseLocation>): Promise<WarehouseLocation | undefined> {
+    const updateData: any = { ...location, updatedAt: new Date() };
+    const [updated] = await db.update(warehouseLocations)
+      .set(updateData)
+      .where(eq(warehouseLocations.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteWarehouseLocation(id: number): Promise<void> {
+    await db.delete(warehouseLocations).where(eq(warehouseLocations.id, id));
+  }
+
+  // Inventory Items
+  async getAllInventoryItems(): Promise<InventoryItem[]> {
+    return db.select().from(inventoryItems).orderBy(desc(inventoryItems.createdAt));
+  }
+
+  async getInventoryItemById(id: number): Promise<InventoryItem | undefined> {
+    const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id));
+    return item || undefined;
+  }
+
+  async getInventoryItemWithDetails(id: number): Promise<InventoryItemWithDetails | undefined> {
+    const item = await this.getInventoryItemById(id);
+    if (!item) return undefined;
+
+    const category = item.categoryId ? await this.getInventoryCategoryById(item.categoryId) : undefined;
+    const warehouse = item.warehouseId ? await this.getWarehouseLocationById(item.warehouseId) : undefined;
+    const property = item.propertyId ? await this.getPropertyById(item.propertyId) : undefined;
+    const tenant = item.tenantId ? await this.getTenantById(item.tenantId) : undefined;
+    const movements = await this.getInventoryMovementsByItem(id);
+    
+    return {
+      ...item,
+      category,
+      warehouse,
+      property,
+      tenant,
+      movements
+    };
+  }
+
+  async getInventoryItemsByProperty(propertyId: number): Promise<InventoryItem[]> {
+    return db.select().from(inventoryItems).where(eq(inventoryItems.propertyId, propertyId));
+  }
+
+  async getInventoryItemsByWarehouse(warehouseId: number): Promise<InventoryItem[]> {
+    return db.select().from(inventoryItems).where(eq(inventoryItems.warehouseId, warehouseId));
+  }
+
+  async getInventoryItemsByCategory(categoryId: number): Promise<InventoryItem[]> {
+    return db.select().from(inventoryItems).where(eq(inventoryItems.categoryId, categoryId));
+  }
+
+  async createInventoryItem(item: InsertInventoryItem & { createdByUserId: number }): Promise<InventoryItem> {
+    const [created] = await db.insert(inventoryItems).values({
+      ...item,
+      createdByUserId: item.createdByUserId
+    }).returning();
+    return created;
+  }
+
+  async updateInventoryItem(id: number, item: Partial<InsertInventoryItem>): Promise<InventoryItem | undefined> {
+    const updateData: any = { ...item, updatedAt: new Date() };
+    const [updated] = await db.update(inventoryItems)
+      .set(updateData)
+      .where(eq(inventoryItems.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteInventoryItem(id: number): Promise<void> {
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, id));
+  }
+
+  // Inventory Movements
+  async getInventoryMovementsByItem(itemId: number): Promise<InventoryMovement[]> {
+    return db.select()
+      .from(inventoryMovements)
+      .where(eq(inventoryMovements.itemId, itemId))
+      .orderBy(desc(inventoryMovements.performedAt));
+  }
+
+  async createInventoryMovement(movement: InsertInventoryMovement & { performedByUserId: number }): Promise<InventoryMovement> {
+    const [created] = await db.insert(inventoryMovements).values({
+      ...movement,
+      performedByUserId: movement.performedByUserId,
+      performedAt: new Date()
+    }).returning();
+    return created;
+  }
+
+  async issueInventoryItem(itemId: number, data: { propertyId?: number; unitId?: number; tenantId?: number; quantity: number; notes?: string; performedByUserId: number }): Promise<InventoryMovement> {
+    const item = await this.getInventoryItemById(itemId);
+    if (!item) throw new Error('Item not found');
+
+    // Update item assignment
+    await this.updateInventoryItem(itemId, {
+      status: 'ASSIGNED',
+      propertyId: data.propertyId,
+      unitId: data.unitId,
+      tenantId: data.tenantId,
+      assignedAt: new Date()
+    } as any);
+
+    // Create movement record
+    return this.createInventoryMovement({
+      itemId,
+      movementType: 'ISSUED',
+      quantity: data.quantity,
+      fromWarehouseId: item.warehouseId,
+      toPropertyId: data.propertyId,
+      toUnitId: data.unitId,
+      toTenantId: data.tenantId,
+      notes: data.notes,
+      performedByUserId: data.performedByUserId
+    });
+  }
+
+  async returnInventoryItem(itemId: number, data: { warehouseId?: number; quantity: number; conditionAfter?: string; damageNotes?: string; notes?: string; performedByUserId: number }): Promise<InventoryMovement> {
+    const item = await this.getInventoryItemById(itemId);
+    if (!item) throw new Error('Item not found');
+
+    // Determine new status based on condition
+    const newStatus = data.damageNotes ? 'DAMAGED' : 'AVAILABLE';
+
+    // Update item status
+    await this.updateInventoryItem(itemId, {
+      status: newStatus,
+      warehouseId: data.warehouseId || item.warehouseId,
+      propertyId: null,
+      unitId: null,
+      tenantId: null,
+      assignedAt: null
+    } as any);
+
+    // Create movement record
+    return this.createInventoryMovement({
+      itemId,
+      movementType: 'RETURNED',
+      quantity: data.quantity,
+      fromPropertyId: item.propertyId,
+      toWarehouseId: data.warehouseId || item.warehouseId,
+      conditionAfter: data.conditionAfter,
+      damageNotes: data.damageNotes,
+      notes: data.notes,
+      performedByUserId: data.performedByUserId
+    });
   }
 }
 

@@ -71,6 +71,15 @@ Default admin/test account for all testing:
     -   **Accounting (Double-Entry):** Chart of Accounts, Ledger Entries, Ledger Lines for automated and manual journal entries, supporting rent collection, utility payments, loan payments, and financial reporting.
     -   **Rent Collection:** Dashboard metrics, automated invoice generation (PDF), payment recording, and overdue tracking.
     -   **User Settings:** Profile and security management with robust validation.
+    -   **Inventory Management:** Tree-based inventory tracking system for property items and warehouse stock:
+        -   **Inventory Categories:** Hierarchical tree structure with parentId for organizing items (Keys, Remotes, Appliances, etc.)
+        -   **Warehouse Locations:** Track multiple storage locations with address and active status
+        -   **Inventory Items:** 10 item types (KEY, REMOTE, ACCESS_CARD, APPLIANCE, FURNITURE, FIXTURE, TOOL, CONSUMABLE, ELECTRONIC, OTHER) with status tracking (AVAILABLE, ASSIGNED, DAMAGED, LOST, RETIRED)
+        -   **Inventory Movements:** Full audit trail for issue/return/transfer operations with condition tracking and damage notes
+        -   **Item Assignment:** Items can be assigned to properties, units, or tenants with timestamp tracking
+        -   **API Endpoints:** `/api/inventory/categories`, `/api/inventory/warehouses`, `/api/inventory/items`, `/api/inventory/items/:id/issue`, `/api/inventory/items/:id/return`
+        -   **Frontend:** `/inventory` page with tabs for Items, Categories (tree view), and Warehouses
+        -   **Permission:** Uses `maintenance.manage_materials` permission for CRUD operations
     -   **Multi-Currency Support (Phase 1 - Foundation):**
         -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR
         -   **Exchange Rates Table:** `exchange_rates` table with baseCurrency, quoteCurrency, rate (decimal 18,8), effectiveDate, source tracking, and CRUD API endpoints

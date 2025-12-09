@@ -5227,6 +5227,368 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // INVENTORY MODULE ROUTES
+  // =====================================================
+
+  // Inventory Categories
+  app.get("/api/inventory/categories", requireAuth, async (req, res, next) => {
+    try {
+      const categories = await storage.getAllInventoryCategories();
+      res.json(categories);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/inventory/categories/tree", requireAuth, async (req, res, next) => {
+    try {
+      const tree = await storage.getInventoryCategoriesTree();
+      res.json(tree);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/inventory/categories/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid category ID" });
+      }
+      const category = await storage.getInventoryCategoryById(id);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      res.json(category);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/inventory/categories", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const { name, description, parentId, itemType, sortOrder } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: "Category name is required" });
+      }
+      const category = await storage.createInventoryCategory({
+        name,
+        description,
+        parentId: parentId || null,
+        itemType: itemType && itemType !== "" ? itemType : undefined,
+        sortOrder: sortOrder ?? 0
+      });
+      res.status(201).json(category);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/inventory/categories/:id", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid category ID" });
+      }
+      const existing = await storage.getInventoryCategoryById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      const { name, description, parentId, itemType, sortOrder } = req.body;
+      const updated = await storage.updateInventoryCategory(id, {
+        name,
+        description,
+        parentId,
+        itemType: itemType === "" ? null : itemType,
+        sortOrder
+      });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/inventory/categories/:id", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid category ID" });
+      }
+      const existing = await storage.getInventoryCategoryById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      await storage.deleteInventoryCategory(id);
+      res.json({ message: "Category deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Warehouse Locations
+  app.get("/api/inventory/warehouses", requireAuth, async (req, res, next) => {
+    try {
+      const warehouses = await storage.getAllWarehouseLocations();
+      res.json(warehouses);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/inventory/warehouses/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid warehouse ID" });
+      }
+      const warehouse = await storage.getWarehouseLocationById(id);
+      if (!warehouse) {
+        return res.status(404).json({ message: "Warehouse not found" });
+      }
+      res.json(warehouse);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/inventory/warehouses", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const { name, address, description, isActive } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: "Warehouse name is required" });
+      }
+      const warehouse = await storage.createWarehouseLocation({
+        name,
+        address,
+        description,
+        isActive: isActive ?? 1
+      });
+      res.status(201).json(warehouse);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/inventory/warehouses/:id", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid warehouse ID" });
+      }
+      const existing = await storage.getWarehouseLocationById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Warehouse not found" });
+      }
+      const { name, address, description, isActive } = req.body;
+      const updated = await storage.updateWarehouseLocation(id, {
+        name,
+        address,
+        description,
+        isActive
+      });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/inventory/warehouses/:id", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid warehouse ID" });
+      }
+      const existing = await storage.getWarehouseLocationById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Warehouse not found" });
+      }
+      await storage.deleteWarehouseLocation(id);
+      res.json({ message: "Warehouse deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Inventory Items
+  app.get("/api/inventory/items", requireAuth, async (req, res, next) => {
+    try {
+      const { propertyId, warehouseId, categoryId } = req.query;
+      let items;
+      if (propertyId) {
+        items = await storage.getInventoryItemsByProperty(parseInt(propertyId as string));
+      } else if (warehouseId) {
+        items = await storage.getInventoryItemsByWarehouse(parseInt(warehouseId as string));
+      } else if (categoryId) {
+        items = await storage.getInventoryItemsByCategory(parseInt(categoryId as string));
+      } else {
+        items = await storage.getAllInventoryItems();
+      }
+      res.json(items);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/inventory/items/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const item = await storage.getInventoryItemWithDetails(id);
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/inventory/items", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const user = req.user as any;
+      const { itemType, name, description, sku, serialNumber, unitCost, reorderLevel, status, warehouseId, propertyId, categoryId, quantity, notes } = req.body;
+      
+      if (!itemType || !name) {
+        return res.status(400).json({ message: "Item type and name are required" });
+      }
+      
+      const item = await storage.createInventoryItem({
+        itemType,
+        name,
+        description: description || undefined,
+        sku: sku || undefined,
+        serialNumber: serialNumber || undefined,
+        unitCost: unitCost && unitCost !== "" ? unitCost.toString() : undefined,
+        reorderLevel: reorderLevel ?? 0,
+        status: status || "AVAILABLE",
+        warehouseId: warehouseId || undefined,
+        propertyId: propertyId || undefined,
+        categoryId: categoryId || undefined,
+        quantity: quantity ?? 1,
+        notes: notes || undefined,
+        createdByUserId: user.id
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/inventory/items/:id", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const existing = await storage.getInventoryItemById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      
+      const { itemType, name, description, sku, serialNumber, unitCost, reorderLevel, status, warehouseId, propertyId, categoryId, quantity, notes } = req.body;
+      const updated = await storage.updateInventoryItem(id, {
+        itemType,
+        name,
+        description,
+        sku,
+        serialNumber,
+        unitCost: unitCost?.toString(),
+        reorderLevel,
+        status,
+        warehouseId,
+        propertyId,
+        categoryId,
+        quantity,
+        notes
+      });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/inventory/items/:id", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const existing = await storage.getInventoryItemById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      await storage.deleteInventoryItem(id);
+      res.json({ message: "Item deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Issue inventory item (assign to property/tenant)
+  app.post("/api/inventory/items/:id/issue", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const user = req.user as any;
+      const { propertyId, unitId, tenantId, quantity, notes } = req.body;
+      
+      const movement = await storage.issueInventoryItem(id, {
+        propertyId,
+        unitId,
+        tenantId,
+        quantity: quantity || 1,
+        notes,
+        performedByUserId: user.id
+      });
+      res.status(201).json(movement);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Return inventory item (back to warehouse)
+  app.post("/api/inventory/items/:id/return", requireAuth, requirePermission("maintenance.manage_materials"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const user = req.user as any;
+      const { warehouseId, quantity, conditionAfter, damageNotes, notes } = req.body;
+      
+      const movement = await storage.returnInventoryItem(id, {
+        warehouseId,
+        quantity: quantity || 1,
+        conditionAfter,
+        damageNotes,
+        notes,
+        performedByUserId: user.id
+      });
+      res.status(201).json(movement);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get inventory movements for an item
+  app.get("/api/inventory/items/:id/movements", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const movements = await storage.getInventoryMovementsByItem(id);
+      res.json(movements);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

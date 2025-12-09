@@ -1378,6 +1378,134 @@ export const depreciationRuns = pgTable("depreciation_runs", {
 ]);
 
 // =====================================================
+// INVENTORY MANAGEMENT
+// =====================================================
+
+// Inventory item type enum
+export const inventoryItemTypeEnum = pgEnum("inventory_item_type", [
+  "KEY",                    // Keys (master, unit, mailbox)
+  "REMOTE",                 // Remotes (gate, garage, AC)
+  "ACCESS_CARD",            // Access cards, fobs
+  "APPLIANCE",              // Small appliances (microwave, vacuum)
+  "FURNITURE",              // Furniture items
+  "FIXTURE",                // Light fixtures, faucets
+  "TOOL",                   // Maintenance tools
+  "CONSUMABLE",             // Cleaning supplies, bulbs
+  "ELECTRONIC",             // Electronics (routers, cameras)
+  "OTHER"
+]);
+
+// Inventory item status enum
+export const inventoryItemStatusEnum = pgEnum("inventory_item_status", [
+  "AVAILABLE",              // In stock, ready to issue
+  "ASSIGNED",               // Issued to property/tenant
+  "DAMAGED",                // Damaged, needs repair/replacement
+  "LOST",                   // Lost or missing
+  "RETIRED"                 // No longer in use
+]);
+
+// Inventory movement type enum
+export const inventoryMovementTypeEnum = pgEnum("inventory_movement_type", [
+  "RECEIVED",               // Received into stock
+  "ISSUED",                 // Issued to property/tenant
+  "RETURNED",               // Returned from property/tenant
+  "TRANSFERRED",            // Transferred between locations
+  "DAMAGED",                // Marked as damaged
+  "LOST",                   // Marked as lost
+  "ADJUSTED"                // Stock adjustment
+]);
+
+// Inventory categories (tree structure)
+export const inventoryCategories = pgTable("inventory_categories", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  parentId: integer("parent_id").references((): any => inventoryCategories.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  itemType: inventoryItemTypeEnum("item_type"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("inventory_categories_parent_idx").on(table.parentId),
+]);
+
+// Warehouse locations for spare stock
+export const warehouseLocations = pgTable("warehouse_locations", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  address: text("address"),
+  description: text("description"),
+  isActive: integer("is_active").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Inventory items
+export const inventoryItems = pgTable("inventory_items", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  categoryId: integer("category_id").references(() => inventoryCategories.id, { onDelete: "set null" }),
+  itemType: inventoryItemTypeEnum("item_type").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  sku: text("sku"),
+  serialNumber: text("serial_number"),
+  unitCost: decimal("unit_cost", { precision: 14, scale: 2 }).default("0"),
+  reorderLevel: integer("reorder_level").default(0),
+  status: inventoryItemStatusEnum("status").notNull().default("AVAILABLE"),
+  // Current location (either warehouse or property)
+  warehouseId: integer("warehouse_id").references(() => warehouseLocations.id, { onDelete: "set null" }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  // If assigned to a tenant
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  assignedAt: timestamp("assigned_at"),
+  // Tracking
+  quantity: integer("quantity").default(1).notNull(),
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("inventory_items_category_idx").on(table.categoryId),
+  index("inventory_items_type_idx").on(table.itemType),
+  index("inventory_items_status_idx").on(table.status),
+  index("inventory_items_warehouse_idx").on(table.warehouseId),
+  index("inventory_items_property_idx").on(table.propertyId),
+  index("inventory_items_tenant_idx").on(table.tenantId),
+]);
+
+// Inventory movements (issue/return/transfer history)
+export const inventoryMovements = pgTable("inventory_movements", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  itemId: integer("item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+  movementType: inventoryMovementTypeEnum("movement_type").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  // From location
+  fromWarehouseId: integer("from_warehouse_id").references(() => warehouseLocations.id, { onDelete: "set null" }),
+  fromPropertyId: integer("from_property_id").references(() => properties.id, { onDelete: "set null" }),
+  // To location
+  toWarehouseId: integer("to_warehouse_id").references(() => warehouseLocations.id, { onDelete: "set null" }),
+  toPropertyId: integer("to_property_id").references(() => properties.id, { onDelete: "set null" }),
+  toUnitId: integer("to_unit_id").references(() => units.id, { onDelete: "set null" }),
+  toTenantId: integer("to_tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  // Condition tracking
+  conditionBefore: text("condition_before"),
+  conditionAfter: text("condition_after"),
+  damageNotes: text("damage_notes"),
+  // If damage results in expense
+  expenseId: integer("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+  // Metadata
+  notes: text("notes"),
+  performedByUserId: integer("performed_by_user_id").notNull().references(() => users.id),
+  performedAt: timestamp("performed_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("inventory_movements_item_idx").on(table.itemId),
+  index("inventory_movements_type_idx").on(table.movementType),
+  index("inventory_movements_date_idx").on(table.performedAt),
+]);
+
+// =====================================================
 // EXPENSE MANAGEMENT
 // =====================================================
 
@@ -1852,6 +1980,48 @@ export const insertDepreciationRuleSchema = createInsertSchema(depreciationRules
 });
 
 // =====================================================
+// INVENTORY INSERT SCHEMAS
+// =====================================================
+
+// Inventory category schemas
+export const insertInventoryCategorySchema = createInsertSchema(inventoryCategories).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(2, "Category name is required"),
+});
+
+// Warehouse location schemas
+export const insertWarehouseLocationSchema = createInsertSchema(warehouseLocations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(2, "Location name is required"),
+});
+
+// Inventory item schemas
+export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(2, "Item name is required"),
+  unitCost: z.string().or(z.number()).optional().transform(val => val ? String(val) : "0"),
+});
+
+// Inventory movement schemas
+export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({
+  id: true,
+  performedByUserId: true,
+  createdAt: true,
+}).extend({
+  quantity: z.number().min(1, "Quantity must be at least 1"),
+});
+
+// =====================================================
 // EXPENSE INSERT SCHEMAS
 // =====================================================
 
@@ -1980,6 +2150,16 @@ export type DepreciationRun = typeof depreciationRuns.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
+// Inventory types
+export type InventoryCategory = typeof inventoryCategories.$inferSelect;
+export type InsertInventoryCategory = z.infer<typeof insertInventoryCategorySchema>;
+export type WarehouseLocation = typeof warehouseLocations.$inferSelect;
+export type InsertWarehouseLocation = z.infer<typeof insertWarehouseLocationSchema>;
+export type InventoryItem = typeof inventoryItems.$inferSelect;
+export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
+export type InventoryMovement = typeof inventoryMovements.$inferSelect;
+export type InsertInventoryMovement = z.infer<typeof insertInventoryMovementSchema>;
+
 // Extended types with relations
 export type OwnerWithProperties = Owner & {
   propertyOwnerships: (PropertyOwner & { property: Property })[];
@@ -2011,6 +2191,33 @@ export type ExpenseWithDetails = Expense & {
   maintenanceIssue?: MaintenanceIssue | null;
   maintenanceTask?: MaintenanceTask | null;
   complianceDocument?: ComplianceDocument | null;
+};
+
+// Inventory extended types
+export type InventoryCategoryWithChildren = InventoryCategory & {
+  children: InventoryCategory[];
+  itemCount?: number;
+};
+
+export type InventoryItemWithDetails = InventoryItem & {
+  category?: InventoryCategory | null;
+  warehouse?: WarehouseLocation | null;
+  property?: Property | null;
+  unit?: Unit | null;
+  tenant?: Tenant | null;
+  movements?: InventoryMovement[];
+};
+
+export type InventoryMovementWithDetails = InventoryMovement & {
+  item: InventoryItem;
+  fromWarehouse?: WarehouseLocation | null;
+  fromProperty?: Property | null;
+  toWarehouse?: WarehouseLocation | null;
+  toProperty?: Property | null;
+  toUnit?: Unit | null;
+  toTenant?: Tenant | null;
+  expense?: Expense | null;
+  performedBy: User;
 };
 
 export type LedgerEntryWithLines = LedgerEntry & {

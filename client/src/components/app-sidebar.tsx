@@ -9,6 +9,7 @@ import {
   Calculator,
   Gauge,
   Package,
+  Boxes,
   BarChart3,
   Settings,
   LogOut,
@@ -48,6 +49,7 @@ const operationsNavItems = [
   { href: "/leases", label: "Leases", icon: FileText },
   { href: "/rent-collection", label: "Rent Collection", icon: Receipt },
   { href: "/utilities", label: "Utilities", icon: Gauge },
+  { href: "/inventory", label: "Inventory", icon: Boxes },
   { href: "/compliance", label: "Compliance", icon: FileCheck },
 ];
 

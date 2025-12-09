@@ -25,6 +25,7 @@ import LeaseDetailPage from "@/pages/lease-detail-page";
 import UtilitiesPage from "@/pages/utilities-page";
 import LoansPage from "@/pages/loans-page";
 import AssetsPage from "@/pages/assets-page";
+import InventoryPage from "@/pages/inventory-page";
 import ReportsPage from "@/pages/reports-page";
 import InvitePage from "@/pages/invite-page";
 import RentCollectionPage from "@/pages/rent-collection-page";
@@ -54,6 +55,7 @@ function ProtectedRoutes() {
       <Route path="/utilities" component={UtilitiesPage} />
       <Route path="/loans" component={LoansPage} />
       <Route path="/assets" component={AssetsPage} />
+      <Route path="/inventory" component={InventoryPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/expenses" component={ExpensesPage} />
       <Route path="/compliance" component={CompliancePage} />

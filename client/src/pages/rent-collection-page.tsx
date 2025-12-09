@@ -51,6 +51,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/currency";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -66,15 +67,6 @@ const paymentFormSchema = z.object({
 });
 
 type PaymentFormData = z.infer<typeof paymentFormSchema>;
-
-const formatCurrency = (amount: string | number | null | undefined) => {
-  if (!amount) return "$0.00";
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-};
 
 const formatDate = (dateStr: string | Date | null | undefined) => {
   if (!dateStr) return "-";

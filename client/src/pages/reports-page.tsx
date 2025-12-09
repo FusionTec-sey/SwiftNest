@@ -29,6 +29,7 @@ import {
   ArrowDownRight,
   RefreshCw,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 import type { Property, Owner, Loan } from "@shared/schema";
 
 export default function ReportsPage() {
@@ -74,14 +75,6 @@ export default function ReportsPage() {
     queryKey: [depreciationUrl],
     enabled: activeTab === "depreciation",
   });
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "SCR",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
 
   const formatDate = (date: string | Date) => {
     return new Date(date).toLocaleDateString("en-US", {

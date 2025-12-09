@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/currency";
 import { EmptyState } from "@/components/empty-state";
 import type { Loan, Owner, Property } from "@shared/schema";
 
@@ -64,15 +65,6 @@ const loanFormSchema = z.object({
 });
 
 type LoanFormData = z.infer<typeof loanFormSchema>;
-
-const formatCurrency = (amount: string | number | null, currency = "SCR") => {
-  if (!amount) return "-";
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency,
-  }).format(num);
-};
 
 const formatDate = (date: string | Date | null) => {
   if (!date) return "-";

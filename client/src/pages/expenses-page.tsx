@@ -87,6 +87,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { formatCurrency, CURRENCIES } from "@/lib/currency";
 import type { 
   ExpenseWithDetails, 
   Owner, 
@@ -156,15 +157,6 @@ const expenseFormSchema = z.object({
 });
 
 type ExpenseFormData = z.infer<typeof expenseFormSchema>;
-
-function formatCurrency(amount: string | number): string {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(num);
-}
 
 function getStatusBadge(status: string) {
   const config = paymentStatuses.find(s => s.value === status);

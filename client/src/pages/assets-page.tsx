@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/currency";
 import { EmptyState } from "@/components/empty-state";
 import type { Asset, Owner, Property } from "@shared/schema";
 
@@ -65,15 +66,6 @@ const assetFormSchema = z.object({
 });
 
 type AssetFormData = z.infer<typeof assetFormSchema>;
-
-const formatCurrency = (amount: string | number | null) => {
-  if (!amount) return "-";
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "SCR",
-  }).format(num);
-};
 
 const formatDate = (date: string | Date | null) => {
   if (!date) return "-";

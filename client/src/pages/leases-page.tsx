@@ -56,6 +56,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/currency";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -76,15 +77,6 @@ const leaseFormSchema = z.object({
 });
 
 type LeaseFormData = z.infer<typeof leaseFormSchema>;
-
-const formatCurrency = (amount: string | number | null) => {
-  if (!amount) return "-";
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-};
 
 const formatDate = (dateStr: string | Date) => {
   const date = new Date(dateStr);

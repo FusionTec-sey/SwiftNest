@@ -32,16 +32,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/currency";
 import type { Lease, Property, Tenant, Document } from "@shared/schema";
-
-const formatCurrency = (amount: string | number | null) => {
-  if (!amount) return "-";
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-};
 
 const formatDate = (date: string | Date | null) => {
   if (!date) return "-";

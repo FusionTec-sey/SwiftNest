@@ -60,6 +60,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/currency";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -122,14 +123,6 @@ const loanFormSchema = z.object({
 });
 
 type LoanFormData = z.infer<typeof loanFormSchema>;
-
-const formatCurrency = (amount: string | number) => {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num || 0);
-};
 
 interface TrialBalanceEntry {
   accountId: number;

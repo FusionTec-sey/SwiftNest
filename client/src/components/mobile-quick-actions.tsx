@@ -43,10 +43,15 @@ export function MobileQuickActionBar() {
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
 
+  // Hide the bar when any dialog is open to prevent keyboard overlap
+  const anyDialogOpen = expenseDialogOpen || issueDialogOpen || invoiceDialogOpen;
+
   return (
     <>
       <div 
-        className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t md:hidden"
+        className={`fixed bottom-0 left-0 right-0 z-50 bg-background border-t md:hidden transition-transform duration-200 ${
+          anyDialogOpen ? "translate-y-full" : "translate-y-0"
+        }`}
         data-testid="mobile-quick-action-bar"
       >
         <div className="flex items-center justify-around p-2 gap-2">
@@ -165,7 +170,7 @@ function QuickExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-md">
+      <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[85vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -369,7 +374,7 @@ function QuickIssueDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-md">
+      <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[85vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -541,7 +546,7 @@ function QuickInvoiceDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-md">
+      <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />

@@ -5040,6 +5040,193 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // EXCHANGE RATES API
+  // =====================================================
+
+  // Get all exchange rates
+  app.get("/api/exchange-rates", requireAuth, async (req, res, next) => {
+    try {
+      const rates = await storage.getAllExchangeRates();
+      res.json(rates);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get active exchange rates
+  app.get("/api/exchange-rates/active", requireAuth, async (req, res, next) => {
+    try {
+      const rates = await storage.getActiveExchangeRates();
+      res.json(rates);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get specific exchange rate for conversion
+  app.get("/api/exchange-rates/convert", requireAuth, async (req, res, next) => {
+    try {
+      const { from, to, amount, date } = req.query;
+      
+      if (!from || !to) {
+        return res.status(400).json({ message: "from and to currencies are required" });
+      }
+
+      const targetDate = date ? new Date(date as string) : new Date();
+      const amountNum = amount ? parseFloat(amount as string) : 1;
+
+      const result = await storage.convertAmount(amountNum, from as string, to as string, targetDate);
+      
+      if (!result) {
+        return res.status(404).json({ message: "Exchange rate not found for the given currency pair" });
+      }
+
+      res.json({
+        from,
+        to,
+        amount: amountNum,
+        convertedAmount: result.convertedAmount,
+        rate: result.rate,
+        date: targetDate.toISOString().split('T')[0]
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get exchange rate by ID
+  app.get("/api/exchange-rates/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid exchange rate ID" });
+      }
+
+      const rate = await storage.getExchangeRateById(id);
+      if (!rate) {
+        return res.status(404).json({ message: "Exchange rate not found" });
+      }
+
+      res.json(rate);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create exchange rate (admin only)
+  app.post("/api/exchange-rates", requireAuth, requirePermission("accounting.manage"), async (req, res, next) => {
+    try {
+      const { baseCurrency, quoteCurrency, rate, effectiveDate, source, isActive } = req.body;
+
+      if (!baseCurrency || !quoteCurrency || !rate || !effectiveDate) {
+        return res.status(400).json({ message: "baseCurrency, quoteCurrency, rate, and effectiveDate are required" });
+      }
+
+      const created = await storage.createExchangeRate({
+        baseCurrency,
+        quoteCurrency,
+        rate: rate.toString(),
+        effectiveDate,
+        source: source || "MANUAL",
+        isActive: isActive ?? 1,
+        createdByUserId: req.user!.id
+      });
+
+      res.status(201).json(created);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update exchange rate
+  app.patch("/api/exchange-rates/:id", requireAuth, requirePermission("accounting.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid exchange rate ID" });
+      }
+
+      const existing = await storage.getExchangeRateById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Exchange rate not found" });
+      }
+
+      const { rate, effectiveDate, source, isActive } = req.body;
+      const updated = await storage.updateExchangeRate(id, {
+        rate: rate?.toString(),
+        effectiveDate,
+        source,
+        isActive
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete exchange rate
+  app.delete("/api/exchange-rates/:id", requireAuth, requirePermission("accounting.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid exchange rate ID" });
+      }
+
+      const existing = await storage.getExchangeRateById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Exchange rate not found" });
+      }
+
+      await storage.deleteExchangeRate(id);
+      res.json({ message: "Exchange rate deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get supported currencies list
+  app.get("/api/currencies", requireAuth, async (req, res, next) => {
+    try {
+      const currencies = [
+        { code: "USD", name: "US Dollar", symbol: "$" },
+        { code: "EUR", name: "Euro", symbol: "€" },
+        { code: "GBP", name: "British Pound", symbol: "£" },
+        { code: "INR", name: "Indian Rupee", symbol: "₹" },
+        { code: "AED", name: "UAE Dirham", symbol: "د.إ" },
+        { code: "SCR", name: "Seychellois Rupee", symbol: "₨" },
+        { code: "CAD", name: "Canadian Dollar", symbol: "C$" },
+        { code: "AUD", name: "Australian Dollar", symbol: "A$" },
+        { code: "SGD", name: "Singapore Dollar", symbol: "S$" },
+        { code: "CHF", name: "Swiss Franc", symbol: "CHF" },
+        { code: "JPY", name: "Japanese Yen", symbol: "¥" },
+        { code: "CNY", name: "Chinese Yuan", symbol: "¥" },
+        { code: "ZAR", name: "South African Rand", symbol: "R" },
+        { code: "NZD", name: "New Zealand Dollar", symbol: "NZ$" },
+        { code: "HKD", name: "Hong Kong Dollar", symbol: "HK$" },
+        { code: "SAR", name: "Saudi Riyal", symbol: "﷼" },
+        { code: "QAR", name: "Qatari Riyal", symbol: "﷼" },
+        { code: "KWD", name: "Kuwaiti Dinar", symbol: "د.ك" },
+        { code: "BHD", name: "Bahraini Dinar", symbol: ".د.ب" },
+        { code: "OMR", name: "Omani Rial", symbol: "﷼" },
+        { code: "MYR", name: "Malaysian Ringgit", symbol: "RM" },
+        { code: "THB", name: "Thai Baht", symbol: "฿" },
+        { code: "IDR", name: "Indonesian Rupiah", symbol: "Rp" },
+        { code: "PHP", name: "Philippine Peso", symbol: "₱" },
+        { code: "MXN", name: "Mexican Peso", symbol: "$" },
+        { code: "BRL", name: "Brazilian Real", symbol: "R$" },
+        { code: "RUB", name: "Russian Ruble", symbol: "₽" },
+        { code: "KRW", name: "South Korean Won", symbol: "₩" },
+        { code: "TRY", name: "Turkish Lira", symbol: "₺" },
+        { code: "PKR", name: "Pakistani Rupee", symbol: "₨" }
+      ];
+      res.json(currencies);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

@@ -128,7 +128,10 @@ import {
   dashboardLayouts,
   type DashboardLayout,
   type InsertDashboardLayout,
-  type DashboardWidgetConfig
+  type DashboardWidgetConfig,
+  exchangeRates,
+  type ExchangeRate,
+  type InsertExchangeRate
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -599,6 +602,18 @@ export interface IStorage {
   updateDashboardLayout(id: number, layout: Partial<InsertDashboardLayout>): Promise<DashboardLayout | undefined>;
   deleteDashboardLayout(id: number): Promise<void>;
   getUserPrimaryRoleId(userId: number): Promise<number | undefined>;
+
+  // =====================================================
+  // EXCHANGE RATES MODULE
+  // =====================================================
+  getAllExchangeRates(): Promise<ExchangeRate[]>;
+  getActiveExchangeRates(): Promise<ExchangeRate[]>;
+  getExchangeRateById(id: number): Promise<ExchangeRate | undefined>;
+  getExchangeRate(baseCurrency: string, quoteCurrency: string, date?: Date): Promise<ExchangeRate | undefined>;
+  createExchangeRate(rate: InsertExchangeRate & { createdByUserId: number }): Promise<ExchangeRate>;
+  updateExchangeRate(id: number, rate: Partial<InsertExchangeRate>): Promise<ExchangeRate | undefined>;
+  deleteExchangeRate(id: number): Promise<void>;
+  convertAmount(amount: number, fromCurrency: string, toCurrency: string, date?: Date): Promise<{ convertedAmount: number; rate: number } | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4486,6 +4501,95 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(userRoleAssignments.createdAt));
 
     return assignment?.roleId;
+  }
+
+  // =====================================================
+  // EXCHANGE RATES MODULE
+  // =====================================================
+
+  async getAllExchangeRates(): Promise<ExchangeRate[]> {
+    return db.select().from(exchangeRates).orderBy(desc(exchangeRates.effectiveDate));
+  }
+
+  async getActiveExchangeRates(): Promise<ExchangeRate[]> {
+    return db.select()
+      .from(exchangeRates)
+      .where(eq(exchangeRates.isActive, 1))
+      .orderBy(desc(exchangeRates.effectiveDate));
+  }
+
+  async getExchangeRateById(id: number): Promise<ExchangeRate | undefined> {
+    const [rate] = await db.select().from(exchangeRates).where(eq(exchangeRates.id, id));
+    return rate || undefined;
+  }
+
+  async getExchangeRate(baseCurrency: string, quoteCurrency: string, date?: Date): Promise<ExchangeRate | undefined> {
+    const targetDate = date || new Date();
+    const dateStr = targetDate.toISOString().split('T')[0];
+    
+    const [rate] = await db.select()
+      .from(exchangeRates)
+      .where(and(
+        eq(exchangeRates.baseCurrency, baseCurrency as any),
+        eq(exchangeRates.quoteCurrency, quoteCurrency as any),
+        eq(exchangeRates.isActive, 1),
+        lte(exchangeRates.effectiveDate, dateStr)
+      ))
+      .orderBy(desc(exchangeRates.effectiveDate))
+      .limit(1);
+    
+    return rate || undefined;
+  }
+
+  async createExchangeRate(rate: InsertExchangeRate & { createdByUserId: number }): Promise<ExchangeRate> {
+    const [created] = await db.insert(exchangeRates).values({
+      baseCurrency: rate.baseCurrency,
+      quoteCurrency: rate.quoteCurrency,
+      rate: rate.rate,
+      effectiveDate: rate.effectiveDate,
+      source: rate.source || "MANUAL",
+      isActive: rate.isActive ?? 1,
+      createdByUserId: rate.createdByUserId,
+    }).returning();
+    return created;
+  }
+
+  async updateExchangeRate(id: number, rate: Partial<InsertExchangeRate>): Promise<ExchangeRate | undefined> {
+    const updateData: any = { updatedAt: new Date() };
+    if (rate.rate !== undefined) updateData.rate = rate.rate;
+    if (rate.effectiveDate !== undefined) updateData.effectiveDate = rate.effectiveDate;
+    if (rate.source !== undefined) updateData.source = rate.source;
+    if (rate.isActive !== undefined) updateData.isActive = rate.isActive;
+
+    const [updated] = await db.update(exchangeRates)
+      .set(updateData)
+      .where(eq(exchangeRates.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteExchangeRate(id: number): Promise<void> {
+    await db.delete(exchangeRates).where(eq(exchangeRates.id, id));
+  }
+
+  async convertAmount(amount: number, fromCurrency: string, toCurrency: string, date?: Date): Promise<{ convertedAmount: number; rate: number } | undefined> {
+    if (fromCurrency === toCurrency) {
+      return { convertedAmount: amount, rate: 1 };
+    }
+
+    const exchangeRate = await this.getExchangeRate(fromCurrency, toCurrency, date);
+    if (exchangeRate) {
+      const rate = parseFloat(exchangeRate.rate);
+      return { convertedAmount: amount * rate, rate };
+    }
+
+    const reverseRate = await this.getExchangeRate(toCurrency, fromCurrency, date);
+    if (reverseRate) {
+      const rate = 1 / parseFloat(reverseRate.rate);
+      return { convertedAmount: amount * rate, rate };
+    }
+
+    return undefined;
   }
 }
 

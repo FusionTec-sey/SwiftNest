@@ -90,7 +90,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Tenant, Document, Lease, Property, OnboardingProcess, ConditionChecklistItem, HandoverItem, InventoryItem } from "@shared/schema";
+import type { Tenant, Document, Lease, Property, OnboardingProcess, ConditionChecklistItem, HandoverItem, InventoryItem, OutboardingProcess, ExitChecklistItem, DepositDeduction } from "@shared/schema";
+import { LogOut, AlertCircle, Receipt, Banknote, ArrowRight } from "lucide-react";
 
 // Room types for checklist
 const ROOM_TYPES = [
@@ -177,6 +178,15 @@ const ONBOARDING_STAGES = [
   { key: 'INSPECTION', label: 'Inspection', icon: ClipboardCheck, description: 'Property condition inspection' },
   { key: 'HANDOVER', label: 'Handover', icon: Key, description: 'Keys and inventory handover' },
   { key: 'MOVE_IN', label: 'Move-In', icon: Home, description: 'Complete move-in process' },
+];
+
+// Outboarding stages with their display info
+const OUTBOARDING_STAGES = [
+  { key: 'NOTICE_RECEIVED', label: 'Notice Received', icon: FileText, description: 'Move-out notice received and documented' },
+  { key: 'EXIT_INSPECTION', label: 'Exit Inspection', icon: ClipboardCheck, description: 'Final property condition inspection' },
+  { key: 'INVENTORY_RETURN', label: 'Inventory Return', icon: Package, description: 'Return of keys and inventory items' },
+  { key: 'DEPOSIT_SETTLEMENT', label: 'Deposit Settlement', icon: Banknote, description: 'Calculate deductions and refund amount' },
+  { key: 'FINAL_CHECKOUT', label: 'Final Checkout', icon: LogOut, description: 'Complete move-out process' },
 ];
 
 type LeaseWithProperty = Lease & { property?: Property };
@@ -1406,6 +1416,354 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
   );
 }
 
+// Outboarding Section Component
+interface OutboardingSectionProps {
+  tenantId: number;
+  outboardingProcesses?: OutboardingProcess[];
+  outboardingLoading: boolean;
+  leases?: LeaseWithProperty[];
+  onboardingProcesses?: OnboardingProcess[];
+}
+
+function OutboardingSection({ tenantId, outboardingProcesses, outboardingLoading, leases, onboardingProcesses }: OutboardingSectionProps) {
+  const { toast } = useToast();
+  const [selectedProcess, setSelectedProcess] = useState<OutboardingProcess | null>(null);
+
+  const createOutboardingMutation = useMutation({
+    mutationFn: async (data: { leaseId: number; tenantId: number; propertyId: number; unitId?: number; onboardingId?: number }) => {
+      return apiRequest("POST", "/api/outboarding", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "outboarding"] });
+      toast({
+        title: "Move-out process started",
+        description: "The outboarding process has been initiated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const advanceStageMutation = useMutation({
+    mutationFn: async ({ processId, stage }: { processId: number; stage: string }) => {
+      return apiRequest("POST", `/api/outboarding/${processId}/stage`, { stage });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "outboarding"] });
+      const stageNames: Record<string, string> = {
+        'EXIT_INSPECTION': 'Exit inspection stage entered',
+        'INVENTORY_RETURN': 'Inventory return stage entered',
+        'DEPOSIT_SETTLEMENT': 'Deposit settlement stage entered',
+        'FINAL_CHECKOUT': 'Final checkout completed',
+      };
+      toast({
+        title: stageNames[variables.stage] || "Stage updated",
+        description: "The move-out process has progressed.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not advance stage",
+        description: error.message || "Please complete prerequisites for this stage.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getStageIndex = (stage: string | null) => {
+    if (!stage) return -1;
+    return OUTBOARDING_STAGES.findIndex(s => s.key === stage);
+  };
+
+  const isStageCompleted = (stage: string, currentStage: string | null, status: string) => {
+    if (status === 'COMPLETED') return true;
+    const stageIdx = OUTBOARDING_STAGES.findIndex(s => s.key === stage);
+    const currentIdx = getStageIndex(currentStage);
+    return stageIdx < currentIdx;
+  };
+
+  const handleStartOutboarding = (lease: LeaseWithProperty) => {
+    // Find associated onboarding if exists
+    const relatedOnboarding = onboardingProcesses?.find(p => p.leaseId === lease.id);
+    
+    createOutboardingMutation.mutate({
+      leaseId: lease.id,
+      tenantId: tenantId,
+      propertyId: lease.propertyId,
+      unitId: lease.unitId || undefined,
+      onboardingId: relatedOnboarding?.id,
+    });
+  };
+
+  const handleAdvanceStage = (process: OutboardingProcess, targetStage: string) => {
+    advanceStageMutation.mutate({ processId: process.id, stage: targetStage });
+  };
+
+  if (outboardingLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-48" />
+        <Skeleton className="h-24" />
+      </div>
+    );
+  }
+
+  // Check for active leases without outboarding (only those with completed onboarding or no onboarding)
+  const eligibleLeases = leases?.filter(lease => {
+    const hasOutboarding = outboardingProcesses?.some(p => p.leaseId === lease.id);
+    if (hasOutboarding) return false;
+    
+    // Allow starting outboarding if lease is active
+    return lease.status === "ACTIVE";
+  }) || [];
+
+  return (
+    <div className="space-y-6">
+      {/* Start New Outboarding */}
+      {eligibleLeases.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LogOut className="h-5 w-5" />
+              Start Move-Out Process
+            </CardTitle>
+            <CardDescription>
+              Initiate a move-out workflow for an active lease
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {eligibleLeases.map((lease) => (
+                <div
+                  key={lease.id}
+                  className="flex items-center justify-between p-3 border rounded-md"
+                >
+                  <div>
+                    <p className="font-medium">
+                      Lease #{lease.id} - {lease.property?.name || `Property #${lease.propertyId}`}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(lease.startDate), "MMM d, yyyy")} - {format(new Date(lease.endDate), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => handleStartOutboarding(lease)}
+                    disabled={createOutboardingMutation.isPending}
+                    data-testid={`button-start-outboarding-${lease.id}`}
+                  >
+                    {createOutboardingMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-2" />
+                    )}
+                    Start Move-Out
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Active Outboarding Processes */}
+      {outboardingProcesses && outboardingProcesses.length > 0 ? (
+        outboardingProcesses.map((process) => {
+          const currentStageIdx = getStageIndex(process.currentStage);
+          const lease = leases?.find(l => l.id === process.leaseId);
+
+          return (
+            <Card key={process.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <LogOut className="h-5 w-5" />
+                      Move-Out: {lease?.property?.name || `Property #${process.propertyId}`}
+                    </CardTitle>
+                    <CardDescription>
+                      {process.plannedMoveOutDate 
+                        ? `Planned move-out: ${format(new Date(process.plannedMoveOutDate), "MMMM d, yyyy")}`
+                        : "Move-out date not yet set"
+                      }
+                    </CardDescription>
+                  </div>
+                  <Badge variant={process.status === "COMPLETED" ? "default" : "secondary"}>
+                    {process.status === "COMPLETED" ? (
+                      <>
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Completed
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="h-3 w-3 mr-1" />
+                        In Progress
+                      </>
+                    )}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Progress Stepper */}
+                <div className="relative">
+                  <div className="flex justify-between">
+                    {OUTBOARDING_STAGES.map((stage, idx) => {
+                      const StageIcon = stage.icon;
+                      const isCompleted = isStageCompleted(stage.key, process.currentStage, process.status || "");
+                      const isCurrent = stage.key === process.currentStage;
+
+                      return (
+                        <div key={stage.key} className="flex flex-col items-center flex-1">
+                          <div className="relative">
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                isCompleted
+                                  ? "bg-primary border-primary text-primary-foreground"
+                                  : isCurrent
+                                  ? "border-primary text-primary"
+                                  : "border-muted-foreground/30 text-muted-foreground/50"
+                              }`}
+                            >
+                              {isCompleted ? (
+                                <Check className="h-5 w-5" />
+                              ) : (
+                                <StageIcon className="h-5 w-5" />
+                              )}
+                            </div>
+                            {idx < OUTBOARDING_STAGES.length - 1 && (
+                              <div
+                                className={`absolute top-5 left-10 w-full h-0.5 ${
+                                  isCompleted ? "bg-primary" : "bg-muted-foreground/30"
+                                }`}
+                                style={{ width: "calc(100% - 2.5rem)" }}
+                              />
+                            )}
+                          </div>
+                          <span
+                            className={`mt-2 text-xs text-center ${
+                              isCurrent ? "font-medium" : "text-muted-foreground"
+                            }`}
+                          >
+                            {stage.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Current Stage Details */}
+                {process.status !== "COMPLETED" && process.currentStage && (
+                  <Card className="bg-muted/50">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-medium">
+                            {OUTBOARDING_STAGES.find(s => s.key === process.currentStage)?.label}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            {OUTBOARDING_STAGES.find(s => s.key === process.currentStage)?.description}
+                          </p>
+                        </div>
+                        {currentStageIdx < OUTBOARDING_STAGES.length - 1 && (
+                          <Button
+                            onClick={() => handleAdvanceStage(process, OUTBOARDING_STAGES[currentStageIdx + 1].key)}
+                            disabled={advanceStageMutation.isPending}
+                            data-testid={`button-advance-outboarding-${process.id}`}
+                          >
+                            {advanceStageMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <ArrowRight className="h-4 w-4 mr-2" />
+                            )}
+                            Next Stage
+                          </Button>
+                        )}
+                        {currentStageIdx === OUTBOARDING_STAGES.length - 1 && (
+                          <Button
+                            onClick={() => handleAdvanceStage(process, "CHECKOUT_COMPLETED")}
+                            disabled={advanceStageMutation.isPending}
+                            variant="default"
+                            data-testid={`button-complete-outboarding-${process.id}`}
+                          >
+                            {advanceStageMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                            )}
+                            Complete Move-Out
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Deposit Summary */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Banknote className="h-4 w-4" />
+                      Deposit Summary
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-2xl font-bold">
+                          ${parseFloat(process.originalDepositAmount || "0").toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Original Deposit</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-destructive">
+                          -${parseFloat(process.totalDeductions || "0").toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Deductions</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-green-600">
+                          ${parseFloat(process.refundAmount || process.originalDepositAmount || "0").toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Refund Amount</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Timestamps */}
+                {process.status === "COMPLETED" && (
+                  <div className="text-sm text-muted-foreground text-center">
+                    <CheckCircle className="h-4 w-4 inline mr-1 text-green-600" />
+                    Move-out completed on {process.actualMoveOutDate 
+                      ? format(new Date(process.actualMoveOutDate), "MMMM d, yyyy")
+                      : "date not recorded"
+                    }
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })
+      ) : (
+        eligibleLeases.length === 0 && (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <LogOut className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No move-out processes for this tenant</p>
+              <p className="text-sm">Active leases can be moved out when needed</p>
+            </CardContent>
+          </Card>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function TenantDetailPage() {
   const { id } = useParams<{ id: string }>();
   const tenantId = parseInt(id || "0");
@@ -1435,6 +1793,12 @@ export default function TenantDetailPage() {
   // Fetch onboarding processes for this tenant
   const { data: onboardingProcesses, isLoading: onboardingLoading } = useQuery<OnboardingProcess[]>({
     queryKey: ["/api/tenants", tenantId, "onboarding"],
+    enabled: !isNaN(tenantId) && tenantId > 0,
+  });
+
+  // Fetch outboarding processes for this tenant
+  const { data: outboardingProcesses, isLoading: outboardingLoading } = useQuery<OutboardingProcess[]>({
+    queryKey: ["/api/tenants", tenantId, "outboarding"],
     enabled: !isNaN(tenantId) && tenantId > 0,
   });
 
@@ -1649,6 +2013,15 @@ export default function TenantDetailPage() {
             {onboardingProcesses && onboardingProcesses.length > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {onboardingProcesses.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="outboarding" data-testid="tab-outboarding">
+            <LogOut className="h-4 w-4 mr-2" />
+            Move-Out
+            {outboardingProcesses && outboardingProcesses.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {outboardingProcesses.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -2140,6 +2513,16 @@ export default function TenantDetailPage() {
             onboardingProcesses={onboardingProcesses}
             onboardingLoading={onboardingLoading}
             leases={leases}
+          />
+        </TabsContent>
+
+        <TabsContent value="outboarding" className="space-y-6">
+          <OutboardingSection 
+            tenantId={tenantId}
+            outboardingProcesses={outboardingProcesses}
+            outboardingLoading={outboardingLoading}
+            leases={leases}
+            onboardingProcesses={onboardingProcesses}
           />
         </TabsContent>
       </Tabs>

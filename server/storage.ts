@@ -156,6 +156,15 @@ import {
   type InsertConditionChecklistItem,
   type HandoverItem,
   type InsertHandoverItem,
+  outboardingProcesses,
+  exitChecklistItems,
+  depositDeductions,
+  type OutboardingProcess,
+  type InsertOutboardingProcess,
+  type ExitChecklistItem,
+  type InsertExitChecklistItem,
+  type DepositDeduction,
+  type InsertDepositDeduction,
   type OnboardingProcessWithDetails,
   systemSettings,
   type SystemSetting,
@@ -704,6 +713,31 @@ export interface IStorage {
   createHandoverItem(item: InsertHandoverItem & { handedOverByUserId: number }): Promise<HandoverItem>;
   updateHandoverItem(id: number, data: Partial<InsertHandoverItem>): Promise<HandoverItem | undefined>;
   deleteHandoverItem(id: number): Promise<void>;
+
+  // Outboarding Processes
+  getAllOutboardingProcesses(): Promise<OutboardingProcess[]>;
+  getOutboardingProcessById(id: number): Promise<OutboardingProcess | undefined>;
+  getOutboardingProcessByLease(leaseId: number): Promise<OutboardingProcess | undefined>;
+  getOutboardingProcessesByTenant(tenantId: number): Promise<OutboardingProcess[]>;
+  getOutboardingProcessesByProperty(propertyId: number): Promise<OutboardingProcess[]>;
+  createOutboardingProcess(process: InsertOutboardingProcess & { createdByUserId: number }): Promise<OutboardingProcess>;
+  updateOutboardingProcess(id: number, data: Partial<InsertOutboardingProcess>): Promise<OutboardingProcess | undefined>;
+  updateOutboardingStage(id: number, stage: string, timestamp: Date): Promise<OutboardingProcess | undefined>;
+  deleteOutboardingProcess(id: number): Promise<void>;
+
+  // Exit Checklist Items
+  getExitChecklistItemsByOutboarding(outboardingId: number): Promise<ExitChecklistItem[]>;
+  getExitChecklistItemById(id: number): Promise<ExitChecklistItem | undefined>;
+  createExitChecklistItem(item: InsertExitChecklistItem & { inspectedByUserId: number }): Promise<ExitChecklistItem>;
+  updateExitChecklistItem(id: number, data: Partial<InsertExitChecklistItem>): Promise<ExitChecklistItem | undefined>;
+  deleteExitChecklistItem(id: number): Promise<void>;
+
+  // Deposit Deductions
+  getDepositDeductionsByOutboarding(outboardingId: number): Promise<DepositDeduction[]>;
+  getDepositDeductionById(id: number): Promise<DepositDeduction | undefined>;
+  createDepositDeduction(deduction: InsertDepositDeduction & { createdByUserId: number }): Promise<DepositDeduction>;
+  updateDepositDeduction(id: number, data: Partial<InsertDepositDeduction>): Promise<DepositDeduction | undefined>;
+  deleteDepositDeduction(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5187,6 +5221,138 @@ export class DatabaseStorage implements IStorage {
         description: setting.description
       });
     }
+  }
+
+  // =====================================================
+  // OUTBOARDING PROCESSES
+  // =====================================================
+
+  async getAllOutboardingProcesses(): Promise<OutboardingProcess[]> {
+    return await db.select().from(outboardingProcesses).orderBy(desc(outboardingProcesses.createdAt));
+  }
+
+  async getOutboardingProcessById(id: number): Promise<OutboardingProcess | undefined> {
+    const [process] = await db.select().from(outboardingProcesses).where(eq(outboardingProcesses.id, id));
+    return process || undefined;
+  }
+
+  async getOutboardingProcessByLease(leaseId: number): Promise<OutboardingProcess | undefined> {
+    const [process] = await db.select().from(outboardingProcesses).where(eq(outboardingProcesses.leaseId, leaseId));
+    return process || undefined;
+  }
+
+  async getOutboardingProcessesByTenant(tenantId: number): Promise<OutboardingProcess[]> {
+    return await db.select().from(outboardingProcesses).where(eq(outboardingProcesses.tenantId, tenantId)).orderBy(desc(outboardingProcesses.createdAt));
+  }
+
+  async getOutboardingProcessesByProperty(propertyId: number): Promise<OutboardingProcess[]> {
+    return await db.select().from(outboardingProcesses).where(eq(outboardingProcesses.propertyId, propertyId)).orderBy(desc(outboardingProcesses.createdAt));
+  }
+
+  async createOutboardingProcess(process: InsertOutboardingProcess & { createdByUserId: number }): Promise<OutboardingProcess> {
+    const [created] = await db.insert(outboardingProcesses).values(process).returning();
+    return created;
+  }
+
+  async updateOutboardingProcess(id: number, data: Partial<InsertOutboardingProcess>): Promise<OutboardingProcess | undefined> {
+    const updateData: any = { ...data, updatedAt: new Date() };
+    const [updated] = await db.update(outboardingProcesses)
+      .set(updateData)
+      .where(eq(outboardingProcesses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateOutboardingStage(id: number, stage: string, timestamp: Date): Promise<OutboardingProcess | undefined> {
+    const stageFieldMap: Record<string, string> = {
+      'NOTICE_RECEIVED': 'noticeReceivedAt',
+      'EXIT_INSPECTION_SCHEDULED': 'exitInspectionScheduledAt',
+      'EXIT_INSPECTION_COMPLETED': 'exitInspectionCompletedAt',
+      'INVENTORY_RETURN': 'inventoryReturnCompletedAt',
+      'DEPOSIT_SETTLEMENT': 'depositSettlementCompletedAt',
+      'FINAL_CHECKOUT': 'finalCheckoutAt',
+    };
+
+    const updateData: any = {
+      currentStage: stage,
+      status: stage === 'FINAL_CHECKOUT' ? 'COMPLETED' : 'IN_PROGRESS',
+      updatedAt: new Date(),
+    };
+
+    const timestampField = stageFieldMap[stage];
+    if (timestampField) {
+      updateData[timestampField] = timestamp;
+    }
+
+    const [updated] = await db.update(outboardingProcesses)
+      .set(updateData)
+      .where(eq(outboardingProcesses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteOutboardingProcess(id: number): Promise<void> {
+    await db.delete(outboardingProcesses).where(eq(outboardingProcesses.id, id));
+  }
+
+  // =====================================================
+  // EXIT CHECKLIST ITEMS
+  // =====================================================
+
+  async getExitChecklistItemsByOutboarding(outboardingId: number): Promise<ExitChecklistItem[]> {
+    return await db.select().from(exitChecklistItems).where(eq(exitChecklistItems.outboardingId, outboardingId));
+  }
+
+  async getExitChecklistItemById(id: number): Promise<ExitChecklistItem | undefined> {
+    const [item] = await db.select().from(exitChecklistItems).where(eq(exitChecklistItems.id, id));
+    return item || undefined;
+  }
+
+  async createExitChecklistItem(item: InsertExitChecklistItem & { inspectedByUserId: number }): Promise<ExitChecklistItem> {
+    const [created] = await db.insert(exitChecklistItems).values(item).returning();
+    return created;
+  }
+
+  async updateExitChecklistItem(id: number, data: Partial<InsertExitChecklistItem>): Promise<ExitChecklistItem | undefined> {
+    const [updated] = await db.update(exitChecklistItems)
+      .set(data)
+      .where(eq(exitChecklistItems.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteExitChecklistItem(id: number): Promise<void> {
+    await db.delete(exitChecklistItems).where(eq(exitChecklistItems.id, id));
+  }
+
+  // =====================================================
+  // DEPOSIT DEDUCTIONS
+  // =====================================================
+
+  async getDepositDeductionsByOutboarding(outboardingId: number): Promise<DepositDeduction[]> {
+    return await db.select().from(depositDeductions).where(eq(depositDeductions.outboardingId, outboardingId));
+  }
+
+  async getDepositDeductionById(id: number): Promise<DepositDeduction | undefined> {
+    const [deduction] = await db.select().from(depositDeductions).where(eq(depositDeductions.id, id));
+    return deduction || undefined;
+  }
+
+  async createDepositDeduction(deduction: InsertDepositDeduction & { createdByUserId: number }): Promise<DepositDeduction> {
+    const [created] = await db.insert(depositDeductions).values(deduction).returning();
+    return created;
+  }
+
+  async updateDepositDeduction(id: number, data: Partial<InsertDepositDeduction>): Promise<DepositDeduction | undefined> {
+    const [updated] = await db.update(depositDeductions)
+      .set(data)
+      .where(eq(depositDeductions.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteDepositDeduction(id: number): Promise<void> {
+    await db.delete(depositDeductions).where(eq(depositDeductions.id, id));
   }
 }
 

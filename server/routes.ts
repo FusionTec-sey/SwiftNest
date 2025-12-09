@@ -6216,6 +6216,424 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // OUTBOARDING (MOVE-OUT) ROUTES
+  // =====================================================
+
+  // Get all outboarding processes
+  app.get("/api/outboarding", requireAuth, async (req, res, next) => {
+    try {
+      const processes = await storage.getAllOutboardingProcesses();
+      res.json(processes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get outboarding process by ID
+  app.get("/api/outboarding/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+      const process = await storage.getOutboardingProcessById(id);
+      if (!process) {
+        return res.status(404).json({ message: "Outboarding process not found" });
+      }
+      res.json(process);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get outboarding by lease
+  app.get("/api/leases/:leaseId/outboarding", requireAuth, async (req, res, next) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      if (isNaN(leaseId)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const process = await storage.getOutboardingProcessByLease(leaseId);
+      res.json(process || null);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get outboarding by tenant
+  app.get("/api/tenants/:tenantId/outboarding", requireAuth, async (req, res, next) => {
+    try {
+      const tenantId = parseInt(req.params.tenantId);
+      if (isNaN(tenantId)) {
+        return res.status(400).json({ message: "Invalid tenant ID" });
+      }
+      const processes = await storage.getOutboardingProcessesByTenant(tenantId);
+      res.json(processes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create outboarding process
+  app.post("/api/outboarding", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const user = req.user as User;
+      const { leaseId, tenantId, propertyId, unitId, noticeType, plannedMoveOutDate, onboardingId } = req.body;
+
+      if (!leaseId || !tenantId || !propertyId) {
+        return res.status(400).json({ message: "Lease, tenant, and property are required" });
+      }
+
+      // Check if outboarding already exists for this lease
+      const existing = await storage.getOutboardingProcessByLease(leaseId);
+      if (existing) {
+        return res.status(400).json({ message: "Outboarding process already exists for this lease" });
+      }
+
+      // Get the lease to fetch deposit amount
+      const lease = await storage.getLeaseById(leaseId);
+      const originalDepositAmount = lease?.depositAmount || "0";
+
+      const process = await storage.createOutboardingProcess({
+        leaseId,
+        tenantId,
+        propertyId,
+        unitId: unitId || undefined,
+        onboardingId: onboardingId || undefined,
+        noticeType: noticeType || "TENANT_INITIATED",
+        plannedMoveOutDate: plannedMoveOutDate ? new Date(plannedMoveOutDate) : undefined,
+        originalDepositAmount,
+        status: "IN_PROGRESS",
+        currentStage: "NOTICE_RECEIVED",
+        noticeReceivedAt: new Date(),
+        createdByUserId: user.id
+      });
+
+      res.status(201).json(process);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Advance outboarding stage
+  app.post("/api/outboarding/:id/stage", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { stage } = req.body;
+
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+
+      const updated = await storage.updateOutboardingStage(id, stage, new Date());
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update outboarding process
+  app.patch("/api/outboarding/:id", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+      const updated = await storage.updateOutboardingProcess(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete outboarding process
+  app.delete("/api/outboarding/:id", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+      await storage.deleteOutboardingProcess(id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // EXIT CHECKLIST ROUTES
+  // =====================================================
+
+  // Get exit checklist items for outboarding
+  app.get("/api/outboarding/:id/checklist", requireAuth, async (req, res, next) => {
+    try {
+      const outboardingId = parseInt(req.params.id);
+      if (isNaN(outboardingId)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+      const items = await storage.getExitChecklistItemsByOutboarding(outboardingId);
+      res.json(items);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create exit checklist item
+  app.post("/api/outboarding/:id/checklist", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const user = req.user as User;
+      const outboardingId = parseInt(req.params.id);
+      if (isNaN(outboardingId)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+
+      const { roomType, roomName, itemName, itemDescription, moveInCondition, moveInNotes, moveInPhotos,
+              exitCondition, exitNotes, exitPhotos, hasDamage, damageDescription, estimatedRepairCost, isNormalWear,
+              moveInChecklistItemId } = req.body;
+
+      const item = await storage.createExitChecklistItem({
+        outboardingId,
+        moveInChecklistItemId: moveInChecklistItemId || undefined,
+        roomType,
+        roomName: roomName || undefined,
+        itemName,
+        itemDescription: itemDescription || undefined,
+        moveInCondition: moveInCondition || undefined,
+        moveInNotes: moveInNotes || undefined,
+        moveInPhotos: moveInPhotos || [],
+        exitCondition,
+        exitNotes: exitNotes || undefined,
+        exitPhotos: exitPhotos || [],
+        hasDamage: hasDamage ? 1 : 0,
+        damageDescription: damageDescription || undefined,
+        estimatedRepairCost: estimatedRepairCost || undefined,
+        isNormalWear: isNormalWear ? 1 : 0,
+        inspectedByUserId: user.id
+      });
+
+      res.status(201).json(item);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update exit checklist item
+  app.patch("/api/outboarding/checklist/:itemId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const updated = await storage.updateExitChecklistItem(itemId, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete exit checklist item
+  app.delete("/api/outboarding/checklist/:itemId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      await storage.deleteExitChecklistItem(itemId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // DEPOSIT DEDUCTION ROUTES
+  // =====================================================
+
+  // Get deposit deductions for outboarding
+  app.get("/api/outboarding/:id/deductions", requireAuth, async (req, res, next) => {
+    try {
+      const outboardingId = parseInt(req.params.id);
+      if (isNaN(outboardingId)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+      const deductions = await storage.getDepositDeductionsByOutboarding(outboardingId);
+      res.json(deductions);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create deposit deduction
+  app.post("/api/outboarding/:id/deductions", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const user = req.user as User;
+      const outboardingId = parseInt(req.params.id);
+      if (isNaN(outboardingId)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+
+      const { reason, description, amount, photos, invoiceReference, exitChecklistItemId, expenseId } = req.body;
+
+      const deduction = await storage.createDepositDeduction({
+        outboardingId,
+        reason,
+        description,
+        amount: String(amount),
+        photos: photos || [],
+        invoiceReference: invoiceReference || undefined,
+        exitChecklistItemId: exitChecklistItemId || undefined,
+        expenseId: expenseId || undefined,
+        createdByUserId: user.id
+      });
+
+      // Update the total deductions on the outboarding process
+      const allDeductions = await storage.getDepositDeductionsByOutboarding(outboardingId);
+      const totalDeductions = allDeductions.reduce((sum, d) => sum + parseFloat(d.amount), 0);
+      
+      const process = await storage.getOutboardingProcessById(outboardingId);
+      if (process) {
+        const originalDeposit = parseFloat(process.originalDepositAmount || "0");
+        const refundAmount = Math.max(0, originalDeposit - totalDeductions);
+        await storage.updateOutboardingProcess(outboardingId, {
+          totalDeductions: String(totalDeductions),
+          refundAmount: String(refundAmount)
+        });
+      }
+
+      res.status(201).json(deduction);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update deposit deduction
+  app.patch("/api/outboarding/deductions/:deductionId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const deductionId = parseInt(req.params.deductionId);
+      if (isNaN(deductionId)) {
+        return res.status(400).json({ message: "Invalid deduction ID" });
+      }
+      const updated = await storage.updateDepositDeduction(deductionId, req.body);
+      
+      // Recalculate totals if amount changed
+      if (req.body.amount && updated) {
+        const allDeductions = await storage.getDepositDeductionsByOutboarding(updated.outboardingId);
+        const totalDeductions = allDeductions.reduce((sum, d) => sum + parseFloat(d.amount), 0);
+        const process = await storage.getOutboardingProcessById(updated.outboardingId);
+        if (process) {
+          const originalDeposit = parseFloat(process.originalDepositAmount || "0");
+          const refundAmount = Math.max(0, originalDeposit - totalDeductions);
+          await storage.updateOutboardingProcess(updated.outboardingId, {
+            totalDeductions: String(totalDeductions),
+            refundAmount: String(refundAmount)
+          });
+        }
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete deposit deduction
+  app.delete("/api/outboarding/deductions/:deductionId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const deductionId = parseInt(req.params.deductionId);
+      if (isNaN(deductionId)) {
+        return res.status(400).json({ message: "Invalid deduction ID" });
+      }
+      
+      // Get deduction to know the outboarding ID before deleting
+      const deduction = await storage.getDepositDeductionById(deductionId);
+      if (!deduction) {
+        return res.status(404).json({ message: "Deduction not found" });
+      }
+      
+      await storage.deleteDepositDeduction(deductionId);
+      
+      // Recalculate totals
+      const allDeductions = await storage.getDepositDeductionsByOutboarding(deduction.outboardingId);
+      const totalDeductions = allDeductions.reduce((sum, d) => sum + parseFloat(d.amount), 0);
+      const process = await storage.getOutboardingProcessById(deduction.outboardingId);
+      if (process) {
+        const originalDeposit = parseFloat(process.originalDepositAmount || "0");
+        const refundAmount = Math.max(0, originalDeposit - totalDeductions);
+        await storage.updateOutboardingProcess(deduction.outboardingId, {
+          totalDeductions: String(totalDeductions),
+          refundAmount: String(refundAmount)
+        });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Complete deposit settlement
+  app.post("/api/outboarding/:id/settle-deposit", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const user = req.user as User;
+      const outboardingId = parseInt(req.params.id);
+      if (isNaN(outboardingId)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+
+      const { refundReference, managerSignature, tenantSignature } = req.body;
+
+      // Update the process
+      await storage.updateOutboardingProcess(outboardingId, {
+        depositSettlementCompletedAt: new Date(),
+        refundReference: refundReference || undefined,
+        managerSignature: managerSignature || undefined,
+        tenantSignature: tenantSignature || undefined,
+        signedAt: (managerSignature || tenantSignature) ? new Date() : undefined
+      });
+
+      // Advance to deposit settlement stage
+      const updated = await storage.updateOutboardingStage(outboardingId, "DEPOSIT_SETTLEMENT", new Date());
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Complete final checkout
+  app.post("/api/outboarding/:id/final-checkout", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const outboardingId = parseInt(req.params.id);
+      if (isNaN(outboardingId)) {
+        return res.status(400).json({ message: "Invalid outboarding ID" });
+      }
+
+      const { keysReturned, notes, refundPaidAt, refundReference } = req.body;
+
+      // Update the process with final details
+      await storage.updateOutboardingProcess(outboardingId, {
+        keysReturnedAt: keysReturned ? new Date() : undefined,
+        actualMoveOutDate: new Date(),
+        notes: notes || undefined,
+        refundPaidAt: refundPaidAt ? new Date(refundPaidAt) : undefined,
+        refundReference: refundReference || undefined
+      });
+
+      // Advance to final checkout stage (marks as completed)
+      const updated = await storage.updateOutboardingStage(outboardingId, "FINAL_CHECKOUT", new Date());
+      
+      // Optionally update lease status to TERMINATED
+      const process = await storage.getOutboardingProcessById(outboardingId);
+      if (process) {
+        await storage.updateLease(process.leaseId, { status: "TERMINATED" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

@@ -1657,6 +1657,152 @@ export const handoverItems = pgTable("handover_items", {
 ]);
 
 // =====================================================
+// TENANT OUTBOARDING (MOVE-OUT)
+// =====================================================
+
+// Outboarding stage enum - progressive move-out workflow
+export const outboardingStageEnum = pgEnum("outboarding_stage", [
+  "NOTICE_RECEIVED",         // Tenant has given notice to vacate
+  "EXIT_INSPECTION_SCHEDULED", // Exit inspection appointment set
+  "EXIT_INSPECTION_COMPLETED", // Exit inspection done, damages documented
+  "INVENTORY_RETURN",        // Items being returned and checked
+  "DEPOSIT_SETTLEMENT",      // Calculating deposit deductions
+  "FINAL_CHECKOUT"           // Move-out complete, keys returned
+]);
+
+// Outboarding status enum
+export const outboardingStatusEnum = pgEnum("outboarding_status", [
+  "NOT_STARTED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "ON_HOLD",
+  "CANCELLED"
+]);
+
+// Deposit deduction reason enum
+export const depositDeductionReasonEnum = pgEnum("deposit_deduction_reason", [
+  "DAMAGE_REPAIR",           // Repairs for damages beyond normal wear
+  "CLEANING",                // Professional cleaning required
+  "UNPAID_RENT",             // Outstanding rent balance
+  "UNPAID_UTILITIES",        // Outstanding utility bills
+  "MISSING_ITEMS",           // Items not returned
+  "LOCK_CHANGE",             // Key not returned, lock change needed
+  "EARLY_TERMINATION",       // Early lease termination fee
+  "OTHER"                    // Other deductions
+]);
+
+// Outboarding Processes table
+export const outboardingProcesses = pgTable("outboarding_processes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  leaseId: integer("lease_id").notNull().references(() => leases.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  onboardingId: integer("onboarding_id").references(() => onboardingProcesses.id, { onDelete: "set null" }),
+  // Status tracking
+  status: outboardingStatusEnum("status").notNull().default("NOT_STARTED"),
+  currentStage: outboardingStageEnum("current_stage"),
+  // Notice details
+  noticeReceivedAt: timestamp("notice_received_at"),
+  noticeType: text("notice_type"), // "TENANT_INITIATED", "LEASE_EXPIRY", "EVICTION", etc.
+  plannedMoveOutDate: timestamp("planned_move_out_date"),
+  actualMoveOutDate: timestamp("actual_move_out_date"),
+  // Exit inspection
+  exitInspectionScheduledAt: timestamp("exit_inspection_scheduled_at"),
+  exitInspectionCompletedAt: timestamp("exit_inspection_completed_at"),
+  exitInspectionNotes: text("exit_inspection_notes"),
+  // Inventory return
+  inventoryReturnCompletedAt: timestamp("inventory_return_completed_at"),
+  inventoryReturnNotes: text("inventory_return_notes"),
+  // Deposit settlement
+  depositSettlementCompletedAt: timestamp("deposit_settlement_completed_at"),
+  originalDepositAmount: decimal("original_deposit_amount", { precision: 14, scale: 2 }),
+  totalDeductions: decimal("total_deductions", { precision: 14, scale: 2 }).default("0"),
+  refundAmount: decimal("refund_amount", { precision: 14, scale: 2 }),
+  refundPaidAt: timestamp("refund_paid_at"),
+  refundReference: text("refund_reference"),
+  // Final checkout
+  keysReturnedAt: timestamp("keys_returned_at"),
+  finalCheckoutAt: timestamp("final_checkout_at"),
+  // Digital signatures
+  tenantSignature: text("tenant_signature"),
+  managerSignature: text("manager_signature"),
+  signedAt: timestamp("signed_at"),
+  // Metadata
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("outboarding_lease_idx").on(table.leaseId),
+  index("outboarding_tenant_idx").on(table.tenantId),
+  index("outboarding_property_idx").on(table.propertyId),
+  index("outboarding_status_idx").on(table.status),
+]);
+
+// Exit Inspection Checklist - compares against move-in condition
+export const exitChecklistItems = pgTable("exit_checklist_items", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  outboardingId: integer("outboarding_id").notNull().references(() => outboardingProcesses.id, { onDelete: "cascade" }),
+  // Link to original move-in checklist item for comparison
+  moveInChecklistItemId: integer("move_in_checklist_item_id").references(() => conditionChecklistItems.id, { onDelete: "set null" }),
+  // Room/area details
+  roomType: checklistRoomTypeEnum("room_type").notNull(),
+  roomName: text("room_name"),
+  itemName: text("item_name").notNull(),
+  itemDescription: text("item_description"),
+  // Move-in condition (copied from onboarding for reference)
+  moveInCondition: conditionRatingEnum("move_in_condition"),
+  moveInNotes: text("move_in_notes"),
+  moveInPhotos: text("move_in_photos").array().default([]),
+  // Current condition at exit
+  exitCondition: conditionRatingEnum("exit_condition").notNull(),
+  exitNotes: text("exit_notes"),
+  exitPhotos: text("exit_photos").array().default([]),
+  // Damage assessment
+  hasDamage: integer("has_damage").default(0).notNull(),
+  damageDescription: text("damage_description"),
+  estimatedRepairCost: decimal("estimated_repair_cost", { precision: 10, scale: 2 }),
+  isNormalWear: integer("is_normal_wear").default(0).notNull(), // Normal wear vs chargeable damage
+  // Links to related records
+  maintenanceIssueId: integer("maintenance_issue_id").references(() => maintenanceIssues.id, { onDelete: "set null" }),
+  depositDeductionId: integer("deposit_deduction_id"), // Links to deposit deduction
+  // Metadata
+  inspectedByUserId: integer("inspected_by_user_id").notNull().references(() => users.id),
+  inspectedAt: timestamp("inspected_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("exit_checklist_outboarding_idx").on(table.outboardingId),
+  index("exit_checklist_room_idx").on(table.roomType),
+  index("exit_checklist_damage_idx").on(table.hasDamage),
+]);
+
+// Deposit Deductions table - itemized deductions from security deposit
+export const depositDeductions = pgTable("deposit_deductions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  outboardingId: integer("outboarding_id").notNull().references(() => outboardingProcesses.id, { onDelete: "cascade" }),
+  reason: depositDeductionReasonEnum("reason").notNull(),
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  // Supporting documentation
+  photos: text("photos").array().default([]),
+  invoiceReference: text("invoice_reference"),
+  // Links to related records
+  exitChecklistItemId: integer("exit_checklist_item_id").references(() => exitChecklistItems.id, { onDelete: "set null" }),
+  expenseId: integer("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+  // Tenant acknowledgment
+  acknowledgedByTenant: integer("acknowledged_by_tenant").default(0).notNull(),
+  disputedByTenant: integer("disputed_by_tenant").default(0).notNull(),
+  disputeNotes: text("dispute_notes"),
+  // Metadata
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("deduction_outboarding_idx").on(table.outboardingId),
+  index("deduction_reason_idx").on(table.reason),
+]);
+
+// =====================================================
 // EXPENSE MANAGEMENT
 // =====================================================
 
@@ -2285,6 +2431,51 @@ export const insertHandoverItemSchema = createInsertSchema(handoverItems).omit({
 });
 
 // =====================================================
+// OUTBOARDING INSERT SCHEMAS
+// =====================================================
+
+// Outboarding process schemas
+export const insertOutboardingProcessSchema = createInsertSchema(outboardingProcesses).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  leaseId: z.number().min(1, "Lease is required"),
+  tenantId: z.number().min(1, "Tenant is required"),
+  propertyId: z.number().min(1, "Property is required"),
+  originalDepositAmount: z.string().or(z.number()).optional().transform(val => val ? String(val) : undefined),
+  totalDeductions: z.string().or(z.number()).optional().transform(val => val ? String(val) : "0"),
+  refundAmount: z.string().or(z.number()).optional().transform(val => val ? String(val) : undefined),
+  plannedMoveOutDate: z.string().or(z.date()).optional().nullable().transform(val => {
+    if (!val) return null;
+    return typeof val === 'string' ? new Date(val) : val;
+  }),
+});
+
+// Exit checklist item schemas
+export const insertExitChecklistItemSchema = createInsertSchema(exitChecklistItems).omit({
+  id: true,
+  inspectedByUserId: true,
+  createdAt: true,
+}).extend({
+  outboardingId: z.number().min(1, "Outboarding process is required"),
+  itemName: z.string().min(1, "Item name is required"),
+  estimatedRepairCost: z.string().or(z.number()).optional().transform(val => val ? String(val) : undefined),
+});
+
+// Deposit deduction schemas
+export const insertDepositDeductionSchema = createInsertSchema(depositDeductions).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+}).extend({
+  outboardingId: z.number().min(1, "Outboarding process is required"),
+  description: z.string().min(1, "Description is required"),
+  amount: z.string().or(z.number()).transform(val => String(val)),
+});
+
+// =====================================================
 // EXPENSE INSERT SCHEMAS
 // =====================================================
 
@@ -2430,6 +2621,14 @@ export type ConditionChecklistItem = typeof conditionChecklistItems.$inferSelect
 export type InsertConditionChecklistItem = z.infer<typeof insertConditionChecklistItemSchema>;
 export type HandoverItem = typeof handoverItems.$inferSelect;
 export type InsertHandoverItem = z.infer<typeof insertHandoverItemSchema>;
+
+// Outboarding types
+export type OutboardingProcess = typeof outboardingProcesses.$inferSelect;
+export type InsertOutboardingProcess = z.infer<typeof insertOutboardingProcessSchema>;
+export type ExitChecklistItem = typeof exitChecklistItems.$inferSelect;
+export type InsertExitChecklistItem = z.infer<typeof insertExitChecklistItemSchema>;
+export type DepositDeduction = typeof depositDeductions.$inferSelect;
+export type InsertDepositDeduction = z.infer<typeof insertDepositDeductionSchema>;
 
 // Extended types with relations
 export type OwnerWithProperties = Owner & {

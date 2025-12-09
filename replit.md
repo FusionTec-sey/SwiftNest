@@ -86,16 +86,19 @@ Default admin/test account for all testing:
         -   **Status Tracking:** NOT_STARTED, IN_PROGRESS, COMPLETED, CANCELLED with timestamps at each stage
         -   **Condition Checklist:** Room-by-room inspection with condition ratings (EXCELLENT, GOOD, FAIR, POOR, DAMAGED)
         -   **Room Types:** LIVING_ROOM, BEDROOM, KITCHEN, BATHROOM, DINING_ROOM, BALCONY, GARAGE, STORAGE, COMMON_AREA, EXTERIOR, OTHER
-        -   **Photo Attachments:** Support for photos on checklist items and handover items
+        -   **Photo Attachments:** Upload photos to checklist items via POST `/api/onboarding/checklist/:itemId/photos`, delete via DELETE endpoint with URL parameter. Images stored in `/uploads/onboarding-photos/`
+        -   **Digital Signatures:** Canvas-based signature capture (`client/src/components/ui/signature-pad.tsx`) for tenant and manager. Signatures stored as base64 data URLs in `tenantSignature` and `managerSignature` fields
+        -   **Damage-to-Maintenance Integration:** "Create Maintenance Issue" button on POOR/DAMAGED checklist items auto-creates maintenance issues with room context and damage details
         -   **Inventory Integration:** Handover items link to inventory system for tracking keys, remotes, appliances handed to tenants
         -   **Database Tables:** onboarding_processes, condition_checklist_items, handover_items
-        -   **API Endpoints:** `/api/onboarding`, `/api/onboarding/:id`, `/api/onboarding/:id/stage`, `/api/onboarding/:id/checklist`, `/api/onboarding/:id/handover`, `/api/tenants/:tenantId/onboarding`
+        -   **API Endpoints:** `/api/onboarding`, `/api/onboarding/:id`, `/api/onboarding/:id/stage`, `/api/onboarding/:id/checklist`, `/api/onboarding/:id/handover`, `/api/onboarding/checklist/:itemId/photos`, `/api/tenants/:tenantId/onboarding`
         -   **Frontend:** Tenant detail page (`/tenants/:id`) with tabbed UI:
             -   Overview tab: Contact info, KYC verification, active leases, documents
             -   Onboarding tab: Visual stage stepper with 5 stages, start/complete stage buttons, process cards
-            -   **Onboarding Detail Dialog:** Click "View Details" to access:
-                -   Inspection Checklist tab: Add/delete room condition items with ratings
+            -   **Onboarding Detail Dialog:** Click "View Details" to access 3-tab interface:
+                -   Inspection Checklist tab: Add/delete room condition items with ratings, photo uploads, and "Create Maintenance Issue" for damage
                 -   Handover Items tab: Link inventory items (keys, remotes, appliances) to tenant
+                -   Signatures tab: Digital signature capture for both tenant and property manager with save/clear functionality
         -   **Permission:** Uses `tenant.manage` permission for CRUD operations
     -   **Multi-Currency Support (Phase 1 - Foundation):**
         -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR

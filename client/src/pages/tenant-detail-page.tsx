@@ -37,7 +37,10 @@ import {
   Plus,
   Check,
   Circle,
+  Pen,
+  Wrench,
 } from "lucide-react";
+import { SignaturePad } from "@/components/ui/signature-pad";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -615,6 +618,96 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
     },
   });
 
+  // Photo upload mutation
+  const uploadPhotoMutation = useMutation({
+    mutationFn: async ({ itemId, files }: { itemId: number; files: FileList }) => {
+      const formData = new FormData();
+      Array.from(files).forEach((file) => {
+        formData.append("photos", file);
+      });
+      const response = await fetch(`/api/onboarding/checklist/${itemId}/photos`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || "Failed to upload photos");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding", process.id, "checklist"] });
+      toast({ title: "Photos uploaded", description: "Photos have been added to the inspection item." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete photo mutation
+  const deletePhotoMutation = useMutation({
+    mutationFn: async ({ itemId, url }: { itemId: number; url: string }) => {
+      return apiRequest("DELETE", `/api/onboarding/checklist/${itemId}/photos`, { url });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding", process.id, "checklist"] });
+      toast({ title: "Photo removed", description: "The photo has been deleted." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handlePhotoUpload = (itemId: number, files: FileList | null) => {
+    if (files && files.length > 0) {
+      uploadPhotoMutation.mutate({ itemId, files });
+    }
+  };
+
+  // Save signature mutation
+  const saveSignatureMutation = useMutation({
+    mutationFn: async ({ type, signature }: { type: 'tenant' | 'manager'; signature: string }) => {
+      const payload = type === 'tenant' 
+        ? { tenantSignature: signature }
+        : { managerSignature: signature };
+      return apiRequest("PATCH", `/api/onboarding/${process.id}`, payload);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "onboarding"] });
+      toast({ 
+        title: "Signature saved", 
+        description: `${variables.type === 'tenant' ? 'Tenant' : 'Manager'} signature has been recorded.` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Create maintenance issue from damage mutation
+  const createMaintenanceIssueMutation = useMutation({
+    mutationFn: async (data: { checklistItem: ConditionChecklistItem }) => {
+      return apiRequest("POST", "/api/maintenance/issues", {
+        propertyId: process.propertyId,
+        unitId: process.unitId,
+        category: "GENERAL",
+        severity: data.checklistItem.conditionRating === "DAMAGED" ? "HIGH" : "MEDIUM",
+        title: `Damage: ${data.checklistItem.itemName}`,
+        description: `Room: ${ROOM_TYPES.find(r => r.value === data.checklistItem.roomType)?.label}${data.checklistItem.roomName ? ` (${data.checklistItem.roomName})` : ''}\n\nCondition: ${data.checklistItem.conditionRating}\n\n${data.checklistItem.conditionNotes || 'No additional notes.'}${data.checklistItem.damageDescription ? `\n\nDamage Description: ${data.checklistItem.damageDescription}` : ''}`,
+      });
+    },
+    onSuccess: () => {
+      toast({ 
+        title: "Maintenance issue created", 
+        description: "A new maintenance issue has been created from this damage report." 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleAddChecklist = () => {
     if (!newChecklistItem.roomType || !newChecklistItem.itemName || !newChecklistItem.conditionRating) {
       toast({ title: "Missing fields", description: "Room type, item name, and condition rating are required.", variant: "destructive" });
@@ -656,14 +749,18 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
         </DialogHeader>
 
         <Tabs defaultValue="checklist" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="checklist" data-testid="tab-checklist">
               <ClipboardCheck className="h-4 w-4 mr-2" />
-              Inspection Checklist ({checklistItems?.length || 0})
+              Checklist ({checklistItems?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="handover" data-testid="tab-handover">
               <Package className="h-4 w-4 mr-2" />
-              Handover Items ({handoverItems?.length || 0})
+              Handover ({handoverItems?.length || 0})
+            </TabsTrigger>
+            <TabsTrigger value="signatures" data-testid="tab-signatures">
+              <Pen className="h-4 w-4 mr-2" />
+              Signatures
             </TabsTrigger>
           </TabsList>
 
@@ -793,6 +890,78 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
+                      </div>
+                      
+                      {/* Photos Section */}
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Camera className="h-3 w-3" />
+                            Photos ({item.photos?.length || 0})
+                          </span>
+                          <label className="cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handlePhotoUpload(item.id, e.target.files)}
+                              disabled={uploadPhotoMutation.isPending}
+                              data-testid={`input-upload-photo-${item.id}`}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              asChild
+                              disabled={uploadPhotoMutation.isPending}
+                            >
+                              <span data-testid={`button-add-photo-${item.id}`}>
+                                <Camera className="h-3 w-3 mr-1" />
+                                Add Photo
+                              </span>
+                            </Button>
+                          </label>
+                        </div>
+                        {item.photos && item.photos.length > 0 && (
+                          <div className="flex gap-2 flex-wrap">
+                            {item.photos.map((photo, idx) => (
+                              <div key={idx} className="relative group">
+                                <img
+                                  src={photo}
+                                  alt={`Condition photo ${idx + 1}`}
+                                  className="w-16 h-16 object-cover rounded-md border"
+                                  data-testid={`img-checklist-photo-${item.id}-${idx}`}
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="destructive"
+                                  className="absolute -top-1 -right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => deletePhotoMutation.mutate({ itemId: item.id, url: photo })}
+                                  disabled={deletePhotoMutation.isPending}
+                                  data-testid={`button-delete-photo-${item.id}-${idx}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Create Maintenance Issue button for damaged items */}
+                        {(item.conditionRating === 'POOR' || item.conditionRating === 'DAMAGED') && (
+                          <div className="mt-2 pt-2 border-t border-dashed">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => createMaintenanceIssueMutation.mutate({ checklistItem: item })}
+                              disabled={createMaintenanceIssueMutation.isPending}
+                              data-testid={`button-create-issue-${item.id}`}
+                            >
+                              <Wrench className="h-3 w-3 mr-1" />
+                              Create Maintenance Issue
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -935,6 +1104,104 @@ function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: Onboa
                 <p className="text-sm">No handover items recorded yet</p>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="signatures" className="flex-1 overflow-auto space-y-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Tenant Signature
+                  </CardTitle>
+                  <CardDescription>Tenant's signature for the onboarding documents</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {process.tenantSignature ? (
+                    <div className="space-y-2">
+                      <div className="border rounded-md p-2 bg-white">
+                        <img 
+                          src={process.tenantSignature} 
+                          alt="Tenant signature" 
+                          className="max-w-full h-auto"
+                          data-testid="img-tenant-signature"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default" className="gap-1">
+                          <Check className="h-3 w-3" />
+                          Signed
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => saveSignatureMutation.mutate({ type: 'tenant', signature: '' })}
+                          disabled={saveSignatureMutation.isPending}
+                          data-testid="button-clear-tenant-signature"
+                        >
+                          Clear Signature
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <SignaturePad
+                      onSave={(signature) => saveSignatureMutation.mutate({ type: 'tenant', signature })}
+                      disabled={saveSignatureMutation.isPending}
+                      label="Tenant signs here"
+                    />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Manager Signature
+                  </CardTitle>
+                  <CardDescription>Property manager's signature for verification</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {process.managerSignature ? (
+                    <div className="space-y-2">
+                      <div className="border rounded-md p-2 bg-white">
+                        <img 
+                          src={process.managerSignature} 
+                          alt="Manager signature" 
+                          className="max-w-full h-auto"
+                          data-testid="img-manager-signature"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default" className="gap-1">
+                          <Check className="h-3 w-3" />
+                          Signed
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => saveSignatureMutation.mutate({ type: 'manager', signature: '' })}
+                          disabled={saveSignatureMutation.isPending}
+                          data-testid="button-clear-manager-signature"
+                        >
+                          Clear Signature
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <SignaturePad
+                      onSave={(signature) => saveSignatureMutation.mutate({ type: 'manager', signature })}
+                      disabled={saveSignatureMutation.isPending}
+                      label="Manager signs here"
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="text-xs text-muted-foreground text-center">
+              Both signatures are required to complete the onboarding process.
+            </div>
           </TabsContent>
         </Tabs>
 

@@ -57,6 +57,11 @@ if (!fs.existsSync(expenseAttachmentsDir)) {
   fs.mkdirSync(expenseAttachmentsDir, { recursive: true });
 }
 
+const onboardingPhotosDir = path.join(process.cwd(), "uploads", "onboarding-photos");
+if (!fs.existsSync(onboardingPhotosDir)) {
+  fs.mkdirSync(onboardingPhotosDir, { recursive: true });
+}
+
 const imageStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadDir);
@@ -126,6 +131,30 @@ const documentUpload = multer({
       return cb(null, true);
     }
     cb(new Error("Only images (JPG, PNG, GIF, WebP) and documents (PDF, DOC, DOCX) are allowed"));
+  },
+});
+
+const onboardingPhotoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, onboardingPhotosDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const onboardingPhotoUpload = multer({
+  storage: onboardingPhotoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error("Only image files (JPEG, PNG, GIF, WebP) are allowed"));
   },
 });
 
@@ -5807,6 +5836,73 @@ export async function registerRoutes(
       next(error);
     }
   });
+
+  // Upload photos to checklist item
+  app.post("/api/onboarding/checklist/:itemId/photos", requireAuth, requirePermission("tenant.manage"), onboardingPhotoUpload.array("photos", 10), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+
+      const item = await storage.getChecklistItemById(itemId);
+      if (!item) {
+        return res.status(404).json({ message: "Checklist item not found" });
+      }
+
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "No files uploaded" });
+      }
+
+      const newPhotoUrls = files.map((file) => `/uploads/onboarding-photos/${file.filename}`);
+      const updatedPhotos = [...(item.photos || []), ...newPhotoUrls];
+
+      const updated = await storage.updateChecklistItem(itemId, { photos: updatedPhotos });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete a photo from checklist item
+  app.delete("/api/onboarding/checklist/:itemId/photos", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      const { url } = req.body;
+      
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      if (!url) {
+        return res.status(400).json({ message: "Photo URL is required" });
+      }
+
+      const item = await storage.getChecklistItemById(itemId);
+      if (!item) {
+        return res.status(404).json({ message: "Checklist item not found" });
+      }
+
+      const updatedPhotos = (item.photos || []).filter((p) => p !== url);
+      
+      // Delete file from disk
+      if (url.startsWith("/uploads/onboarding-photos/")) {
+        const filename = url.replace("/uploads/onboarding-photos/", "");
+        const filePath = path.join(onboardingPhotosDir, filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+
+      const updated = await storage.updateChecklistItem(itemId, { photos: updatedPhotos });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Serve onboarding photos
+  app.use("/uploads/onboarding-photos", express.static(onboardingPhotosDir));
 
   // =====================================================
   // HANDOVER ITEMS ROUTES

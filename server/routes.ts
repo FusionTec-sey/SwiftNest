@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
-import { hasPermission, getAccessiblePropertyIds, requirePermission, hasAnyPermission, requireSuperAdmin } from "./rbac";
+import { hasPermission, getAccessiblePropertyIds, requirePermission, hasAnyPermission, requireSuperAdmin, requireAnyPermission, getUserPermissions } from "./rbac";
 import { 
   insertPropertySchema, 
   insertUnitSchema, 
@@ -4426,7 +4426,7 @@ export async function registerRoutes(
   // =====================================================
 
   // Get all expenses for current user
-  app.get("/api/expenses", requireAuth, async (req, res, next) => {
+  app.get("/api/expenses", requireAuth, requirePermission("expense.view"), async (req, res, next) => {
     try {
       const expenses = await storage.getExpensesByUser(req.user!.id);
       res.json(expenses);
@@ -4436,7 +4436,7 @@ export async function registerRoutes(
   });
 
   // Get expenses by owner
-  app.get("/api/expenses/owner/:ownerId", requireAuth, async (req, res, next) => {
+  app.get("/api/expenses/owner/:ownerId", requireAuth, requirePermission("expense.view"), async (req, res, next) => {
     try {
       const ownerId = parseInt(req.params.ownerId);
       if (isNaN(ownerId)) {
@@ -4456,7 +4456,7 @@ export async function registerRoutes(
   });
 
   // Get expenses by property
-  app.get("/api/expenses/property/:propertyId", requireAuth, async (req, res, next) => {
+  app.get("/api/expenses/property/:propertyId", requireAuth, requirePermission("expense.view"), async (req, res, next) => {
     try {
       const propertyId = parseInt(req.params.propertyId);
       if (isNaN(propertyId)) {
@@ -4633,7 +4633,7 @@ export async function registerRoutes(
   });
 
   // Create a new expense
-  app.post("/api/expenses", requireAuth, async (req, res, next) => {
+  app.post("/api/expenses", requireAuth, requirePermission("expense.create"), async (req, res, next) => {
     try {
       const body = { ...req.body };
       if (body.expenseDate) body.expenseDate = new Date(body.expenseDate);
@@ -4690,6 +4690,21 @@ export async function registerRoutes(
       const access = await storage.canUserAccessOwner(existingExpense.ownerId, req.user!.id);
       if (!access.canAccess || access.role === "VIEWER") {
         return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Check for approval status change - requires expense.approve permission
+      const userPerms = await getUserPermissions(req.user!.id);
+      const isApprovalChange = req.body.approvalStatus && req.body.approvalStatus !== existingExpense.approvalStatus;
+      
+      if (isApprovalChange) {
+        if (!hasPermission(userPerms, "expense.approve")) {
+          return res.status(403).json({ message: "You don't have permission to approve or reject expenses" });
+        }
+      } else {
+        // Regular edit requires expense.edit permission
+        if (!hasPermission(userPerms, "expense.edit") && !hasPermission(userPerms, "expense.create")) {
+          return res.status(403).json({ message: "You don't have permission to edit expenses" });
+        }
       }
 
       const body = { ...req.body };
@@ -4753,7 +4768,7 @@ export async function registerRoutes(
   });
 
   // Delete an expense
-  app.delete("/api/expenses/:id", requireAuth, async (req, res, next) => {
+  app.delete("/api/expenses/:id", requireAuth, requirePermission("expense.delete"), async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {

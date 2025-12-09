@@ -1890,6 +1890,7 @@ export type DashboardWidgetDefinition = {
 export const settingCategoryEnum = pgEnum("setting_category", [
   "FINANCIAL",
   "LEASE_DEFAULTS",
+  "DASHBOARD",
   "OPERATIONS",
   "AUTOMATION",
   "NOTIFICATIONS"

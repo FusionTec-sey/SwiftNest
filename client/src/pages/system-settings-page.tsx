@@ -19,8 +19,11 @@ import {
   Zap,
   Save,
   Loader2,
-  ShieldX
+  ShieldX,
+  LayoutDashboard
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { WIDGET_DEFINITIONS, DEFAULT_LAYOUTS_BY_ROLE } from "@/lib/widget-registry";
 
 type SettingValue = {
   value: any;
@@ -75,7 +78,7 @@ export default function SystemSettingsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
             <TabsTrigger value="financial" className="gap-2" data-testid="tab-financial">
               <DollarSign className="h-4 w-4" />
               <span className="hidden sm:inline">Financial</span>
@@ -91,6 +94,10 @@ export default function SystemSettingsPage() {
             <TabsTrigger value="automation" className="gap-2" data-testid="tab-automation">
               <Zap className="h-4 w-4" />
               <span className="hidden sm:inline">Automation</span>
+            </TabsTrigger>
+            <TabsTrigger value="dashboard" className="gap-2" data-testid="tab-dashboard">
+              <LayoutDashboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
             </TabsTrigger>
           </TabsList>
 
@@ -108,6 +115,10 @@ export default function SystemSettingsPage() {
 
           <TabsContent value="automation">
             <AutomationSettings settings={settings} />
+          </TabsContent>
+
+          <TabsContent value="dashboard">
+            <DashboardSettings settings={settings} />
           </TabsContent>
         </Tabs>
       </div>
@@ -586,6 +597,154 @@ function AutomationSettings({ settings }: { settings?: SettingsMap }) {
 
         <div className="flex justify-end pt-4">
           <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} data-testid="button-save-automation">
+            {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            Save Changes
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardSettings({ settings }: { settings?: SettingsMap }) {
+  const { toast } = useToast();
+  
+  const enabledWidgetsRaw = settings?.enabled_widgets?.value;
+  const defaultEnabledWidgets = WIDGET_DEFINITIONS.map(w => w.type);
+  const initialEnabledWidgets = Array.isArray(enabledWidgetsRaw) ? enabledWidgetsRaw : defaultEnabledWidgets;
+  
+  const [enabledWidgets, setEnabledWidgets] = useState<string[]>(initialEnabledWidgets);
+  const [allowUserCustomization, setAllowUserCustomization] = useState(settings?.allow_dashboard_customization?.value ?? true);
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PUT", "/api/settings", {
+        settings: [
+          { key: "enabled_widgets", category: "DASHBOARD", value: enabledWidgets },
+          { key: "allow_dashboard_customization", category: "DASHBOARD", value: allowUserCustomization },
+        ]
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      toast({ title: "Dashboard settings saved", description: "Widget availability has been updated" });
+    },
+    onError: () => {
+      toast({ title: "Error saving settings", variant: "destructive" });
+    }
+  });
+
+  const toggleWidget = (widgetType: string) => {
+    setEnabledWidgets(prev => 
+      prev.includes(widgetType) 
+        ? prev.filter(w => w !== widgetType)
+        : [...prev, widgetType]
+    );
+  };
+
+  const widgetsByCategory = WIDGET_DEFINITIONS.reduce((acc, widget) => {
+    if (!acc[widget.category]) acc[widget.category] = [];
+    acc[widget.category].push(widget);
+    return acc;
+  }, {} as Record<string, typeof WIDGET_DEFINITIONS>);
+
+  const categoryLabels: Record<string, string> = {
+    OVERVIEW: "Overview Widgets",
+    FINANCIAL: "Financial Widgets",
+    MAINTENANCE: "Maintenance Widgets",
+    COMPLIANCE: "Compliance Widgets",
+    QUICK_ACTIONS: "Quick Actions",
+    ACTIVITY: "Activity Widgets",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LayoutDashboard className="h-5 w-5" />
+          Dashboard Defaults
+        </CardTitle>
+        <CardDescription>Configure which widgets are available and default layouts by role</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="font-medium">User Customization</h3>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Allow Users to Customize Dashboard</Label>
+              <p className="text-sm text-muted-foreground">Let users rearrange and add/remove widgets from their dashboard</p>
+            </div>
+            <Switch
+              checked={allowUserCustomization}
+              onCheckedChange={setAllowUserCustomization}
+              data-testid="switch-allow-customization"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4 pt-4 border-t">
+          <h3 className="font-medium">Available Widgets</h3>
+          <p className="text-sm text-muted-foreground">
+            Select which widgets are available organization-wide. Disabled widgets won't appear in any user's dashboard.
+          </p>
+          
+          {Object.entries(widgetsByCategory).map(([category, widgets]) => (
+            <div key={category} className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground">{categoryLabels[category] || category}</h4>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {widgets.map(widget => (
+                  <div key={widget.type} className="flex items-start gap-3 p-3 rounded-md border">
+                    <Checkbox
+                      id={`widget-${widget.type}`}
+                      checked={enabledWidgets.includes(widget.type)}
+                      onCheckedChange={() => toggleWidget(widget.type)}
+                      data-testid={`checkbox-widget-${widget.type}`}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor={`widget-${widget.type}`} className="cursor-pointer font-medium">
+                        {widget.title}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">{widget.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-4 pt-4 border-t">
+          <h3 className="font-medium">Default Layouts by Role</h3>
+          <p className="text-sm text-muted-foreground">
+            These are the default widget arrangements for each role. Users with customization enabled can modify their layout.
+          </p>
+          
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(DEFAULT_LAYOUTS_BY_ROLE).map(([role, widgets]) => (
+              <div key={role} className="p-3 rounded-md border space-y-2">
+                <h4 className="font-medium text-sm">{role.replace(/_/g, " ")}</h4>
+                <div className="flex flex-wrap gap-1">
+                  {widgets.map(w => {
+                    const def = WIDGET_DEFINITIONS.find(d => d.type === w.widgetType);
+                    const isEnabled = enabledWidgets.includes(w.widgetType);
+                    return (
+                      <span 
+                        key={w.id} 
+                        className={`text-xs px-2 py-1 rounded ${isEnabled ? 'bg-muted' : 'bg-destructive/10 text-destructive line-through'}`}
+                      >
+                        {def?.title || w.widgetType}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-4">
+          <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} data-testid="button-save-dashboard">
             {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
             Save Changes
           </Button>

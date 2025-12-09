@@ -2593,6 +2593,63 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/invoices/calculate-late-fees", requireAuth, async (req, res, next) => {
+    try {
+      const overdueInvoices = await storage.getOverdueInvoices();
+      const now = new Date();
+      const updatedInvoices = [];
+      
+      for (const invoice of overdueInvoices) {
+        const lease = await storage.getLeaseById(invoice.leaseId);
+        if (!lease) continue;
+        
+        const access = await storage.canUserAccessProperty(lease.propertyId, req.user!.id);
+        if (!access.canAccess) continue;
+        if (!access.isOwner && access.role !== "EDITOR") continue;
+        
+        const lateFeePercent = parseFloat(lease.lateFeePercent || "0");
+        const graceDays = lease.lateFeeGraceDays || 5;
+        
+        if (lateFeePercent <= 0) continue;
+        
+        const dueDate = new Date(invoice.dueDate);
+        const daysPastDue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysPastDue <= graceDays) continue;
+        
+        const rentAmount = parseFloat(invoice.rentAmount);
+        const calculatedLateFee = (rentAmount * lateFeePercent / 100);
+        const currentLateFee = parseFloat(invoice.lateFees || "0");
+        
+        if (calculatedLateFee > currentLateFee) {
+          const newTotal = parseFloat(invoice.rentAmount) + 
+            parseFloat(invoice.utilityCharges || "0") +
+            parseFloat(invoice.maintenanceCharges || "0") +
+            calculatedLateFee +
+            parseFloat(invoice.otherCharges || "0");
+          
+          await storage.updateRentInvoice(invoice.id, { 
+            lateFees: calculatedLateFee.toFixed(2),
+            totalAmount: newTotal.toFixed(2)
+          });
+          updatedInvoices.push({ 
+            invoiceId: invoice.id, 
+            invoiceNumber: invoice.invoiceNumber,
+            lateFee: calculatedLateFee.toFixed(2),
+            daysPastDue
+          });
+        }
+      }
+      
+      res.json({ 
+        message: `Applied late fees to ${updatedInvoices.length} invoices`,
+        updatedInvoices 
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // =====================================================
   // PAYMENTS MODULE
   // =====================================================

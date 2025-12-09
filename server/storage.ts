@@ -146,7 +146,17 @@ import {
   type InsertInventoryMovement,
   type InventoryCategoryWithChildren,
   type InventoryItemWithDetails,
-  type InventoryMovementWithDetails
+  type InventoryMovementWithDetails,
+  onboardingProcesses,
+  conditionChecklistItems,
+  handoverItems,
+  type OnboardingProcess,
+  type InsertOnboardingProcess,
+  type ConditionChecklistItem,
+  type InsertConditionChecklistItem,
+  type HandoverItem,
+  type InsertHandoverItem,
+  type OnboardingProcessWithDetails
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
@@ -664,6 +674,32 @@ export interface IStorage {
   createInventoryMovement(movement: InsertInventoryMovement & { performedByUserId: number }): Promise<InventoryMovement>;
   issueInventoryItem(itemId: number, data: { propertyId?: number; unitId?: number; tenantId?: number; quantity: number; notes?: string; performedByUserId: number }): Promise<InventoryMovement>;
   returnInventoryItem(itemId: number, data: { warehouseId?: number; quantity: number; conditionAfter?: string; damageNotes?: string; notes?: string; performedByUserId: number }): Promise<InventoryMovement>;
+
+  // Onboarding Processes
+  getAllOnboardingProcesses(): Promise<OnboardingProcess[]>;
+  getOnboardingProcessById(id: number): Promise<OnboardingProcess | undefined>;
+  getOnboardingProcessWithDetails(id: number): Promise<OnboardingProcessWithDetails | undefined>;
+  getOnboardingProcessByLease(leaseId: number): Promise<OnboardingProcess | undefined>;
+  getOnboardingProcessesByTenant(tenantId: number): Promise<OnboardingProcess[]>;
+  getOnboardingProcessesByProperty(propertyId: number): Promise<OnboardingProcess[]>;
+  createOnboardingProcess(process: InsertOnboardingProcess & { createdByUserId: number }): Promise<OnboardingProcess>;
+  updateOnboardingProcess(id: number, data: Partial<InsertOnboardingProcess>): Promise<OnboardingProcess | undefined>;
+  updateOnboardingStage(id: number, stage: string, timestamp: Date): Promise<OnboardingProcess | undefined>;
+  deleteOnboardingProcess(id: number): Promise<void>;
+
+  // Condition Checklist Items
+  getChecklistItemsByOnboarding(onboardingId: number): Promise<ConditionChecklistItem[]>;
+  getChecklistItemById(id: number): Promise<ConditionChecklistItem | undefined>;
+  createChecklistItem(item: InsertConditionChecklistItem & { inspectedByUserId: number }): Promise<ConditionChecklistItem>;
+  updateChecklistItem(id: number, data: Partial<InsertConditionChecklistItem>): Promise<ConditionChecklistItem | undefined>;
+  deleteChecklistItem(id: number): Promise<void>;
+
+  // Handover Items
+  getHandoverItemsByOnboarding(onboardingId: number): Promise<HandoverItem[]>;
+  getHandoverItemById(id: number): Promise<HandoverItem | undefined>;
+  createHandoverItem(item: InsertHandoverItem & { handedOverByUserId: number }): Promise<HandoverItem>;
+  updateHandoverItem(id: number, data: Partial<InsertHandoverItem>): Promise<HandoverItem | undefined>;
+  deleteHandoverItem(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4852,6 +4888,175 @@ export class DatabaseStorage implements IStorage {
       notes: data.notes,
       performedByUserId: data.performedByUserId
     });
+  }
+
+  // =====================================================
+  // ONBOARDING MODULE IMPLEMENTATIONS
+  // =====================================================
+
+  async getAllOnboardingProcesses(): Promise<OnboardingProcess[]> {
+    return db.select().from(onboardingProcesses).orderBy(desc(onboardingProcesses.createdAt));
+  }
+
+  async getOnboardingProcessById(id: number): Promise<OnboardingProcess | undefined> {
+    const [process] = await db.select().from(onboardingProcesses).where(eq(onboardingProcesses.id, id));
+    return process || undefined;
+  }
+
+  async getOnboardingProcessWithDetails(id: number): Promise<OnboardingProcessWithDetails | undefined> {
+    const process = await this.getOnboardingProcessById(id);
+    if (!process) return undefined;
+
+    const lease = await this.getLeaseById(process.leaseId);
+    const tenant = await this.getTenantById(process.tenantId);
+    const property = await this.getPropertyById(process.propertyId);
+    const unit = process.unitId ? await this.getUnitById(process.unitId) : null;
+    const checklistItems = await this.getChecklistItemsByOnboarding(id);
+    const handoverItemsRaw = await this.getHandoverItemsByOnboarding(id);
+    const createdBy = await this.getUser(process.createdByUserId);
+
+    if (!lease || !tenant || !property || !createdBy) return undefined;
+
+    const handoverItemsWithDetails = await Promise.all(
+      handoverItemsRaw.map(async (hi) => {
+        const inventoryItem = await this.getInventoryItemById(hi.inventoryItemId);
+        return { ...hi, inventoryItem: inventoryItem! };
+      })
+    );
+
+    return {
+      ...process,
+      lease,
+      tenant,
+      property,
+      unit,
+      checklistItems,
+      handoverItems: handoverItemsWithDetails,
+      createdBy
+    };
+  }
+
+  async getOnboardingProcessByLease(leaseId: number): Promise<OnboardingProcess | undefined> {
+    const [process] = await db.select().from(onboardingProcesses)
+      .where(eq(onboardingProcesses.leaseId, leaseId));
+    return process || undefined;
+  }
+
+  async getOnboardingProcessesByTenant(tenantId: number): Promise<OnboardingProcess[]> {
+    return db.select().from(onboardingProcesses)
+      .where(eq(onboardingProcesses.tenantId, tenantId))
+      .orderBy(desc(onboardingProcesses.createdAt));
+  }
+
+  async getOnboardingProcessesByProperty(propertyId: number): Promise<OnboardingProcess[]> {
+    return db.select().from(onboardingProcesses)
+      .where(eq(onboardingProcesses.propertyId, propertyId))
+      .orderBy(desc(onboardingProcesses.createdAt));
+  }
+
+  async createOnboardingProcess(process: InsertOnboardingProcess & { createdByUserId: number }): Promise<OnboardingProcess> {
+    const [created] = await db.insert(onboardingProcesses).values(process).returning();
+    return created;
+  }
+
+  async updateOnboardingProcess(id: number, data: Partial<InsertOnboardingProcess>): Promise<OnboardingProcess | undefined> {
+    const updateData: any = { ...data, updatedAt: new Date() };
+    const [updated] = await db.update(onboardingProcesses)
+      .set(updateData)
+      .where(eq(onboardingProcesses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateOnboardingStage(id: number, stage: string, timestamp: Date): Promise<OnboardingProcess | undefined> {
+    const stageFieldMap: Record<string, string> = {
+      'CONTRACT_SIGNED': 'contractSignedAt',
+      'DEPOSIT_PAID': 'depositPaidAt',
+      'INSPECTION_SCHEDULED': 'inspectionScheduledAt',
+      'INSPECTION_COMPLETED': 'inspectionCompletedAt',
+      'HANDOVER_SCHEDULED': 'handoverScheduledAt',
+      'HANDOVER_COMPLETED': 'handoverCompletedAt',
+      'MOVE_IN_COMPLETED': 'moveInCompletedAt'
+    };
+
+    const timestampField = stageFieldMap[stage];
+    if (!timestampField) throw new Error('Invalid stage');
+
+    const updateData: any = {
+      currentStage: stage,
+      status: stage === 'MOVE_IN_COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS',
+      [timestampField]: timestamp,
+      updatedAt: new Date()
+    };
+
+    const [updated] = await db.update(onboardingProcesses)
+      .set(updateData)
+      .where(eq(onboardingProcesses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteOnboardingProcess(id: number): Promise<void> {
+    await db.delete(onboardingProcesses).where(eq(onboardingProcesses.id, id));
+  }
+
+  // Condition Checklist Items
+  async getChecklistItemsByOnboarding(onboardingId: number): Promise<ConditionChecklistItem[]> {
+    return db.select().from(conditionChecklistItems)
+      .where(eq(conditionChecklistItems.onboardingId, onboardingId))
+      .orderBy(conditionChecklistItems.roomType);
+  }
+
+  async getChecklistItemById(id: number): Promise<ConditionChecklistItem | undefined> {
+    const [item] = await db.select().from(conditionChecklistItems)
+      .where(eq(conditionChecklistItems.id, id));
+    return item || undefined;
+  }
+
+  async createChecklistItem(item: InsertConditionChecklistItem & { inspectedByUserId: number }): Promise<ConditionChecklistItem> {
+    const [created] = await db.insert(conditionChecklistItems).values(item).returning();
+    return created;
+  }
+
+  async updateChecklistItem(id: number, data: Partial<InsertConditionChecklistItem>): Promise<ConditionChecklistItem | undefined> {
+    const [updated] = await db.update(conditionChecklistItems)
+      .set(data)
+      .where(eq(conditionChecklistItems.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteChecklistItem(id: number): Promise<void> {
+    await db.delete(conditionChecklistItems).where(eq(conditionChecklistItems.id, id));
+  }
+
+  // Handover Items
+  async getHandoverItemsByOnboarding(onboardingId: number): Promise<HandoverItem[]> {
+    return db.select().from(handoverItems)
+      .where(eq(handoverItems.onboardingId, onboardingId));
+  }
+
+  async getHandoverItemById(id: number): Promise<HandoverItem | undefined> {
+    const [item] = await db.select().from(handoverItems)
+      .where(eq(handoverItems.id, id));
+    return item || undefined;
+  }
+
+  async createHandoverItem(item: InsertHandoverItem & { handedOverByUserId: number }): Promise<HandoverItem> {
+    const [created] = await db.insert(handoverItems).values(item).returning();
+    return created;
+  }
+
+  async updateHandoverItem(id: number, data: Partial<InsertHandoverItem>): Promise<HandoverItem | undefined> {
+    const [updated] = await db.update(handoverItems)
+      .set(data)
+      .where(eq(handoverItems.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteHandoverItem(id: number): Promise<void> {
+    await db.delete(handoverItems).where(eq(handoverItems.id, id));
   }
 }
 

@@ -80,6 +80,17 @@ Default admin/test account for all testing:
         -   **API Endpoints:** `/api/inventory/categories`, `/api/inventory/warehouses`, `/api/inventory/items`, `/api/inventory/items/:id/issue`, `/api/inventory/items/:id/return`
         -   **Frontend:** `/inventory` page with tabs for Items, Categories (tree view), and Warehouses
         -   **Permission:** Uses `maintenance.manage_materials` permission for CRUD operations
+    -   **Tenant Onboarding Workflow (Phase 2):**
+        -   **Onboarding Process:** Staged workflow for new tenant move-ins with full audit trail
+        -   **Workflow Stages:** CONTRACT_REVIEW → DEPOSIT_COLLECTION → INSPECTION → HANDOVER → MOVE_IN → COMPLETED
+        -   **Status Tracking:** NOT_STARTED, IN_PROGRESS, COMPLETED, CANCELLED with timestamps at each stage
+        -   **Condition Checklist:** Room-by-room inspection with condition ratings (EXCELLENT, GOOD, FAIR, POOR, DAMAGED)
+        -   **Room Types:** LIVING_ROOM, BEDROOM, KITCHEN, BATHROOM, DINING_ROOM, BALCONY, GARAGE, STORAGE, COMMON_AREA, EXTERIOR, OTHER
+        -   **Photo Attachments:** Support for photos on checklist items and handover items
+        -   **Inventory Integration:** Handover items link to inventory system for tracking keys, remotes, appliances handed to tenants
+        -   **Database Tables:** onboarding_processes, condition_checklist_items, handover_items
+        -   **API Endpoints:** `/api/onboarding`, `/api/onboarding/:id`, `/api/onboarding/:id/stage`, `/api/onboarding/:id/checklist`, `/api/onboarding/:id/handover`
+        -   **Permission:** Uses `tenant.manage` permission for CRUD operations
     -   **Multi-Currency Support (Phase 1 - Foundation):**
         -   **Supported Currencies:** 30 world currencies including USD, EUR, GBP, INR, AED, SCR, CAD, AUD, SGD, CHF, JPY, CNY, ZAR, NZD, HKD, SAR, QAR, KWD, BHD, OMR, MYR, THB, IDR, PHP, MXN, BRL, RUB, KRW, TRY, PKR
         -   **Exchange Rates Table:** `exchange_rates` table with baseCurrency, quoteCurrency, rate (decimal 18,8), effectiveDate, source tracking, and CRUD API endpoints

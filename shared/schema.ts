@@ -1506,6 +1506,156 @@ export const inventoryMovements = pgTable("inventory_movements", {
 ]);
 
 // =====================================================
+// TENANT ONBOARDING MODULE
+// =====================================================
+
+// Onboarding stage enum - workflow stages for tenant move-in
+export const onboardingStageEnum = pgEnum("onboarding_stage", [
+  "CONTRACT_SIGNED",       // Lease agreement signed
+  "DEPOSIT_PAID",          // Security deposit received
+  "INSPECTION_SCHEDULED",  // Property inspection scheduled
+  "INSPECTION_COMPLETED",  // Inspection done, condition documented
+  "HANDOVER_SCHEDULED",    // Key handover appointment set
+  "HANDOVER_COMPLETED",    // Keys and items handed over
+  "MOVE_IN_COMPLETED"      // Tenant has moved in
+]);
+
+// Onboarding status enum - overall process status
+export const onboardingStatusEnum = pgEnum("onboarding_status", [
+  "NOT_STARTED",           // Lease created but onboarding not begun
+  "IN_PROGRESS",           // Onboarding underway
+  "COMPLETED",             // All stages done
+  "ON_HOLD",               // Paused for some reason
+  "CANCELLED"              // Onboarding cancelled
+]);
+
+// Room type enum for condition checklists
+export const checklistRoomTypeEnum = pgEnum("checklist_room_type", [
+  "LIVING_ROOM",
+  "BEDROOM",
+  "BATHROOM",
+  "KITCHEN",
+  "DINING_ROOM",
+  "BALCONY",
+  "TERRACE",
+  "GARAGE",
+  "STORAGE",
+  "ENTRANCE",
+  "HALLWAY",
+  "UTILITY_ROOM",
+  "GARDEN",
+  "POOL_AREA",
+  "OTHER"
+]);
+
+// Condition rating enum
+export const conditionRatingEnum = pgEnum("condition_rating", [
+  "EXCELLENT",             // Like new, no issues
+  "GOOD",                  // Minor wear, acceptable
+  "FAIR",                  // Some wear, functional
+  "POOR",                  // Significant wear or damage
+  "DAMAGED"                // Requires repair
+]);
+
+// Onboarding Processes table - tracks overall onboarding for each lease
+export const onboardingProcesses = pgTable("onboarding_processes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  leaseId: integer("lease_id").notNull().references(() => leases.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").references(() => units.id, { onDelete: "set null" }),
+  // Status tracking
+  status: onboardingStatusEnum("status").notNull().default("NOT_STARTED"),
+  currentStage: onboardingStageEnum("current_stage"),
+  // Stage completion timestamps
+  contractSignedAt: timestamp("contract_signed_at"),
+  depositPaidAt: timestamp("deposit_paid_at"),
+  depositAmount: decimal("deposit_amount", { precision: 14, scale: 2 }),
+  depositReference: text("deposit_reference"),
+  inspectionScheduledAt: timestamp("inspection_scheduled_at"),
+  inspectionCompletedAt: timestamp("inspection_completed_at"),
+  inspectionNotes: text("inspection_notes"),
+  handoverScheduledAt: timestamp("handover_scheduled_at"),
+  handoverCompletedAt: timestamp("handover_completed_at"),
+  moveInCompletedAt: timestamp("move_in_completed_at"),
+  // Digital signatures (base64 or document links)
+  tenantSignature: text("tenant_signature"),
+  managerSignature: text("manager_signature"),
+  signedAt: timestamp("signed_at"),
+  // Metadata
+  notes: text("notes"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("onboarding_lease_idx").on(table.leaseId),
+  index("onboarding_tenant_idx").on(table.tenantId),
+  index("onboarding_property_idx").on(table.propertyId),
+  index("onboarding_status_idx").on(table.status),
+]);
+
+// Condition Checklist Items table - room-by-room inspection documentation
+export const conditionChecklistItems = pgTable("condition_checklist_items", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  onboardingId: integer("onboarding_id").notNull().references(() => onboardingProcesses.id, { onDelete: "cascade" }),
+  // Room/area details
+  roomType: checklistRoomTypeEnum("room_type").notNull(),
+  roomName: text("room_name"), // e.g., "Master Bedroom", "Bathroom 2"
+  // Item being inspected
+  itemName: text("item_name").notNull(), // e.g., "Walls", "Floor", "Light fixtures"
+  itemDescription: text("item_description"),
+  // Condition assessment
+  conditionRating: conditionRatingEnum("condition_rating").notNull(),
+  conditionNotes: text("condition_notes"),
+  // Photo documentation (array of URLs/paths)
+  photos: text("photos").array().default([]),
+  // Damage tracking
+  hasDamage: integer("has_damage").default(0).notNull(),
+  damageDescription: text("damage_description"),
+  estimatedRepairCost: decimal("estimated_repair_cost", { precision: 10, scale: 2 }),
+  // If damage creates a maintenance issue
+  maintenanceIssueId: integer("maintenance_issue_id").references(() => maintenanceIssues.id, { onDelete: "set null" }),
+  // If damage creates an expense
+  expenseId: integer("expense_id"),
+  // Metadata
+  inspectedByUserId: integer("inspected_by_user_id").notNull().references(() => users.id),
+  inspectedAt: timestamp("inspected_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("checklist_onboarding_idx").on(table.onboardingId),
+  index("checklist_room_idx").on(table.roomType),
+  index("checklist_damage_idx").on(table.hasDamage),
+]);
+
+// Handover Items table - inventory items given to tenant during onboarding
+export const handoverItems = pgTable("handover_items", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  onboardingId: integer("onboarding_id").notNull().references(() => onboardingProcesses.id, { onDelete: "cascade" }),
+  inventoryItemId: integer("inventory_item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+  // Quantity handed over
+  quantity: integer("quantity").notNull().default(1),
+  // Condition at handover
+  conditionAtHandover: conditionRatingEnum("condition_at_handover").notNull(),
+  conditionNotes: text("condition_notes"),
+  photos: text("photos").array().default([]),
+  // Acknowledgment
+  acknowledgedByTenant: integer("acknowledged_by_tenant").default(0).notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  // Return tracking (for move-out)
+  returnedAt: timestamp("returned_at"),
+  conditionAtReturn: conditionRatingEnum("condition_at_return"),
+  returnNotes: text("return_notes"),
+  returnPhotos: text("return_photos").array().default([]),
+  // Metadata
+  handedOverByUserId: integer("handed_over_by_user_id").notNull().references(() => users.id),
+  handedOverAt: timestamp("handed_over_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("handover_onboarding_idx").on(table.onboardingId),
+  index("handover_item_idx").on(table.inventoryItemId),
+]);
+
+// =====================================================
 // EXPENSE MANAGEMENT
 // =====================================================
 
@@ -2022,6 +2172,45 @@ export const insertInventoryMovementSchema = createInsertSchema(inventoryMovemen
 });
 
 // =====================================================
+// ONBOARDING INSERT SCHEMAS
+// =====================================================
+
+// Onboarding process schemas
+export const insertOnboardingProcessSchema = createInsertSchema(onboardingProcesses).omit({
+  id: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  leaseId: z.number().min(1, "Lease is required"),
+  tenantId: z.number().min(1, "Tenant is required"),
+  propertyId: z.number().min(1, "Property is required"),
+  depositAmount: z.string().or(z.number()).optional().transform(val => val ? String(val) : undefined),
+});
+
+// Condition checklist item schemas
+export const insertConditionChecklistItemSchema = createInsertSchema(conditionChecklistItems).omit({
+  id: true,
+  inspectedByUserId: true,
+  createdAt: true,
+}).extend({
+  onboardingId: z.number().min(1, "Onboarding process is required"),
+  itemName: z.string().min(1, "Item name is required"),
+  estimatedRepairCost: z.string().or(z.number()).optional().transform(val => val ? String(val) : undefined),
+});
+
+// Handover item schemas
+export const insertHandoverItemSchema = createInsertSchema(handoverItems).omit({
+  id: true,
+  handedOverByUserId: true,
+  createdAt: true,
+}).extend({
+  onboardingId: z.number().min(1, "Onboarding process is required"),
+  inventoryItemId: z.number().min(1, "Inventory item is required"),
+  quantity: z.number().min(1, "Quantity must be at least 1"),
+});
+
+// =====================================================
 // EXPENSE INSERT SCHEMAS
 // =====================================================
 
@@ -2160,6 +2349,14 @@ export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 export type InsertInventoryMovement = z.infer<typeof insertInventoryMovementSchema>;
 
+// Onboarding types
+export type OnboardingProcess = typeof onboardingProcesses.$inferSelect;
+export type InsertOnboardingProcess = z.infer<typeof insertOnboardingProcessSchema>;
+export type ConditionChecklistItem = typeof conditionChecklistItems.$inferSelect;
+export type InsertConditionChecklistItem = z.infer<typeof insertConditionChecklistItemSchema>;
+export type HandoverItem = typeof handoverItems.$inferSelect;
+export type InsertHandoverItem = z.infer<typeof insertHandoverItemSchema>;
+
 // Extended types with relations
 export type OwnerWithProperties = Owner & {
   propertyOwnerships: (PropertyOwner & { property: Property })[];
@@ -2218,6 +2415,22 @@ export type InventoryMovementWithDetails = InventoryMovement & {
   toTenant?: Tenant | null;
   expense?: Expense | null;
   performedBy: User;
+};
+
+// Onboarding extended types
+export type OnboardingProcessWithDetails = OnboardingProcess & {
+  lease: Lease;
+  tenant: Tenant;
+  property: Property;
+  unit?: Unit | null;
+  checklistItems: ConditionChecklistItem[];
+  handoverItems: (HandoverItem & { inventoryItem: InventoryItem })[];
+  createdBy: User;
+};
+
+export type TenantWithOnboarding = Tenant & {
+  onboardingProcesses: OnboardingProcess[];
+  activeOnboarding?: OnboardingProcess | null;
 };
 
 export type LedgerEntryWithLines = LedgerEntry & {

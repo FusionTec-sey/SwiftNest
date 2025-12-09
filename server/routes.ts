@@ -5589,6 +5589,300 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // TENANT ONBOARDING ROUTES
+  // =====================================================
+
+  // Get all onboarding processes
+  app.get("/api/onboarding", requireAuth, async (req, res, next) => {
+    try {
+      const processes = await storage.getAllOnboardingProcesses();
+      res.json(processes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get onboarding process by ID
+  app.get("/api/onboarding/:id", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const process = await storage.getOnboardingProcessWithDetails(id);
+      if (!process) {
+        return res.status(404).json({ message: "Onboarding process not found" });
+      }
+      res.json(process);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get onboarding by lease
+  app.get("/api/leases/:leaseId/onboarding", requireAuth, async (req, res, next) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      if (isNaN(leaseId)) {
+        return res.status(400).json({ message: "Invalid lease ID" });
+      }
+      const process = await storage.getOnboardingProcessByLease(leaseId);
+      res.json(process || null);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Get onboarding processes by tenant
+  app.get("/api/tenants/:tenantId/onboarding", requireAuth, async (req, res, next) => {
+    try {
+      const tenantId = parseInt(req.params.tenantId);
+      if (isNaN(tenantId)) {
+        return res.status(400).json({ message: "Invalid tenant ID" });
+      }
+      const processes = await storage.getOnboardingProcessesByTenant(tenantId);
+      res.json(processes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create onboarding process
+  app.post("/api/onboarding", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const user = req.user as any;
+      const { leaseId, tenantId, propertyId, unitId, notes } = req.body;
+      
+      if (!leaseId || !tenantId || !propertyId) {
+        return res.status(400).json({ message: "Lease ID, tenant ID, and property ID are required" });
+      }
+
+      // Check if onboarding already exists for this lease
+      const existing = await storage.getOnboardingProcessByLease(leaseId);
+      if (existing) {
+        return res.status(400).json({ message: "Onboarding process already exists for this lease" });
+      }
+
+      const process = await storage.createOnboardingProcess({
+        leaseId,
+        tenantId,
+        propertyId,
+        unitId: unitId || undefined,
+        notes: notes || undefined,
+        createdByUserId: user.id
+      });
+      res.status(201).json(process);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update onboarding process
+  app.patch("/api/onboarding/:id", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const existing = await storage.getOnboardingProcessById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Onboarding process not found" });
+      }
+      const updated = await storage.updateOnboardingProcess(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update onboarding stage (advance to next stage)
+  app.post("/api/onboarding/:id/stage", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const { stage } = req.body;
+      if (!stage) {
+        return res.status(400).json({ message: "Stage is required" });
+      }
+      const updated = await storage.updateOnboardingStage(id, stage, new Date());
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete onboarding process
+  app.delete("/api/onboarding/:id", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      await storage.deleteOnboardingProcess(id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // CONDITION CHECKLIST ROUTES
+  // =====================================================
+
+  // Get checklist items for onboarding
+  app.get("/api/onboarding/:id/checklist", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const items = await storage.getChecklistItemsByOnboarding(id);
+      res.json(items);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create checklist item
+  app.post("/api/onboarding/:id/checklist", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const onboardingId = parseInt(req.params.id);
+      if (isNaN(onboardingId)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const user = req.user as any;
+      const { roomType, roomName, itemName, itemDescription, conditionRating, conditionNotes, photos, hasDamage, damageDescription, estimatedRepairCost } = req.body;
+      
+      if (!roomType || !itemName || !conditionRating) {
+        return res.status(400).json({ message: "Room type, item name, and condition rating are required" });
+      }
+
+      const item = await storage.createChecklistItem({
+        onboardingId,
+        roomType,
+        roomName: roomName || undefined,
+        itemName,
+        itemDescription: itemDescription || undefined,
+        conditionRating,
+        conditionNotes: conditionNotes || undefined,
+        photos: photos || [],
+        hasDamage: hasDamage || 0,
+        damageDescription: damageDescription || undefined,
+        estimatedRepairCost: estimatedRepairCost ? String(estimatedRepairCost) : undefined,
+        inspectedByUserId: user.id
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update checklist item
+  app.patch("/api/onboarding/checklist/:itemId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const updated = await storage.updateChecklistItem(itemId, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete checklist item
+  app.delete("/api/onboarding/checklist/:itemId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      await storage.deleteChecklistItem(itemId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // HANDOVER ITEMS ROUTES
+  // =====================================================
+
+  // Get handover items for onboarding
+  app.get("/api/onboarding/:id/handover", requireAuth, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const items = await storage.getHandoverItemsByOnboarding(id);
+      res.json(items);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Create handover item
+  app.post("/api/onboarding/:id/handover", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const onboardingId = parseInt(req.params.id);
+      if (isNaN(onboardingId)) {
+        return res.status(400).json({ message: "Invalid onboarding ID" });
+      }
+      const user = req.user as any;
+      const { inventoryItemId, quantity, conditionAtHandover, conditionNotes, photos } = req.body;
+      
+      if (!inventoryItemId || !conditionAtHandover) {
+        return res.status(400).json({ message: "Inventory item ID and condition at handover are required" });
+      }
+
+      const item = await storage.createHandoverItem({
+        onboardingId,
+        inventoryItemId,
+        quantity: quantity || 1,
+        conditionAtHandover,
+        conditionNotes: conditionNotes || undefined,
+        photos: photos || [],
+        handedOverByUserId: user.id
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Update handover item (e.g., mark as acknowledged or returned)
+  app.patch("/api/onboarding/handover/:itemId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      const updated = await storage.updateHandoverItem(itemId, req.body);
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Delete handover item
+  app.delete("/api/onboarding/handover/:itemId", requireAuth, requirePermission("tenant.manage"), async (req, res, next) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid item ID" });
+      }
+      await storage.deleteHandoverItem(itemId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });

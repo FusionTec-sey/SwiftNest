@@ -29,6 +29,12 @@ Default admin/test account for all testing:
     -   `AppSidebar`: Collapsible navigation sidebar with grouped menu items (Overview, People, Operations, Finance, System).
 -   **UI/UX Features:**
     -   Responsive sidebar navigation that collapses to icon-only mode.
+    -   **Mobile Quick Action Bar:** Fixed bottom bar for on-the-go operations (visible on mobile only):
+        -   Component: `client/src/components/mobile-quick-actions.tsx`
+        -   Quick Expense: Log expenses with receipt photo capture
+        -   Quick Issue: Report maintenance issues with camera-first photo documentation
+        -   Quick Invoice: Generate all due invoices for active leases
+        -   Optimized for one-handed mobile use with streamlined forms
     -   **Permission-Aware Dashboard:** Dynamic widget system with role-based defaults:
         -   Widget Registry (`client/src/lib/widget-registry.ts`): Defines 10 widget types with required permissions
         -   Widgets: property_overview, financial_summary, rent_collection, pending_expenses, maintenance_overview, compliance_alerts, quick_actions, recent_activity, occupancy_chart, tenant_summary

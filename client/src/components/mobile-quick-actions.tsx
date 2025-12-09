@@ -207,12 +207,12 @@ function QuickExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             </div>
             <div className="grid gap-2">
               <Label htmlFor="property">Property (optional)</Label>
-              <Select value={propertyId} onValueChange={setPropertyId}>
+              <Select value={propertyId} onValueChange={(val) => setPropertyId(val === "none" ? "" : val)}>
                 <SelectTrigger data-testid="quick-expense-property">
                   <SelectValue placeholder="Select property" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No property</SelectItem>
+                  <SelectItem value="none">No property</SelectItem>
                   {properties?.map((property) => (
                     <SelectItem key={property.id} value={String(property.id)}>
                       {property.name}

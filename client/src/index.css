@@ -286,3 +286,43 @@
     inset: -1px;
   }
 }
+
+/* Mobile keyboard handling - ensures inputs scroll into view when keyboard appears */
+@supports (height: 100dvh) {
+  html {
+    height: 100dvh;
+  }
+}
+
+/* Scroll padding for focused inputs on mobile */
+@media (max-width: 768px) {
+  html {
+    scroll-padding-bottom: 50vh;
+  }
+  
+  /* Ensure focused inputs are visible above keyboard */
+  input:focus,
+  textarea:focus,
+  select:focus,
+  [contenteditable="true"]:focus {
+    scroll-margin-bottom: 50vh;
+  }
+  
+  /* Dialog content should be scrollable and respect keyboard */
+  [role="dialog"] {
+    max-height: 100dvh !important;
+    max-height: calc(var(--vh, 1vh) * 100) !important;
+  }
+  
+  /* Ensure form content in dialogs scrolls properly */
+  [role="dialog"] > div {
+    max-height: 85dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Main content area should scroll properly */
+  main {
+    -webkit-overflow-scrolling: touch;
+  }
+}

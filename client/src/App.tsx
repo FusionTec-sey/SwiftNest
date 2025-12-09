@@ -41,6 +41,7 @@ import CleaningPage from "@/pages/cleaning-page";
 import GuestCheckinPage from "@/pages/guest-checkin-page";
 import MaintenanceSchedulePage from "@/pages/maintenance-schedule-page";
 import AppliancesPage from "@/pages/appliances-page";
+import BulkImportPage from "@/pages/bulk-import-page";
 
 function ProtectedRoutes() {
   return (
@@ -82,6 +83,7 @@ function ProtectedRoutes() {
       <Route path="/settings" component={SettingsPage} />
       <Route path="/system-settings" component={SystemSettingsPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/bulk-import" component={BulkImportPage} />
       <Route component={NotFound} />
     </Switch>
   );

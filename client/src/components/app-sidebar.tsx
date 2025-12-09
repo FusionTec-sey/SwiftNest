@@ -28,6 +28,7 @@ import {
   LogIn,
   Refrigerator,
   Clock,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   Sidebar,
@@ -297,6 +298,22 @@ export function AppSidebar() {
                   >
                     <Settings className="h-4 w-4" aria-hidden="true" />
                     <span>Settings</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive("/bulk-import")}
+                  tooltip="Bulk Import"
+                >
+                  <Link 
+                    href="/bulk-import" 
+                    onClick={closeMobileSidebar}
+                    data-testid="sidebar-link-bulk-import"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+                    <span>Bulk Import</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

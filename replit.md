@@ -113,6 +113,12 @@ Default admin/test account for all testing:
         -   **Dashboard Widgets:** All financial amounts use formatCurrency for consistent display
         -   **Property Form:** Currency selector in property creation/edit form with 30 currency options
         -   **Phase 2 Roadmap:** Dual-amount tracking, exchange rate snapshots at transaction time, currency selectors in all transaction forms
+    -   **Automation Features (Phase 1):**
+        -   **Maintenance-to-Expense Integration:** "Create Expense" button on resolved/closed maintenance issues links repair costs to accounting with auto-filled amounts and issue references
+        -   **Onboarding Auto-Advance:** POST `/api/onboarding/:id/auto-advance` endpoint automatically progresses stages when all checklist items are complete or handover acknowledged
+        -   **Lease Renewal Reminders:** GET `/api/leases/expiring?days=30` returns active leases expiring within specified days for proactive renewal outreach
+        -   **Rent Invoice Auto-Generation:** POST `/api/leases/generate-all-invoices` generates invoices for all active leases due for billing based on nextInvoiceDate
+        -   **Late Fee Calculation:** POST `/api/invoices/calculate-late-fees` applies late fees to overdue invoices based on lease's lateFeePercent and lateFeeGraceDays settings (requires owner/editor access)
 -   **Data Validation:** Zod schemas for runtime validation, integrated with Drizzle.
 -   **Project Structure:** Monorepo (`client`, `server`, `shared`) with path aliases.
 

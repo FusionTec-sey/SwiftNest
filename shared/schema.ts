@@ -8,6 +8,7 @@ import { z } from "zod";
 export const accountTypeEnum = pgEnum("account_type", ["INDIVIDUAL", "ORGANIZATION"]);
 export const propertyTypeEnum = pgEnum("property_type", ["APARTMENT", "VILLA", "PLOT", "OFFICE", "SHOP", "HOUSE", "TOWNHOUSE", "WAREHOUSE", "INDUSTRIAL", "MIXED_USE", "LAND"]);
 export const occupancyPurposeEnum = pgEnum("occupancy_purpose", ["OWNER_OCCUPIED", "RENTAL", "INVESTMENT", "VACANT_LAND"]);
+export const propertyUsageTypeEnum = pgEnum("property_usage_type", ["LONG_TERM_RENTAL", "SHORT_TERM_RENTAL", "OWNER_OCCUPIED"]);
 export const unitStatusEnum = pgEnum("unit_status", ["VACANT", "OCCUPIED"]);
 export const nodeTypeEnum = pgEnum("node_type", ["BUILDING", "FLOOR", "FLAT", "VILLA", "ROOM", "BED", "SECTION", "PLOT", "CUSTOM"]);
 
@@ -92,6 +93,7 @@ export const properties = pgTable("properties", {
   ownerOrgName: text("owner_org_name"),
   name: text("name").notNull(),
   propertyType: propertyTypeEnum("property_type").notNull(),
+  usageType: propertyUsageTypeEnum("usage_type").notNull().default("LONG_TERM_RENTAL"),
   occupancyPurpose: occupancyPurposeEnum("occupancy_purpose").default("RENTAL"),
   currencyCode: currencyCodeEnum("currency_code").default("USD"), // Property's base currency for financial transactions
   addressLine1: text("address_line1").notNull(),
@@ -546,11 +548,21 @@ export const insertPropertySchema = createInsertSchema(properties).omit({
   updatedAt: true,
 }).extend({
   name: z.string().min(2, "Property name must be at least 2 characters"),
+  propertyType: z.enum(["APARTMENT", "VILLA", "PLOT", "OFFICE", "SHOP", "HOUSE", "TOWNHOUSE", "WAREHOUSE", "INDUSTRIAL", "MIXED_USE", "LAND"]),
+  usageType: z.enum(["LONG_TERM_RENTAL", "SHORT_TERM_RENTAL", "OWNER_OCCUPIED"]).default("LONG_TERM_RENTAL"),
+  occupancyPurpose: z.enum(["OWNER_OCCUPIED", "RENTAL", "INVESTMENT", "VACANT_LAND"]).optional(),
+  currencyCode: z.enum(["USD", "EUR", "GBP", "INR", "AED", "SCR", "CAD", "AUD", "SGD", "CHF", "JPY", "CNY", "ZAR", "NZD", "HKD", "SAR", "QAR", "KWD", "BHD", "OMR", "MYR", "THB", "IDR", "PHP", "MXN", "BRL", "RUB", "KRW", "TRY", "PKR"]).optional(),
   addressLine1: z.string().min(5, "Address must be at least 5 characters"),
+  addressLine2: z.string().optional().nullable(),
   city: z.string().min(2, "City must be at least 2 characters"),
   state: z.string().min(2, "State must be at least 2 characters"),
   country: z.string().min(2, "Country must be at least 2 characters"),
   pincode: z.string().min(4, "Pincode must be at least 4 characters"),
+  latitude: z.string().optional().nullable(),
+  longitude: z.string().optional().nullable(),
+  images: z.array(z.string()).optional(),
+  portfolioTag: z.string().optional().nullable(),
+  coOwnershipNotes: z.string().optional().nullable(),
 });
 
 export const insertUnitSchema = createInsertSchema(units).omit({

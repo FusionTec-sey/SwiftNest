@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building, Building2, Home, Landmark, Store, MapPin, Map, Warehouse, Factory, Layers, TreeDeciduous, HomeIcon, DollarSign } from "lucide-react";
+import { Building, Building2, Home, Landmark, Store, MapPin, Map, Warehouse, Factory, Layers, TreeDeciduous, HomeIcon, DollarSign, Users, CalendarDays, House } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,12 +50,19 @@ const occupancyPurposes = [
   { value: "VACANT_LAND", label: "Vacant Land" },
 ];
 
+const usageTypes = [
+  { value: "LONG_TERM_RENTAL", label: "Long-Term Rental", description: "Traditional tenant leases, rent collection", icon: Users },
+  { value: "SHORT_TERM_RENTAL", label: "Short-Term Rental", description: "Guest houses, holiday homes, vacation rentals", icon: CalendarDays },
+  { value: "OWNER_OCCUPIED", label: "Owner Occupied", description: "Personal property management", icon: House },
+];
+
 export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }: PropertyFormProps) {
   const form = useForm<InsertProperty>({
     resolver: zodResolver(insertPropertySchema),
     defaultValues: {
       name: defaultValues?.name || "",
       propertyType: (defaultValues?.propertyType as InsertProperty["propertyType"]) || "APARTMENT",
+      usageType: (defaultValues?.usageType as InsertProperty["usageType"]) || "LONG_TERM_RENTAL",
       occupancyPurpose: (defaultValues?.occupancyPurpose as InsertProperty["occupancyPurpose"]) || "RENTAL",
       currencyCode: (defaultValues?.currencyCode as InsertProperty["currencyCode"]) || "USD",
       addressLine1: defaultValues?.addressLine1 || "",
@@ -134,6 +141,41 @@ export function PropertyForm({ defaultValues, onSubmit, isSubmitting, onCancel }
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="usageType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Property Usage Type</FormLabel>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {usageTypes.map((type) => {
+                      const Icon = type.icon;
+                      const isSelected = field.value === type.value;
+                      return (
+                        <div
+                          key={type.value}
+                          onClick={() => field.onChange(type.value)}
+                          className={`cursor-pointer rounded-md border-2 p-4 transition-colors hover-elevate ${
+                            isSelected 
+                              ? "border-primary bg-primary/5" 
+                              : "border-border"
+                          }`}
+                          data-testid={`option-usage-${type.value.toLowerCase().replace(/_/g, "-")}`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Icon className={`h-5 w-5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                            <span className={`font-medium ${isSelected ? "text-primary" : ""}`}>{type.label}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{type.description}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             
             <div className="grid gap-4 md:grid-cols-2">
               <FormField

@@ -195,7 +195,7 @@ import {
   type ApplianceWithDetails
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, or, inArray, isNull, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, or, inArray, isNull, isNotNull, gte, lte, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -821,6 +821,16 @@ export interface IStorage {
   createDepositDeduction(deduction: InsertDepositDeduction & { createdByUserId: number }): Promise<DepositDeduction>;
   updateDepositDeduction(id: number, data: Partial<InsertDepositDeduction>): Promise<DepositDeduction | undefined>;
   deleteDepositDeduction(id: number): Promise<void>;
+
+  // =====================================================
+  // SCHEDULER METHODS (for background jobs)
+  // =====================================================
+  getAllActiveLeasesForScheduler(): Promise<Lease[]>;
+  getInvoiceByInvoiceNumber(invoiceNumber: string): Promise<RentInvoice | undefined>;
+  getUnpaidInvoicesForScheduler(): Promise<RentInvoice[]>;
+  getExpiringLeasesForScheduler(days: number): Promise<Lease[]>;
+  getUpcomingMaintenanceSchedulesForScheduler(days: number): Promise<HomeMaintenanceSchedule[]>;
+  createDocumentForScheduler(doc: InsertDocument, userId: number): Promise<Document>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5883,6 +5893,63 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDepositDeduction(id: number): Promise<void> {
     await db.delete(depositDeductions).where(eq(depositDeductions.id, id));
+  }
+
+  // =====================================================
+  // SCHEDULER METHODS (for background jobs)
+  // =====================================================
+
+  async getAllActiveLeasesForScheduler(): Promise<Lease[]> {
+    return await db.select().from(leases)
+      .where(and(
+        eq(leases.status, "ACTIVE"),
+        eq(leases.autoGenerateRentInvoices, true)
+      ));
+  }
+
+  async getInvoiceByInvoiceNumber(invoiceNumber: string): Promise<RentInvoice | undefined> {
+    const [invoice] = await db.select().from(rentInvoices)
+      .where(eq(rentInvoices.invoiceNumber, invoiceNumber));
+    return invoice || undefined;
+  }
+
+  async getUnpaidInvoicesForScheduler(): Promise<RentInvoice[]> {
+    return await db.select().from(rentInvoices)
+      .where(and(
+        eq(rentInvoices.status, "PENDING"),
+        isNotNull(rentInvoices.dueDate)
+      ));
+  }
+
+  async getExpiringLeasesForScheduler(days: number): Promise<Lease[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    
+    return await db.select().from(leases)
+      .where(and(
+        eq(leases.status, "ACTIVE"),
+        lte(leases.endDate, futureDate),
+        gte(leases.endDate, new Date())
+      ));
+  }
+
+  async getUpcomingMaintenanceSchedulesForScheduler(days: number): Promise<HomeMaintenanceSchedule[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    
+    return await db.select().from(homeMaintenanceSchedules)
+      .where(and(
+        eq(homeMaintenanceSchedules.isActive, true),
+        lte(homeMaintenanceSchedules.nextDueDate, futureDate),
+        gte(homeMaintenanceSchedules.nextDueDate, new Date())
+      ));
+  }
+
+  async createDocumentForScheduler(doc: InsertDocument, userId: number): Promise<Document> {
+    const [created] = await db.insert(documents)
+      .values({ ...doc, uploadedByUserId: userId })
+      .returning();
+    return created;
   }
 }
 

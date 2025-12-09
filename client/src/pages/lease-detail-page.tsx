@@ -33,7 +33,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/currency";
-import type { Lease, Property, Tenant, Document } from "@shared/schema";
+import type { Lease, Property, Tenant, Document, RentInvoice } from "@shared/schema";
+import { Receipt } from "lucide-react";
 
 const formatDate = (date: string | Date | null) => {
   if (!date) return "-";
@@ -96,6 +97,11 @@ export default function LeaseDetailPage() {
 
   const { data: documents, isLoading: docsLoading } = useQuery<Document[]>({
     queryKey: ["/api/documents", "LEASE", leaseId],
+    enabled: leaseId > 0,
+  });
+
+  const { data: invoices = [], isLoading: invoicesLoading } = useQuery<RentInvoice[]>({
+    queryKey: ["/api/leases", leaseId, "invoices"],
     enabled: leaseId > 0,
   });
 
@@ -539,6 +545,76 @@ export default function LeaseDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Receipt className="h-5 w-5" />
+              Rent Invoices
+            </CardTitle>
+            <CardDescription>
+              Invoice history and payment tracking
+            </CardDescription>
+          </div>
+          <Link href={`/rent?leaseId=${leaseId}`}>
+            <Button variant="outline" size="sm" className="gap-2" data-testid="button-view-all-invoices">
+              View All
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {invoicesLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+            </div>
+          ) : invoices.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No invoices generated yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {invoices.slice(0, 5).map((invoice) => (
+                <Link key={invoice.id} href={`/rent?invoiceId=${invoice.id}`}>
+                  <div
+                    className="flex items-center justify-between p-3 rounded-md bg-muted/50 hover-elevate cursor-pointer"
+                    data-testid={`invoice-row-${invoice.id}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Receipt className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{invoice.invoiceNumber}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Due: {formatDate(invoice.dueDate)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{formatCurrency(invoice.totalAmount)}</span>
+                      <Badge 
+                        variant={
+                          invoice.status === "PAID" ? "default" : 
+                          invoice.status === "OVERDUE" ? "destructive" : 
+                          "secondary"
+                        }
+                        className="text-xs"
+                      >
+                        {invoice.status}
+                      </Badge>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+              {invoices.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center pt-2">
+                  + {invoices.length - 5} more invoices
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <AlertDialog open={!!deletingDoc} onOpenChange={() => setDeletingDoc(null)}>
         <AlertDialogContent>

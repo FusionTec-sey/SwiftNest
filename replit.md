@@ -38,6 +38,13 @@ Preferred communication style: Simple, everyday language.
     -   **Owner-Occupied Module:** Home maintenance schedule tracking with recurring tasks (frequency-based), appliance and warranty management with service history tracking.
     -   **Multi-Currency Support (Foundation):** Support for 30 world currencies, `exchange_rates` table, property-specific base currencies, and consistent currency formatting across financial pages.
     -   **Automation Features:** Integration between maintenance and expenses, onboarding auto-advance, lease renewal reminders, rent invoice auto-generation, and late fee calculation.
+    -   **Background Job Scheduler:** Automated scheduled tasks using `node-cron` (`server/scheduler.ts`):
+        -   Daily Invoice Generation (6:00 AM): Auto-generates rent invoices for active leases with `autoGenerateRentInvoices` enabled.
+        -   Mark Overdue Invoices (7:00 AM): Updates invoice status to OVERDUE for unpaid invoices past due date.
+        -   Late Fee Calculation (8:00 AM): Applies late fees based on lease terms (percentage, grace days).
+        -   Lease Expiry Check (9:00 AM): Identifies leases expiring within 30 days.
+        -   Home Maintenance Reminders (9:00 AM): Checks for upcoming maintenance schedules due within 14 days.
+        -   Admin API endpoints (`/api/admin/scheduler/*`) for manual job triggering and status monitoring.
 -   **Data Validation:** Zod schemas for runtime validation.
 -   **Project Structure:** Monorepo (`client`, `server`, `shared`) with path aliases.
 
@@ -58,3 +65,4 @@ Preferred communication style: Simple, everyday language.
 -   **File Uploads:** `multer`.
 -   **Development:** Replit-specific plugins, TypeScript.
 -   **Build:** Vite (client), esbuild (server).
+-   **Scheduling:** `node-cron` for background job automation.

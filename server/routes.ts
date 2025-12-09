@@ -48,6 +48,7 @@ import {
   insertApplianceServiceHistorySchema
 } from "@shared/schema";
 import { generateInvoicePDF, generateReceiptPDF, getInvoicePDFPath, getReceiptPDFPath } from "./pdf-service";
+import { schedulerJobs } from "./scheduler";
 
 const uploadDir = path.join(process.cwd(), "uploads", "properties");
 if (!fs.existsSync(uploadDir)) {
@@ -3684,6 +3685,97 @@ export async function registerRoutes(
           overdueInvoices: overdueInvoices.length,
           complianceAlerts: complianceAlerts.length,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // =====================================================
+  // SCHEDULER ADMIN API
+  // =====================================================
+  
+  app.post("/api/admin/scheduler/run-invoice-generation", requireAuth, requireSuperAdmin, async (req, res, next) => {
+    try {
+      const result = await schedulerJobs.dailyInvoiceGeneration();
+      res.json({
+        success: result.success,
+        message: `Generated ${result.processedCount} invoices`,
+        processedCount: result.processedCount,
+        errors: result.errors,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/scheduler/run-late-fee-calculation", requireAuth, requireSuperAdmin, async (req, res, next) => {
+    try {
+      const result = await schedulerJobs.dailyLateFeeCalculation();
+      res.json({
+        success: result.success,
+        message: `Applied late fees to ${result.processedCount} invoices`,
+        processedCount: result.processedCount,
+        errors: result.errors,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/scheduler/mark-overdue-invoices", requireAuth, requireSuperAdmin, async (req, res, next) => {
+    try {
+      const result = await schedulerJobs.markOverdueInvoices();
+      res.json({
+        success: result.success,
+        message: `Marked ${result.processedCount} invoices as overdue`,
+        processedCount: result.processedCount,
+        errors: result.errors,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/scheduler/check-lease-expiry", requireAuth, requireSuperAdmin, async (req, res, next) => {
+    try {
+      const result = await schedulerJobs.checkLeaseExpiry();
+      res.json({
+        success: result.success,
+        message: `Found ${result.processedCount} expiring leases`,
+        processedCount: result.processedCount,
+        errors: result.errors,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/scheduler/check-maintenance-reminders", requireAuth, requireSuperAdmin, async (req, res, next) => {
+    try {
+      const result = await schedulerJobs.checkMaintenanceReminders();
+      res.json({
+        success: result.success,
+        message: `Found ${result.processedCount} upcoming maintenance schedules`,
+        processedCount: result.processedCount,
+        errors: result.errors,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/scheduler/status", requireAuth, requireSuperAdmin, async (req, res, next) => {
+    try {
+      res.json({
+        schedulerActive: true,
+        jobs: [
+          { name: "Daily Invoice Generation", schedule: "6:00 AM", cronExpression: "0 6 * * *" },
+          { name: "Mark Overdue Invoices", schedule: "7:00 AM", cronExpression: "0 7 * * *" },
+          { name: "Late Fee Calculation", schedule: "8:00 AM", cronExpression: "0 8 * * *" },
+          { name: "Lease Expiry Check", schedule: "9:00 AM", cronExpression: "0 9 * * *" },
+          { name: "Maintenance Reminders", schedule: "9:00 AM", cronExpression: "0 9 * * *" },
+        ],
       });
     } catch (error) {
       next(error);

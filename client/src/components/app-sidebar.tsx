@@ -18,6 +18,11 @@ import {
   ShieldCheck,
   Wallet,
   ArrowLeftRight,
+  Wrench,
+  ClipboardList,
+  CalendarDays,
+  FolderOpen,
+  Briefcase,
 } from "lucide-react";
 import {
   Sidebar,
@@ -34,35 +39,46 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/use-auth";
+import { useActiveProperty } from "@/contexts/active-property-context";
+import { PropertySelector } from "@/components/property-selector";
+import { Badge } from "@/components/ui/badge";
 
-const mainNavItems = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/properties", label: "Properties", icon: Building2 },
+const propertyOperationsNavItems = [
+  { href: "overview", label: "Overview", icon: Home },
+  { href: "maintenance", label: "Maintenance", icon: Wrench },
+  { href: "tasks", label: "Tasks", icon: ClipboardList },
+  { href: "documents", label: "Documents", icon: FolderOpen },
+  { href: "calendar", label: "Calendar", icon: CalendarDays },
 ];
 
-const peopleNavItems = [
+const portfolioNavItems = [
+  { href: "/properties", label: "All Properties", icon: Building2 },
   { href: "/tenants", label: "Tenants", icon: Users },
-  { href: "/owners", label: "Owners", icon: UserCircle },
-];
-
-const operationsNavItems = [
   { href: "/leases", label: "Leases", icon: FileText },
   { href: "/rent-collection", label: "Rent Collection", icon: Receipt },
-  { href: "/utilities", label: "Utilities", icon: Gauge },
-  { href: "/inventory", label: "Inventory", icon: Boxes },
-  { href: "/compliance", label: "Compliance", icon: FileCheck },
+  { href: "/owners", label: "Owners", icon: UserCircle },
+  { href: "/accounting", label: "Accounting", icon: Calculator },
+  { href: "/expenses", label: "Expenses", icon: Wallet },
+  { href: "/assets", label: "Assets", icon: Package },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
-const financeNavItems = [
-  { href: "/accounting", label: "Accounting", icon: Calculator, adminOnly: false },
-  { href: "/expenses", label: "Expenses", icon: Wallet, adminOnly: false },
-  { href: "/assets", label: "Assets", icon: Package, adminOnly: false },
+const systemNavItems = [
+  { href: "/inventory", label: "Inventory", icon: Boxes },
+  { href: "/compliance", label: "Compliance", icon: FileCheck },
+  { href: "/utilities", label: "Utilities", icon: Gauge },
   { href: "/exchange-rates", label: "Exchange Rates", icon: ArrowLeftRight, adminOnly: true },
-  { href: "/reports", label: "Reports", icon: BarChart3, adminOnly: false },
 ];
+
+const usageTypeLabels: Record<string, string> = {
+  LONG_TERM_RENTAL: "Long-term Rental",
+  SHORT_TERM_RENTAL: "Short-term Rental",
+  OWNER_OCCUPIED: "Owner Occupied",
+};
 
 export function AppSidebar() {
   const { user, logoutMutation } = useAuth();
+  const { activeProperty, activePropertyId } = useActiveProperty();
   const [location] = useLocation();
 
   const getInitials = (name: string) => {
@@ -79,6 +95,12 @@ export function AppSidebar() {
     return location === href || location.startsWith(href + "/");
   };
 
+  const isPropertyActive = (path: string) => {
+    if (!activePropertyId) return false;
+    const fullPath = `/properties/${activePropertyId}/${path}`;
+    return location === fullPath || location.startsWith(fullPath + "/");
+  };
+
   const renderNavItem = (item: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; adminOnly?: boolean }) => {
     const Icon = item.icon;
     return (
@@ -91,6 +113,29 @@ export function AppSidebar() {
           <Link 
             href={item.href} 
             data-testid={`sidebar-link-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            <Icon className="h-4 w-4" aria-hidden="true" />
+            <span>{item.label}</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  };
+
+  const renderPropertyNavItem = (item: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }) => {
+    if (!activePropertyId) return null;
+    const Icon = item.icon;
+    const fullHref = `/properties/${activePropertyId}/${item.href}`;
+    return (
+      <SidebarMenuItem key={item.href}>
+        <SidebarMenuButton
+          asChild
+          isActive={isPropertyActive(item.href)}
+          tooltip={item.label}
+        >
+          <Link 
+            href={fullHref} 
+            data-testid={`sidebar-link-property-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
             <span>{item.label}</span>
@@ -119,45 +164,42 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Overview</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map(renderNavItem)}
-            </SidebarMenu>
+          <SidebarGroupLabel>Active Property</SidebarGroupLabel>
+          <SidebarGroupContent className="px-2">
+            <PropertySelector />
+            {activeProperty?.usageType && (
+              <div className="mt-2 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {usageTypeLabels[activeProperty.usageType] || activeProperty.usageType}
+                </Badge>
+              </div>
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {activePropertyId && (
+          <>
+            <SidebarSeparator />
+
+            <SidebarGroup>
+              <SidebarGroupLabel>Property Operations</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {propertyOperationsNavItems.map(renderPropertyNavItem)}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+          </>
+        )}
 
         <SidebarSeparator />
 
         <SidebarGroup>
-          <SidebarGroupLabel>People</SidebarGroupLabel>
+          <SidebarGroupLabel>Portfolio</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {peopleNavItems.map(renderNavItem)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator />
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Operations</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {operationsNavItems.map(renderNavItem)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator />
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Finance</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {financeNavItems
-                .filter(item => !item.adminOnly || user?.isSuperAdmin === 1)
-                .map(renderNavItem)}
+              {portfolioNavItems.map(renderNavItem)}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -168,6 +210,9 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              {systemNavItems
+                .filter(item => !item.adminOnly || user?.isSuperAdmin === 1)
+                .map(renderNavItem)}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
@@ -195,21 +240,6 @@ export function AppSidebar() {
                   >
                     <Settings className="h-4 w-4" aria-hidden="true" />
                     <span>Settings</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive("/system-settings")}
-                  tooltip="System Settings"
-                >
-                  <Link 
-                    href="/system-settings" 
-                    data-testid="sidebar-link-system-settings"
-                  >
-                    <Settings className="h-4 w-4" aria-hidden="true" />
-                    <span>System Settings</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

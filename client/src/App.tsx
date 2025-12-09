@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { ActivePropertyProvider } from "@/contexts/active-property-context";
 import { AppLayout } from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
@@ -34,6 +35,7 @@ import CompliancePage from "@/pages/compliance-page";
 import ExpensesPage from "@/pages/expenses-page";
 import AdminPage from "@/pages/admin-page";
 import ExchangeRatesPage from "@/pages/exchange-rates-page";
+import PropertyOperationsPage from "@/pages/property-operations-page";
 
 function ProtectedRoutes() {
   return (
@@ -44,6 +46,13 @@ function ProtectedRoutes() {
       <Route path="/properties/new" component={PropertyNewPage} />
       <Route path="/properties/:id/edit" component={PropertyEditPage} />
       <Route path="/properties/:id/maintenance" component={MaintenancePage} />
+      <Route path="/properties/:id/overview" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/tasks" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/documents" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/calendar" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/tenants" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/leases" component={PropertyOperationsPage} />
+      <Route path="/properties/:id/rent" component={PropertyOperationsPage} />
       <Route path="/properties/:id" component={PropertyDetailPage} />
       <Route path="/tenants" component={TenantsPage} />
       <Route path="/tenants/:id" component={TenantDetailPage} />
@@ -97,9 +106,11 @@ function AppContent() {
   }
   
   return (
-    <AppLayout>
-      <ProtectedRoutes />
-    </AppLayout>
+    <ActivePropertyProvider>
+      <AppLayout>
+        <ProtectedRoutes />
+      </AppLayout>
+    </ActivePropertyProvider>
   );
 }
 

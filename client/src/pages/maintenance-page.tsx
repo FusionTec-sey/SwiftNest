@@ -1043,7 +1043,7 @@ export default function MaintenancePage() {
       </div>
 
       <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5" aria-hidden="true" />
@@ -1135,7 +1135,7 @@ export default function MaintenancePage() {
       </Dialog>
 
       <Dialog open={issueExpenseDialogOpen} onOpenChange={setIssueExpenseDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5" aria-hidden="true" />
@@ -1226,7 +1226,7 @@ export default function MaintenancePage() {
       </Dialog>
 
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" aria-hidden="true" />

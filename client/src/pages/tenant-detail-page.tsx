@@ -70,10 +70,46 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Tenant, Document, Lease, Property, OnboardingProcess, ConditionChecklistItem, HandoverItem } from "@shared/schema";
+import type { Tenant, Document, Lease, Property, OnboardingProcess, ConditionChecklistItem, HandoverItem, InventoryItem } from "@shared/schema";
+
+// Room types for checklist
+const ROOM_TYPES = [
+  { value: 'LIVING_ROOM', label: 'Living Room' },
+  { value: 'BEDROOM', label: 'Bedroom' },
+  { value: 'BATHROOM', label: 'Bathroom' },
+  { value: 'KITCHEN', label: 'Kitchen' },
+  { value: 'DINING_ROOM', label: 'Dining Room' },
+  { value: 'BALCONY', label: 'Balcony' },
+  { value: 'TERRACE', label: 'Terrace' },
+  { value: 'GARAGE', label: 'Garage' },
+  { value: 'STORAGE', label: 'Storage' },
+  { value: 'ENTRANCE', label: 'Entrance' },
+  { value: 'HALLWAY', label: 'Hallway' },
+  { value: 'UTILITY_ROOM', label: 'Utility Room' },
+  { value: 'GARDEN', label: 'Garden' },
+  { value: 'POOL_AREA', label: 'Pool Area' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+// Condition ratings
+const CONDITION_RATINGS = [
+  { value: 'EXCELLENT', label: 'Excellent', color: 'bg-green-500' },
+  { value: 'GOOD', label: 'Good', color: 'bg-blue-500' },
+  { value: 'FAIR', label: 'Fair', color: 'bg-yellow-500' },
+  { value: 'POOR', label: 'Poor', color: 'bg-orange-500' },
+  { value: 'DAMAGED', label: 'Damaged', color: 'bg-red-500' },
+];
 
 const kycFormSchema = z.object({
   passportNumber: z.string().optional(),
@@ -171,17 +207,24 @@ function OnboardingSection({ tenantId, onboardingProcesses, onboardingLoading, l
     mutationFn: async ({ processId, stage }: { processId: number; stage: string }) => {
       return apiRequest("POST", `/api/onboarding/${processId}/stage`, { stage });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tenants", tenantId, "onboarding"] });
+      const stageNames: Record<string, string> = {
+        'CONTRACT_SIGNED': 'Contract Review completed',
+        'DEPOSIT_PAID': 'Deposit collected',
+        'INSPECTION_COMPLETED': 'Inspection completed',
+        'HANDOVER_COMPLETED': 'Handover completed',
+        'MOVE_IN_COMPLETED': 'Move-in completed',
+      };
       toast({
-        title: "Stage updated",
-        description: "The onboarding stage has been advanced.",
+        title: stageNames[variables.stage] || "Stage updated",
+        description: "The onboarding has progressed to the next stage.",
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Could not advance stage",
+        description: error.message || "Please check that all prerequisites are met for this stage.",
         variant: "destructive",
       });
     },
@@ -395,6 +438,19 @@ function OnboardingSection({ tenantId, onboardingProcesses, onboardingLoading, l
                     )}
                   </div>
                 )}
+
+                {/* View Details Button */}
+                <div className="mt-4 pt-4 border-t flex justify-end">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setSelectedProcess(process)}
+                    data-testid={`button-view-details-${process.id}`}
+                  >
+                    <ClipboardCheck className="h-4 w-4 mr-2" />
+                    View Details
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -416,7 +472,477 @@ function OnboardingSection({ tenantId, onboardingProcesses, onboardingLoading, l
           </CardContent>
         </Card>
       )}
+
+      {/* Onboarding Detail Dialog */}
+      {selectedProcess && (
+        <OnboardingDetailDialog
+          process={selectedProcess}
+          open={!!selectedProcess}
+          onOpenChange={(open) => !open && setSelectedProcess(null)}
+          tenantId={tenantId}
+        />
+      )}
     </div>
+  );
+}
+
+// Onboarding Detail Dialog Component
+interface OnboardingDetailDialogProps {
+  process: OnboardingProcess;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tenantId: number;
+}
+
+type HandoverItemWithInventory = HandoverItem & { inventoryItem?: InventoryItem };
+
+function OnboardingDetailDialog({ process, open, onOpenChange, tenantId }: OnboardingDetailDialogProps) {
+  const { toast } = useToast();
+  const [isAddingChecklist, setIsAddingChecklist] = useState(false);
+  const [isAddingHandover, setIsAddingHandover] = useState(false);
+  const [newChecklistItem, setNewChecklistItem] = useState({
+    roomType: '',
+    roomName: '',
+    itemName: '',
+    itemDescription: '',
+    conditionRating: '',
+    conditionNotes: '',
+    hasDamage: false,
+    damageDescription: '',
+  });
+  const [newHandoverItem, setNewHandoverItem] = useState({
+    inventoryItemId: '',
+    quantity: 1,
+    conditionAtHandover: '',
+    conditionNotes: '',
+  });
+
+  // Fetch checklist items
+  const { data: checklistItems, isLoading: checklistLoading } = useQuery<ConditionChecklistItem[]>({
+    queryKey: ["/api/onboarding", process.id, "checklist"],
+    enabled: open,
+  });
+
+  // Fetch handover items
+  const { data: handoverItems, isLoading: handoverLoading } = useQuery<HandoverItemWithInventory[]>({
+    queryKey: ["/api/onboarding", process.id, "handover"],
+    enabled: open,
+  });
+
+  // Fetch available inventory items
+  const { data: inventoryItems } = useQuery<InventoryItem[]>({
+    queryKey: ["/api/inventory/items"],
+    enabled: open && isAddingHandover,
+  });
+
+  // Add checklist item mutation
+  const addChecklistMutation = useMutation({
+    mutationFn: async (data: typeof newChecklistItem) => {
+      return apiRequest("POST", `/api/onboarding/${process.id}/checklist`, {
+        ...data,
+        hasDamage: data.hasDamage ? 1 : 0,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding", process.id, "checklist"] });
+      setIsAddingChecklist(false);
+      setNewChecklistItem({
+        roomType: '',
+        roomName: '',
+        itemName: '',
+        itemDescription: '',
+        conditionRating: '',
+        conditionNotes: '',
+        hasDamage: false,
+        damageDescription: '',
+      });
+      toast({ title: "Checklist item added", description: "The inspection item has been recorded." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete checklist item mutation
+  const deleteChecklistMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      return apiRequest("DELETE", `/api/onboarding/checklist/${itemId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding", process.id, "checklist"] });
+      toast({ title: "Item deleted", description: "The checklist item has been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Add handover item mutation
+  const addHandoverMutation = useMutation({
+    mutationFn: async (data: typeof newHandoverItem) => {
+      return apiRequest("POST", `/api/onboarding/${process.id}/handover`, {
+        ...data,
+        inventoryItemId: parseInt(data.inventoryItemId),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding", process.id, "handover"] });
+      setIsAddingHandover(false);
+      setNewHandoverItem({
+        inventoryItemId: '',
+        quantity: 1,
+        conditionAtHandover: '',
+        conditionNotes: '',
+      });
+      toast({ title: "Handover item added", description: "The item has been recorded for handover." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete handover item mutation
+  const deleteHandoverMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      return apiRequest("DELETE", `/api/onboarding/handover/${itemId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding", process.id, "handover"] });
+      toast({ title: "Item deleted", description: "The handover item has been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleAddChecklist = () => {
+    if (!newChecklistItem.roomType || !newChecklistItem.itemName || !newChecklistItem.conditionRating) {
+      toast({ title: "Missing fields", description: "Room type, item name, and condition rating are required.", variant: "destructive" });
+      return;
+    }
+    addChecklistMutation.mutate(newChecklistItem);
+  };
+
+  const handleAddHandover = () => {
+    if (!newHandoverItem.inventoryItemId || !newHandoverItem.conditionAtHandover) {
+      toast({ title: "Missing fields", description: "Inventory item and condition are required.", variant: "destructive" });
+      return;
+    }
+    addHandoverMutation.mutate(newHandoverItem);
+  };
+
+  const getConditionBadgeVariant = (rating: string) => {
+    switch (rating) {
+      case 'EXCELLENT': return 'default' as const;
+      case 'GOOD': return 'secondary' as const;
+      case 'FAIR': return 'outline' as const;
+      case 'POOR': return 'destructive' as const;
+      case 'DAMAGED': return 'destructive' as const;
+      default: return 'outline' as const;
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardCheck className="h-5 w-5" />
+            Onboarding Process #{process.id}
+          </DialogTitle>
+          <DialogDescription>
+            Current Stage: {process.currentStage || 'Not Started'} | Status: {process.status}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs defaultValue="checklist" className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="checklist" data-testid="tab-checklist">
+              <ClipboardCheck className="h-4 w-4 mr-2" />
+              Inspection Checklist ({checklistItems?.length || 0})
+            </TabsTrigger>
+            <TabsTrigger value="handover" data-testid="tab-handover">
+              <Package className="h-4 w-4 mr-2" />
+              Handover Items ({handoverItems?.length || 0})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="checklist" className="flex-1 overflow-auto space-y-4">
+            {/* Add Checklist Item Form */}
+            {isAddingChecklist ? (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Add Inspection Item</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium">Room Type *</label>
+                      <Select
+                        value={newChecklistItem.roomType}
+                        onValueChange={(v) => setNewChecklistItem(p => ({ ...p, roomType: v }))}
+                      >
+                        <SelectTrigger data-testid="select-room-type">
+                          <SelectValue placeholder="Select room" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROOM_TYPES.map((rt) => (
+                            <SelectItem key={rt.value} value={rt.value}>{rt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Room Name</label>
+                      <Input
+                        placeholder="e.g., Master Bedroom"
+                        value={newChecklistItem.roomName}
+                        onChange={(e) => setNewChecklistItem(p => ({ ...p, roomName: e.target.value }))}
+                        data-testid="input-room-name"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium">Item Name *</label>
+                      <Input
+                        placeholder="e.g., Wall paint, Floor tiles"
+                        value={newChecklistItem.itemName}
+                        onChange={(e) => setNewChecklistItem(p => ({ ...p, itemName: e.target.value }))}
+                        data-testid="input-item-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Condition *</label>
+                      <Select
+                        value={newChecklistItem.conditionRating}
+                        onValueChange={(v) => setNewChecklistItem(p => ({ ...p, conditionRating: v }))}
+                      >
+                        <SelectTrigger data-testid="select-condition">
+                          <SelectValue placeholder="Select condition" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CONDITION_RATINGS.map((cr) => (
+                            <SelectItem key={cr.value} value={cr.value}>{cr.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Notes</label>
+                    <Textarea
+                      placeholder="Condition notes..."
+                      value={newChecklistItem.conditionNotes}
+                      onChange={(e) => setNewChecklistItem(p => ({ ...p, conditionNotes: e.target.value }))}
+                      rows={2}
+                      data-testid="input-condition-notes"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setIsAddingChecklist(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleAddChecklist} disabled={addChecklistMutation.isPending} data-testid="button-save-checklist">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Item
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setIsAddingChecklist(true)} data-testid="button-add-checklist">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Inspection Item
+              </Button>
+            )}
+
+            {/* Checklist Items List */}
+            {checklistLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+              </div>
+            ) : checklistItems && checklistItems.length > 0 ? (
+              <div className="space-y-2">
+                {checklistItems.map((item) => (
+                  <Card key={item.id} data-testid={`checklist-item-${item.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="secondary" className="text-xs">{ROOM_TYPES.find(r => r.value === item.roomType)?.label}</Badge>
+                            {item.roomName && <span className="text-sm text-muted-foreground">{item.roomName}</span>}
+                          </div>
+                          <p className="font-medium mt-1">{item.itemName}</p>
+                          {item.conditionNotes && (
+                            <p className="text-sm text-muted-foreground mt-1">{item.conditionNotes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={getConditionBadgeVariant(item.conditionRating)}>
+                            {item.conditionRating}
+                          </Badge>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteChecklistMutation.mutate(item.id)}
+                            disabled={deleteChecklistMutation.isPending}
+                            data-testid={`button-delete-checklist-${item.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <ClipboardCheck className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No inspection items recorded yet</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="handover" className="flex-1 overflow-auto space-y-4">
+            {/* Add Handover Item Form */}
+            {isAddingHandover ? (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Add Handover Item</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium">Inventory Item *</label>
+                      <Select
+                        value={newHandoverItem.inventoryItemId}
+                        onValueChange={(v) => setNewHandoverItem(p => ({ ...p, inventoryItemId: v }))}
+                      >
+                        <SelectTrigger data-testid="select-inventory-item">
+                          <SelectValue placeholder="Select item" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {inventoryItems?.filter(i => i.status === 'AVAILABLE').map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>
+                              {item.name} ({item.itemType})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Quantity</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={newHandoverItem.quantity}
+                        onChange={(e) => setNewHandoverItem(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
+                        data-testid="input-handover-quantity"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Condition at Handover *</label>
+                    <Select
+                      value={newHandoverItem.conditionAtHandover}
+                      onValueChange={(v) => setNewHandoverItem(p => ({ ...p, conditionAtHandover: v }))}
+                    >
+                      <SelectTrigger data-testid="select-handover-condition">
+                        <SelectValue placeholder="Select condition" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONDITION_RATINGS.map((cr) => (
+                          <SelectItem key={cr.value} value={cr.value}>{cr.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Notes</label>
+                    <Textarea
+                      placeholder="Handover notes..."
+                      value={newHandoverItem.conditionNotes}
+                      onChange={(e) => setNewHandoverItem(p => ({ ...p, conditionNotes: e.target.value }))}
+                      rows={2}
+                      data-testid="input-handover-notes"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setIsAddingHandover(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleAddHandover} disabled={addHandoverMutation.isPending} data-testid="button-save-handover">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Item
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setIsAddingHandover(true)} data-testid="button-add-handover">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Handover Item
+              </Button>
+            )}
+
+            {/* Handover Items List */}
+            {handoverLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+              </div>
+            ) : handoverItems && handoverItems.length > 0 ? (
+              <div className="space-y-2">
+                {handoverItems.map((item) => (
+                  <Card key={item.id} data-testid={`handover-item-${item.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <p className="font-medium">{item.inventoryItem?.name || `Item #${item.inventoryItemId}`}</p>
+                            {item.quantity > 1 && <Badge variant="outline">x{item.quantity}</Badge>}
+                          </div>
+                          {item.conditionNotes && (
+                            <p className="text-sm text-muted-foreground mt-1">{item.conditionNotes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={getConditionBadgeVariant(item.conditionAtHandover)}>
+                            {item.conditionAtHandover}
+                          </Badge>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteHandoverMutation.mutate(item.id)}
+                            disabled={deleteHandoverMutation.isPending}
+                            data-testid={`button-delete-handover-${item.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No handover items recorded yet</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

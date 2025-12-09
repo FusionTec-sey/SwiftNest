@@ -4152,12 +4152,88 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateExpense(id: number, expenseData: Partial<Expense>): Promise<Expense | undefined> {
+    // Fetch current expense to check for approval status change
+    const [currentExpense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    if (!currentExpense) return undefined;
+
     const [updated] = await db
       .update(expenses)
       .set({ ...expenseData, updatedAt: new Date() })
       .where(eq(expenses.id, id))
       .returning();
-    return updated || undefined;
+    
+    if (!updated) return undefined;
+
+    // Post to ledger when expense is approved (PENDING -> APPROVED)
+    if (expenseData.approvalStatus === "APPROVED" && currentExpense.approvalStatus !== "APPROVED") {
+      await this.postApprovedExpenseToLedger(updated);
+    }
+
+    return updated;
+  }
+
+  private getExpenseAccountCode(category: string): string {
+    const categoryToAccountCode: Record<string, string> = {
+      "MAINTENANCE": "5000",
+      "REPAIRS": "5000",
+      "UTILITIES": "5100",
+      "INSURANCE": "5200",
+      "PROPERTY_TAX": "5300",
+      "PROFESSIONAL_FEES": "5600",
+      "PROFESSIONAL_SERVICES": "5600",
+      "LEGAL": "5600",
+      "LEGAL_FEES": "5600",
+      "DOCUMENT_FEES": "5600",
+      "MANAGEMENT_FEES": "5600",
+      "OFFICE_SUPPLIES": "5700",
+      "TRAVEL": "5700",
+      "MARKETING": "5700",
+      "OTHER": "5700",
+    };
+    return categoryToAccountCode[category] || "5700";
+  }
+
+  private async postApprovedExpenseToLedger(expense: Expense): Promise<void> {
+    // Check if this expense already has a ledger entry to prevent double-posting
+    const existingEntries = await db.select().from(ledgerEntries)
+      .where(and(
+        eq(ledgerEntries.module, "EXPENSE"),
+        eq(ledgerEntries.referenceId, expense.id)
+      ));
+    
+    // Only check for approval entries, not payment entries (which have different memo)
+    const hasApprovalEntry = existingEntries.some(e => e.memo?.startsWith("Expense:"));
+    if (hasApprovalEntry) {
+      console.warn(`Expense ${expense.id} already has a ledger entry, skipping`);
+      return;
+    }
+
+    const expenseAccountCode = this.getExpenseAccountCode(expense.category);
+    const [expenseAccount] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, expenseAccountCode));
+    const [accountsPayable] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "2000"));
+
+    if (!expenseAccount || !accountsPayable) {
+      console.warn("Could not find accounts for expense ledger posting");
+      return;
+    }
+
+    const description = expense.description || `Expense #${expense.id}`;
+
+    await this.createLedgerEntry(
+      {
+        entryDate: new Date(expense.expenseDate),
+        propertyId: expense.propertyId || undefined,
+        ownerId: expense.ownerId,
+        module: "EXPENSE",
+        referenceId: expense.id,
+        memo: `Expense: ${description}`,
+        createdByUserId: expense.createdByUserId,
+      },
+      [
+        { accountId: expenseAccount.id, debit: expense.totalAmount, credit: "0", memo: description },
+        { accountId: accountsPayable.id, debit: "0", credit: expense.totalAmount, memo: "Accounts payable" },
+      ]
+    );
   }
 
   async updateExpensePayment(
@@ -4167,6 +4243,10 @@ export class DatabaseStorage implements IStorage {
     paymentDate?: Date, 
     paymentReference?: string
   ): Promise<Expense | undefined> {
+    // Fetch current expense to check for payment status change
+    const [currentExpense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    if (!currentExpense) return undefined;
+
     const updateData: Partial<Expense> = {
       paymentStatus: paymentStatus as any,
       updatedAt: new Date(),
@@ -4180,7 +4260,57 @@ export class DatabaseStorage implements IStorage {
       .set(updateData)
       .where(eq(expenses.id, id))
       .returning();
-    return updated || undefined;
+    
+    if (!updated) return undefined;
+
+    // Post payment to ledger when expense payment status changes to PAID
+    // Only post if expense was previously approved
+    if (paymentStatus === "PAID" && currentExpense.paymentStatus !== "PAID" && currentExpense.approvalStatus === "APPROVED") {
+      await this.postExpensePaymentToLedger(updated, paymentDate || new Date());
+    }
+
+    return updated;
+  }
+
+  private async postExpensePaymentToLedger(expense: Expense, paymentDate: Date): Promise<void> {
+    // Check if this expense already has a payment ledger entry to prevent double-posting
+    const existingEntries = await db.select().from(ledgerEntries)
+      .where(and(
+        eq(ledgerEntries.module, "EXPENSE"),
+        eq(ledgerEntries.referenceId, expense.id)
+      ));
+    
+    const hasPaymentEntry = existingEntries.some(e => e.memo?.startsWith("Payment:"));
+    if (hasPaymentEntry) {
+      console.warn(`Expense ${expense.id} already has a payment ledger entry, skipping`);
+      return;
+    }
+
+    const [accountsPayable] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "2000"));
+    const [cashAccount] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, "1000"));
+
+    if (!accountsPayable || !cashAccount) {
+      console.warn("Could not find accounts for expense payment ledger posting");
+      return;
+    }
+
+    const description = expense.description || `Expense #${expense.id}`;
+
+    await this.createLedgerEntry(
+      {
+        entryDate: paymentDate,
+        propertyId: expense.propertyId || undefined,
+        ownerId: expense.ownerId,
+        module: "EXPENSE",
+        referenceId: expense.id,
+        memo: `Payment: ${description}`,
+        createdByUserId: expense.createdByUserId,
+      },
+      [
+        { accountId: accountsPayable.id, debit: expense.totalAmount, credit: "0", memo: "Clear accounts payable" },
+        { accountId: cashAccount.id, debit: "0", credit: expense.totalAmount, memo: "Cash payment" },
+      ]
+    );
   }
 
   async deleteExpense(id: number): Promise<void> {

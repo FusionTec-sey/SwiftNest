@@ -186,32 +186,35 @@ export function PropertyCard({ property, onDelete, isDeleting, hideDelete, hideE
         
         {unitCount > 0 && (
           <div className="mt-3 pt-3 border-t">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="text-sm">
-                <span className="font-medium">{unitCount}</span>
-                <span className="text-muted-foreground ml-1">Units</span>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="text-sm">
+                  <span className="font-medium">{unitCount}</span>
+                  <span className="text-muted-foreground ml-1">Units</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-green-600 dark:text-green-400">{occupiedCount}</span>
+                  <span className="text-muted-foreground ml-1">Occupied</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-500 dark:text-gray-400">{vacantCount}</span>
+                  <span className="text-muted-foreground ml-1">Vacant</span>
+                </div>
               </div>
-              <div className="text-sm">
-                <span className="font-medium text-green-600 dark:text-green-400">{occupiedCount}</span>
-                <span className="text-muted-foreground ml-1">Occupied</span>
-              </div>
-              <div className="text-sm">
-                <span className="font-medium text-gray-500 dark:text-gray-400">{vacantCount}</span>
-                <span className="text-muted-foreground ml-1">Vacant</span>
-              </div>
+              <Badge 
+                variant="secondary" 
+                className={`gap-1 border-0 ${
+                  occupiedCount === unitCount 
+                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" 
+                    : occupiedCount > 0 
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300"
+                      : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                }`}
+                data-testid={`badge-occupancy-${property.id}`}
+              >
+                {Math.round((occupiedCount / unitCount) * 100)}% Occupied
+              </Badge>
             </div>
-            {occupiedCount > 0 && (
-              <div className="mt-2">
-                <Badge 
-                  variant="secondary" 
-                  className="gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 border-0"
-                  data-testid={`badge-leased-${property.id}`}
-                >
-                  <User className="h-3 w-3" />
-                  {Math.round((occupiedCount / unitCount) * 100)}% Occupancy
-                </Badge>
-              </div>
-            )}
           </div>
         )}
       </CardContent>

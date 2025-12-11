@@ -9,6 +9,9 @@ COPY package*.json ./
 # Install all dependencies (including dev for build)
 RUN npm ci
 
+# Add node_modules/.bin to PATH so tsx and other binaries are found
+ENV PATH="/app/node_modules/.bin:$PATH"
+
 # Copy source code
 COPY . .
 

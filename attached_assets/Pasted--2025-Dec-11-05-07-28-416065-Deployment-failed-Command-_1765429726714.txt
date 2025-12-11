@@ -1,0 +1,232 @@
+========================================
+2025-Dec-11 05:07:28.416065
+Deployment failed: Command execution failed (exit code 1): docker exec gcwgsoko0w0gokc04wwc8w04 bash -c 'bash /artifacts/build.sh'
+2025-Dec-11 05:07:28.416065
+Error: #0 building with "default" instance using docker driver
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#1 [internal] load build definition from Dockerfile
+2025-Dec-11 05:07:28.416065
+#1 transferring dockerfile: 2.33kB done
+2025-Dec-11 05:07:28.416065
+#1 DONE 0.0s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#2 [internal] load metadata for docker.io/library/node:20-alpine
+2025-Dec-11 05:07:28.416065
+#2 DONE 1.7s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#3 [internal] load .dockerignore
+2025-Dec-11 05:07:28.416065
+#3 transferring context: 421B done
+2025-Dec-11 05:07:28.416065
+#3 DONE 0.0s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#4 [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:643e7036aa985317ebfee460005e322aa550c6b6883000d01daefb58689a58e2
+2025-Dec-11 05:07:28.416065
+#4 DONE 0.0s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#5 [builder 2/6] WORKDIR /app
+2025-Dec-11 05:07:28.416065
+#5 CACHED
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#6 [internal] load build context
+2025-Dec-11 05:07:28.416065
+#6 transferring context: 3.27MB 0.1s done
+2025-Dec-11 05:07:28.416065
+#6 DONE 0.1s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#7 [builder 3/6] COPY package*.json ./
+2025-Dec-11 05:07:28.416065
+#7 CACHED
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#8 [production 3/8] RUN addgroup -g 1001 -S nodejs &&     adduser -S nodejs -u 1001
+2025-Dec-11 05:07:28.416065
+#8 DONE 0.2s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#9 [production 4/8] COPY package*.json ./
+2025-Dec-11 05:07:28.416065
+#9 DONE 0.1s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#10 [builder 4/6] RUN npm ci
+2025-Dec-11 05:07:28.416065
+#10 ...
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#11 [production 5/8] RUN npm ci --omit=dev && npm cache clean --force
+2025-Dec-11 05:07:28.416065
+#11 ...
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#10 [builder 4/6] RUN npm ci
+2025-Dec-11 05:07:28.416065
+#10 28.33
+2025-Dec-11 05:07:28.416065
+#10 28.33 added 423 packages, and audited 424 packages in 28s
+2025-Dec-11 05:07:28.416065
+#10 28.33
+2025-Dec-11 05:07:28.416065
+#10 28.33 54 packages are looking for funding
+2025-Dec-11 05:07:28.416065
+#10 28.33   run `npm fund` for details
+2025-Dec-11 05:07:28.416065
+#10 28.35
+2025-Dec-11 05:07:28.416065
+#10 28.35 5 vulnerabilities (3 low, 2 high)
+2025-Dec-11 05:07:28.416065
+#10 28.35
+2025-Dec-11 05:07:28.416065
+#10 28.35 To address issues that do not require attention, run:
+2025-Dec-11 05:07:28.416065
+#10 28.35   npm audit fix
+2025-Dec-11 05:07:28.416065
+#10 28.35
+2025-Dec-11 05:07:28.416065
+#10 28.35 Some issues need review, and may require choosing
+2025-Dec-11 05:07:28.416065
+#10 28.35 a different dependency.
+2025-Dec-11 05:07:28.416065
+#10 28.35
+2025-Dec-11 05:07:28.416065
+#10 28.35 Run `npm audit` for details.
+2025-Dec-11 05:07:28.416065
+#10 28.35 npm notice
+2025-Dec-11 05:07:28.416065
+#10 28.35 npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2025-Dec-11 05:07:28.416065
+#10 28.35 npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2025-Dec-11 05:07:28.416065
+#10 28.35 npm notice To update run: npm install -g npm@11.7.0
+2025-Dec-11 05:07:28.416065
+#10 28.35 npm notice
+2025-Dec-11 05:07:28.416065
+#10 DONE 28.7s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#11 [production 5/8] RUN npm ci --omit=dev && npm cache clean --force
+2025-Dec-11 05:07:28.416065
+#11 28.19
+2025-Dec-11 05:07:28.416065
+#11 28.19 added 423 packages, and audited 424 packages in 28s
+2025-Dec-11 05:07:28.416065
+#11 28.19
+2025-Dec-11 05:07:28.416065
+#11 28.19 54 packages are looking for funding
+2025-Dec-11 05:07:28.416065
+#11 28.19   run `npm fund` for details
+2025-Dec-11 05:07:28.416065
+#11 28.20
+2025-Dec-11 05:07:28.416065
+#11 28.20 5 vulnerabilities (3 low, 2 high)
+2025-Dec-11 05:07:28.416065
+#11 28.20
+2025-Dec-11 05:07:28.416065
+#11 28.20 To address issues that do not require attention, run:
+2025-Dec-11 05:07:28.416065
+#11 28.20   npm audit fix
+2025-Dec-11 05:07:28.416065
+#11 28.20
+2025-Dec-11 05:07:28.416065
+#11 28.20 Some issues need review, and may require choosing
+2025-Dec-11 05:07:28.416065
+#11 28.20 a different dependency.
+2025-Dec-11 05:07:28.416065
+#11 28.20
+2025-Dec-11 05:07:28.416065
+#11 28.20 Run `npm audit` for details.
+2025-Dec-11 05:07:28.416065
+#11 28.21 npm notice
+2025-Dec-11 05:07:28.416065
+#11 28.21 npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2025-Dec-11 05:07:28.416065
+#11 28.21 npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2025-Dec-11 05:07:28.416065
+#11 28.21 npm notice To update run: npm install -g npm@11.7.0
+2025-Dec-11 05:07:28.416065
+#11 28.21 npm notice
+2025-Dec-11 05:07:28.416065
+#11 28.64 npm warn using --force Recommended protections disabled.
+2025-Dec-11 05:07:28.416065
+#11 ...
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#12 [builder 5/6] COPY . .
+2025-Dec-11 05:07:28.416065
+#12 DONE 0.3s
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#13 [builder 6/6] RUN npm run build
+2025-Dec-11 05:07:28.416065
+#13 0.616
+2025-Dec-11 05:07:28.416065
+#13 0.616 > rest-express@1.0.0 build
+2025-Dec-11 05:07:28.416065
+#13 0.616 > tsx script/build.ts
+2025-Dec-11 05:07:28.416065
+#13 0.616
+2025-Dec-11 05:07:28.416065
+#13 0.627 sh: tsx: not found
+2025-Dec-11 05:07:28.416065
+#13 ERROR: process "/bin/sh -c npm run build" did not complete successfully: exit code: 127
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+#11 [production 5/8] RUN npm ci --omit=dev && npm cache clean --force
+2025-Dec-11 05:07:28.416065
+#11 CANCELED
+2025-Dec-11 05:07:28.416065
+------
+2025-Dec-11 05:07:28.416065
+> [builder 6/6] RUN npm run build:
+2025-Dec-11 05:07:28.416065
+0.616
+2025-Dec-11 05:07:28.416065
+0.616 > rest-express@1.0.0 build
+2025-Dec-11 05:07:28.416065
+0.616 > tsx script/build.ts
+2025-Dec-11 05:07:28.416065
+0.616
+2025-Dec-11 05:07:28.416065
+0.627 sh: tsx: not found
+2025-Dec-11 05:07:28.416065
+------
+2025-Dec-11 05:07:28.416065
+2025-Dec-11 05:07:28.416065
+2 warnings found (use docker --debug to expand):
+2025-Dec-11 05:07:28.416065
+- SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ARG "SESSION_SECRET") (line 11)
+2025-Dec-11 05:07:28.416065
+- SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ARG "SESSION_SECRET") (line 41)
+2025-Dec-11 05:07:28.416065
+Dockerfile:29
+2025-Dec-11 05:07:28.416065
+--------------------
+2025-Dec-11 05:07:28.416065
+27 |
+2025-Dec-11 05:07:28.416065
+28 |     # Build the application
+2025-Dec-11 05:07:28.416065
+29 | >>> RUN npm run build
+2025-Dec-11 05:07:28.416065
+30 |
+2025-Dec-11 05:07:28.416065
+31 |     # Production stage
+2025-Dec-11 05:07:28.416065
+--------------------
+2025-Dec-11 05:07:28.416065
+ERROR: failed to build: failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 127
+2025-Dec-11 05:07:28.416065
+exit status 1
+2025-Dec-11 05:07:28.528160
+========================================
+2025-Dec-11 05:07:28.536057
+Deployment failed. Removing the new version of your application.
+2025-Dec-11 05:07:29.373848
+Gracefully shutting down build container: gcwgsoko0w0gokc04wwc8w04

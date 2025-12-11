@@ -194,6 +194,15 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
+  // Health check endpoint for Docker/Kubernetes/load balancers
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ 
+      status: "healthy", 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  });
+
   app.get("/api/properties", requireAuth, async (req, res, next) => {
     try {
       const properties = await storage.getPropertiesByUserId(req.user!.id);

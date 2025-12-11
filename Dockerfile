@@ -1,46 +1,45 @@
-# Build stage
+# ---------- builder ----------
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for dependency caching
 COPY package*.json ./
 
-# Install all dependencies (including dev for build)
+# Install all dependencies (including dev) so tsx and other build tools are available
 RUN npm ci
 
-# Add node_modules/.bin to PATH so tsx and other binaries are found
+# Add node_modules/.bin to PATH so local binaries are found
 ENV PATH="/app/node_modules/.bin:$PATH"
 
-# Copy source code
+# Copy source
 COPY . .
 
 # Build the application
 RUN npm run build
 
-# Production stage
+# ---------- production ----------
 FROM node:20-alpine AS production
-
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# create a non-root user
+RUN addgroup -g 1001 -S nodejs \
+ && adduser -S nodejs -u 1001
 
-# Copy package files
+# Copy only package files and install production deps
 COPY package*.json ./
-
-# Install production dependencies only
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy built files from builder stage
+# Copy built artifacts from builder
 COPY --from=builder /app/dist ./dist
+# Copy any runtime files your app needs (public, views, etc.) if applicable:
+# COPY --from=builder /app/public ./public
 
-# Create uploads directory
-RUN mkdir -p uploads && chown -R nodejs:nodejs uploads
+# Create uploads directory and set ownership in a single layer
+RUN mkdir -p /app/uploads \
+ && chown -R nodejs:nodejs /app
 
-# Set ownership
-RUN chown -R nodejs:nodejs /app
+# Install curl for healthcheck (small, common package)
+RUN apk add --no-cache curl
 
 # Switch to non-root user
 USER nodejs
@@ -48,9 +47,9 @@ USER nodejs
 # Expose port
 EXPOSE 5000
 
-# Health check
+# Health check (uses curl)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:5000/api/health || exit 1
+  CMD curl -fsS http://localhost:5000/api/health || exit 1
 
-# Start the application
+# Default command (adjust if your entrypoint differs)
 CMD ["node", "dist/index.cjs"]
